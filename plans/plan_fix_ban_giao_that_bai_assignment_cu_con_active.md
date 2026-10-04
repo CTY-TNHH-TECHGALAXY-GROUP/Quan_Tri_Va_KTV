@@ -76,4 +76,5 @@ Không đổi: luật ảnh, hạn mức bỏ qua, nợ phòng, tiền tua, gi�
   **Chưa áp** lên Supabase — chờ lệnh. Có hiệu lực ngay cho cả production và preview (chung DB).
 - Code `handleReleaseKTV.ts` (thông báo rõ lý do): đã commit phase1. **Không** cherry-pick sang `main`: file này trên phase1 đã là
   bản sequential (khác main 35+/142−), cherry-pick xung đột; sẽ lên production cùng đợt merge phase1 → main.
-- Việc còn lại: migration dọn theo dịch vụ cho `dispatch_confirm_booking` bản sequential (mục 3.2) — làm sau khi script production chạy.
+- 04/10 chiều: xác nhận production ĐÃ có bản sequential (thân hàm trùng 100% `20261001090000`). Migration `20261004160000_dispatch_cleanup_assignments_by_item.sql`
+  dựng từ bản đang chạy, chỉ đổi 2 điều kiện WHERE ở khối 0.5. QA rollback E1 (tái hiện T027) + E2 (hồi quy cùng đơn) ĐẠT. Chờ lệnh áp.
