@@ -32,6 +32,8 @@ import type {
   PromotionOverviewStats,
   PromotionPass,
   PromotionPassWithQr,
+  PromotionEmailLang,
+  PromotionEmailPreview,
   PromotionResult,
   PromotionUsageRecord,
   SpaContact,
@@ -60,6 +62,8 @@ export interface PromotionApi {
   issuePass(campaignId: string, customerId: string): Promise<PromotionResult<IssuedPass>>;
   /** Re-send the e-voucher to the email currently on the customer profile. */
   sendPassEmail(id: string): Promise<PromotionResult<IssuedPass>>;
+  /** The e-voucher email exactly as the owner receives it, in `lang` (default: the email language). */
+  getEmailPreview(id: string, lang?: PromotionEmailLang): Promise<PromotionResult<PromotionEmailPreview>>;
 
   /** Customer profiles matching the criteria, for issuing this campaign. */
   getCustomerCandidates(campaignId: string, filter: CustomerCandidateFilter): Promise<PromotionResult<CustomerCandidatePage>>;
@@ -171,6 +175,8 @@ const httpPromotionApi: PromotionApi = {
     call(() => apiClient.patch(`${ADMIN_BASE}/passes/${encodeURIComponent(id)}`, { action, reason })),
   issuePass: (campaignId, customerId) => call(() => apiClient.post(`${ADMIN_BASE}/passes`, { campaignId, customerId })),
   sendPassEmail: (id) => call(() => apiClient.post(`${ADMIN_BASE}/passes/${encodeURIComponent(id)}/send-email`, {})),
+  getEmailPreview: (id, lang) =>
+    call(() => apiClient.get(`${ADMIN_BASE}/passes/${encodeURIComponent(id)}/email-preview${lang ? `?lang=${lang}` : ''}`)),
 
   getCustomerCandidates: (campaignId, f) =>
     call(() =>

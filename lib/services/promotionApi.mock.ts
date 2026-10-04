@@ -529,6 +529,20 @@ export const createMockPromotionApi = (): PromotionApi => {
       if (existing) return fail('PASS_ALREADY_EXISTS', structuredClone(existing));
       return ok(issueOne(c, cus));
     },
+    async getEmailPreview(id, lang) {
+      await delay();
+      const p = db.passes.find((x) => x.id === id);
+      if (!p) return fail('PROMOTION_NOT_FOUND');
+      // The real email is painted on the server (card PNG, brown logo); mock shows a note only.
+      return ok({
+        lang: lang ?? 'en',
+        from: '"OriaSpa" <info@techgalaxygroup.com>',
+        replyTo: 'cskh@techgalaxygroup.com',
+        to: p.customer.email,
+        subject: `[Oria Spa] ${p.campaign.name}`,
+        html: '<p style="font-family:sans-serif;padding:24px;color:#4A2C14">Mock mode: the email preview is rendered by the server (API mode).</p>',
+      });
+    },
     async sendPassEmail(id) {
       await delay();
       const p = db.passes.find((x) => x.id === id);

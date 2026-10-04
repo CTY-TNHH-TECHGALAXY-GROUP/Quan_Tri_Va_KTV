@@ -115,6 +115,16 @@ export interface PromotionCampaign {
 }
 
 /** Body of POST / PATCH campaign. Strict on the server: never add unknown keys. */
+/** Exact e-voucher email for a pass (admin preview, nothing is sent). */
+export interface PromotionEmailPreview {
+  lang: PromotionEmailLang;
+  from: string;
+  replyTo: string;
+  to: string | null;
+  subject: string;
+  html: string;
+}
+
 export interface CampaignFormInput {
   /** English — required; shown when a language has no translation. */
   name: string;
