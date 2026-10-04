@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
 import { Globe, MapPin, Phone, QrCode, RotateCw, Sparkles } from 'lucide-react';
@@ -26,6 +26,14 @@ const NOTCH_RADIUS_PX = 12;
 const BACK_QR_SIZE = 148;
 const STUB_QR_SIZE = 64;
 const PLACEHOLDER_CODE_LENGTH = 6;
+const SWIPE_MIN_PX = 40;
+/**
+ * iOS Safari / WebKit: both faces need a real 3D transform (translateZ) so they are
+ * composited in the same 3D context. With a 2D-only front (rotateY(0) → matrix) WebKit
+ * paints the 3D back layer on top and the card looks "stuck" on a mirrored back.
+ */
+const FRONT_FACE: React.CSSProperties = { backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(0deg) translateZ(1px)' };
+const BACK_FACE: React.CSSProperties = { backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg) translateZ(1px)' };
 
 /** Ticket notches at the perforation line (mask = static shape, not styling). */
 const NOTCH_MASK = `radial-gradient(circle at ${(1 - STUB_RATIO) * 100}% 0, transparent ${NOTCH_RADIUS_PX}px, #000 ${NOTCH_RADIUS_PX + 0.5}px), radial-gradient(circle at ${(1 - STUB_RATIO) * 100}% 100%, transparent ${NOTCH_RADIUS_PX}px, #000 ${NOTCH_RADIUS_PX + 0.5}px)`;
@@ -113,6 +121,31 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
     px.set(0.5);
     py.set(0.5);
   };
+  // Swipe left / right flips on touch screens (tap still works).
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  const swipedRef = useRef(false);
+  const onSwipeStart = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') swipeRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const onSwipeEnd = (e: React.PointerEvent) => {
+    const start = swipeRef.current;
+    swipeRef.current = null;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.abs(dx) > SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)) {
+      swipedRef.current = true; // the click that follows the swipe must not flip back
+      toggleFlip();
+    }
+  };
+  const onCardClick = () => {
+    if (swipedRef.current) {
+      swipedRef.current = false;
+      return;
+    }
+    toggleFlip();
+  };
+
   const toggleFlip = () => {
     const next = !flipped;
     setFlipped(next);
@@ -138,17 +171,31 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
           style={{ x: shadowX, y: shadowY }}
         />
 
-        <motion.button
-          type="button"
-          onClick={toggleFlip}
+        {/*
+          A div (not <button>): Safari / iOS WebKit does not keep preserve-3d inside a <button>,
+          so the back face was painted over the front and the card looked "unflippable".
+        */}
+        <motion.div
+          role="button"
+          tabIndex={0}
+          onClick={onCardClick}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggleFlip();
+            }
+          }}
+          onPointerDown={onSwipeStart}
+          onPointerUp={onSwipeEnd}
           aria-pressed={flipped}
           aria-label={`${data.campaignName || L.untitled} — ${flipLabel}`}
-          className={`relative block w-full cursor-pointer rounded-[24px] text-left transform-3d focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300 ${hasContact ? CARD_ASPECT_WITH_CONTACT : CARD_ASPECT}`}
+          className={`relative block w-full cursor-pointer touch-pan-y select-none rounded-[24px] text-left transform-3d focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300 ${hasContact ? CARD_ASPECT_WITH_CONTACT : CARD_ASPECT}`}
           style={{ rotateX: reduceMotion ? 0 : tiltX, rotateY }}
         >
-          {/* FRONT — painted amber board (Oria Spa shop sign) */}
+          {/* FRONT — painted amber board (Oria Spa shop sign). Backface on the wrapper, mask on the inner layer (WebKit). */}
+          <div className="absolute inset-0" style={FRONT_FACE}>
           <div
-            className={`absolute inset-0 overflow-hidden rounded-[24px] shadow-[0_24px_48px_-16px_rgba(90,38,10,0.6),0_2px_6px_rgba(90,38,10,0.3)] backface-hidden ${inactive ? 'grayscale-[0.75] sepia-[0.2]' : ''}`}
+            className={`absolute inset-0 overflow-hidden rounded-[24px] shadow-[0_24px_48px_-16px_rgba(90,38,10,0.6),0_2px_6px_rgba(90,38,10,0.3)] ${inactive ? 'grayscale-[0.75] sepia-[0.2]' : ''}`}
             style={{ ...FRONT_BOARD, ...(hasContact ? NOTCH_STYLE_TOP : NOTCH_STYLE), color: ORIA.ink }}
           >
             {/* Botanical ornaments (behind the text) */}
@@ -252,11 +299,12 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
 
             {!reduceMotion && <motion.div aria-hidden className="pointer-events-none absolute inset-0 mix-blend-soft-light" style={{ background: glare }} />}
           </div>
+          </div>
 
           {/* BACK — warm parchment */}
           <div
-            className="absolute inset-0 flex flex-col overflow-hidden rounded-[24px] shadow-[0_24px_48px_-16px_rgba(90,38,10,0.5)] backface-hidden rotate-y-180"
-            style={{ ...BACK_PAPER, color: ORIA.ink }}
+            className="absolute inset-0 flex flex-col overflow-hidden rounded-[24px] shadow-[0_24px_48px_-16px_rgba(90,38,10,0.5)]"
+            style={{ ...BACK_PAPER, ...BACK_FACE, color: ORIA.ink }}
           >
             <Sprig className="pointer-events-none absolute -right-2 -top-2 w-[26%] -scale-x-100 rotate-[175deg] opacity-80" />
             <Cinnamon className="pointer-events-none absolute right-[3%] w-[18%] opacity-85" style={{ bottom: hasContact ? '19%' : '4%' }} />
@@ -288,7 +336,7 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.vi, brandName = t.vo
               </div>
             )}
           </div>
-        </motion.button>
+        </motion.div>
       </div>
 
       {showHint && (
