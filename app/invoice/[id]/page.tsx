@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { PrintableInvoice, InvoiceConfig } from '@/components/invoice/PrintableInvoice';
-import { apiClient } from '@/lib/apiClient';
-import { API } from '@/lib/api-endpoints';
 import { Loader2 } from 'lucide-react';
 import { useParams, useSearchParams } from 'next/navigation';
 
@@ -40,10 +38,19 @@ export default function InvoicePrintPage() {
 
             try {
                 setIsLoading(true);
-                // Fetch config
-                const { data: configData } = await apiClient.get<any>(API.ADMIN.SETTINGS_SYSTEM);
-                if (configData && configData.invoice_config) {
-                    const loaded = configData.invoice_config;
+                // Trang này khách mở bằng QR, KHÔNG có đăng nhập. Chỉ gọi đúng một route công
+                // khai; cấu hình hoá đơn đi kèm trong response (không gọi /api/admin/settings/system).
+                // Dùng fetch thường, không dùng apiClient: apiClient gặp 401 sẽ phát
+                // `session_expired` và auth-context đá khách về /login.
+                const res = await fetch(`/api/finance/invoice/${orderId}`, { cache: 'no-store' });
+                const bData = res.ok ? await res.json() : null;
+                if (!bData?.data) {
+                    setError("Không tìm thấy đơn hàng");
+                    return;
+                }
+
+                const loaded = bData.data.invoiceConfig;
+                if (loaded && typeof loaded === 'object') {
                     setConfig(prev => ({ 
                         ...prev, 
                         ...loaded,
@@ -52,14 +59,7 @@ export default function InvoicePrintPage() {
                         email: loaded.email || prev.email,
                     }));
                 }
-
-                // Fetch booking
-                const bData = await apiClient.get<any>(`/api/finance/invoice/${orderId}`);
-                if (bData && bData.data) {
-                    setBookingData(bData.data);
-                } else {
-                    setError("Không tìm thấy đơn hàng");
-                }
+                setBookingData(bData.data);
             } catch (err: any) {
                 setError(err.message || "Lỗi tải dữ liệu hóa đơn");
             } finally {
