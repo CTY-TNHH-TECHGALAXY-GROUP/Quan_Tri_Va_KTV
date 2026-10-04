@@ -1,7 +1,7 @@
 # Plan — Chạy migration Promotion Engine (v1 → v12) lên DB thật
 
 > **Mức 2** (DB thật, dùng chung cho 3 app: admin, NganHa-WebBooking, web nội bộ). Yêu cầu user ngày 04/10/2026.
-> Trạng thái: **chờ duyệt**. Chưa chạy gì lên DB thật; mới kiểm tra chỉ đọc.
+> Trạng thái: **ĐÃ CHẠY lên DB thật ngày 04/10/2026** (user duyệt: đổi tên 3 file, chạy ngay, B chạy bằng script).
 
 ## 1. Kiểm tra chỉ đọc trên DB thật (`adzfohfdindovfcpaizb`, ngày 04/10/2026)
 
@@ -95,3 +95,20 @@ Chuẩn bị sẵn `plans/sql/rollback_promotion_engine.sql`, chạy trong một
 3. Ai chạy:
    - **Khuyến nghị:** B chạy bằng script (có chạy thử, `lock_timeout`, kiểm tra trước và sau).
    - Hoặc user dán từng file vào Supabase SQL Editor.
+
+
+## 8. Kết quả chạy (04/10/2026)
+
+- **Đổi tên version:** commit `fbc4e466`.
+- **Chạy thử rồi ROLLBACK trên DB thật:**
+  - 12/12 file qua, giao dịch 3,25 giây.
+  - Sau rollback DB sạch: 0 bảng, 0 hàm, 0 trigger, 0 job cron.
+- **Chạy thật:** COMMIT trong 2,67 giây, kết quả:
+  - 3 bảng, 85 hàm `promo_*`, 3 trigger (đang bật).
+  - Job cron `promo_expire_passes_job` (`5 17 * * *`, bật).
+  - Cột `Services.is_promotion`, 4 key `promotion_*`.
+  - 12 dòng trong `schema_migrations`.
+- **`promo_menu_catalog`:** NHP 14, NHS 63. Thiếu NHT vì RPC còn lọc `isActive` (mục 13 của file yêu cầu cho A).
+- **Quyền:** `anon` đọc bảng hoặc gọi RPC khuyến mãi đều bị từ chối (42501).
+- **Chưa xác nhận lượt chạy thật của trigger:** 15 phút sau khi chạy chưa có đơn nào đổi trạng thái. Theo dõi đơn `DONE` / huỷ đầu tiên và log Postgres (`promo trigger`).
+- **Code khuyến mãi chưa deploy lên bản đang chạy.**
