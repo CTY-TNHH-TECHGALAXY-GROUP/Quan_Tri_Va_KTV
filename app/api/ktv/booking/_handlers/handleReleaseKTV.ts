@@ -32,7 +32,13 @@ export async function handleReleaseKTV(ctx: HandlerContext): Promise<HandlerResu
             p_booking_id: bookingId, p_employee_id: technicianCode, p_photo_urls: urls,
             p_item_ids: Array.isArray(body.handoverItemIds) ? body.handoverItemIds : null,
         });
-        if (error || !data?.success || !data.booking) return fail('Chưa xác nhận được bàn giao. Tải lại trước khi thử lại; ảnh trên thiết bị được giữ nguyên.');
+        if (error || !data?.success || !data.booking) {
+            // Kèm lý do kỹ thuật rút gọn: ca T027 04/10 báo chung chung, phải tra DB mới biết là
+            // promotion bị chặn bởi phân công cũ còn ACTIVE.
+            const detail = String(error?.message || data?.error || data?.message || '').replace(/\s+/g, ' ').slice(0, 160);
+            return fail('Chưa xác nhận được bàn giao. Tải lại trước khi thử lại; ảnh trên thiết bị được giữ nguyên.'
+                + (detail ? ` (Hệ thống: ${detail})` : ''));
+        }
         return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: data.booking };
     } catch (error: any) { return fail(error?.message || 'Bàn giao thất bại.'); }
 }
