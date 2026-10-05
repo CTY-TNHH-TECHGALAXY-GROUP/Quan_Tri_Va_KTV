@@ -2,7 +2,7 @@ import 'server-only';
 import QRCode from 'qrcode';
 import nodemailer from 'nodemailer';
 import { getEmailConfig, type EmailConfig } from '@/lib/email-config';
-import { CARD_DISPLAY_WIDTH, getBrownLogoPng, renderPromotionEmailCardPng } from '@/lib/promotion-email-card';
+import { CARD_DISPLAY_WIDTH, getBrownLogoPng, getOriginalLogoPng, renderPromotionEmailCardPng } from '@/lib/promotion-email-card';
 import { PROMOTION_EMAIL_I18N } from '@/lib/promotion-email.i18n';
 import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 import type { PromotionConditionsSummary, PromotionEmailLang, PromotionPassDto } from '@/lib/types/promotion';
@@ -13,6 +13,9 @@ const QR_DISPLAY_PX = 132;
 const QR_CID = 'promotion-voucher-qr';
 const CARD_CID = 'promotion-voucher-card';
 const LOGO_CID = 'promotion-brand-logo';
+const LOGO_DARK_CID = 'promotion-darkmode-logo'; // must not share a prefix with LOGO_CID (preview replaces cid: by prefix)
+const CREAM = '#FFF4E0';
+const CREAM_TEXT = '#F7D9A6';
 // Oria Spa e-voucher palette (same as the 3D card): brown ink, amber, dark band.
 const ACCENT = '#B4600F';
 const INK = '#4A2C14';
@@ -53,7 +56,7 @@ export interface PromotionEmailInput {
 }
 
 /** Which inline images were attached; missing ones fall back to HTML / text. */
-export interface PromotionEmailImages { card: boolean; logo: boolean }
+export interface PromotionEmailImages { card: boolean; logo: boolean; logoDark?: boolean }
 
 export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfig, images: PromotionEmailImages = { card: false, logo: false }) {
     const t = PROMOTION_EMAIL_I18N[input.lang] ?? PROMOTION_EMAIL_I18N.vi;
@@ -71,9 +74,15 @@ export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfi
     const intro = input.kind === 'ISSUE' ? t.introIssue : t.introReminder(vnDate(pass.validUntil));
 
     // The stored logo is cream (for dark headers): use the brown re-coloured copy, else brown text.
-    const header = images.logo
-        ? `<img src="cid:${LOGO_CID}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px">`
-        : `<div style="font-size:22px;letter-spacing:4px;color:${INK};font-weight:700">${esc(brand)}</div>`;
+    // Light reader: brown logo on cream. Dark reader (Apple Mail, iOS Mail, Outlook): cream logo
+    // on brown — both are in the mail, CSS below shows one (Gmail ignores it → light version).
+    const lightLogo = images.logo
+        ? `<img class="em-logo-light" src="cid:${LOGO_CID}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px;margin:0 auto">`
+        : `<div class="em-logo-light" style="font-size:22px;letter-spacing:4px;color:${INK};font-weight:700">${esc(brand)}</div>`;
+    const darkLogo = images.logoDark
+        ? `<div class="em-logo-dark" style="display:none;max-height:0;overflow:hidden;mso-hide:all"><img src="cid:${LOGO_DARK_CID}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px;margin:0 auto"></div>`
+        : `<div class="em-logo-dark" style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:22px;letter-spacing:4px;color:${CREAM_TEXT};font-weight:700">${esc(brand)}</div>`;
+    const header = lightLogo + darkLogo;
 
     // Painted e-voucher (PNG of the 3D card front) + a large QR for the counter.
     const cardImage = `
@@ -103,25 +112,49 @@ export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfi
 </td>
 </tr></table>`;
 
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f6f3ee;font-family:Helvetica,Arial,sans-serif">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3ee;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden">
-<tr><td align="center" style="padding:28px 24px 8px">${header}</td></tr>
-<tr><td style="padding:8px 28px 0;color:#2b2b2b;font-size:15px;line-height:1.6">
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+<style>
+:root { color-scheme: light dark; supported-color-schemes: light dark; }
+@media (prefers-color-scheme: dark) {
+  .em-bg { background: #120B06 !important; }
+  .em-panel { background: #1E140D !important; }
+  .em-head { background: ${BUTTON_BG} !important; }
+  .em-text { color: #F7E9D2 !important; }
+  .em-muted { color: #CDB89B !important; }
+  .em-foot { color: #A8957C !important; }
+  .em-link { color: ${BUTTON_TEXT} !important; }
+  .em-btn { background: ${BUTTON_TEXT} !important; color: ${BUTTON_BG} !important; }
+  .em-logo-light { display: none !important; }
+  .em-logo-dark { display: block !important; max-height: none !important; overflow: visible !important; }
+}
+[data-ogsc] .em-bg { background: #120B06 !important; }
+[data-ogsc] .em-panel { background: #1E140D !important; }
+[data-ogsc] .em-head { background: ${BUTTON_BG} !important; }
+[data-ogsc] .em-text { color: #F7E9D2 !important; }
+[data-ogsc] .em-muted { color: #CDB89B !important; }
+[data-ogsc] .em-btn { background: ${BUTTON_TEXT} !important; color: ${BUTTON_BG} !important; }
+[data-ogsc] .em-logo-light { display: none !important; }
+[data-ogsc] .em-logo-dark { display: block !important; max-height: none !important; }
+</style></head><body class="em-bg" style="margin:0;background:#f6f3ee;font-family:Helvetica,Arial,sans-serif">
+<table class="em-bg" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3ee;padding:24px 12px"><tr><td align="center">
+<table class="em-panel" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden">
+<tr><td class="em-head" align="center" style="padding:24px 24px 20px;background:${CREAM}">${header}</td></tr>
+<tr><td class="em-text" style="padding:20px 28px 0;color:#2b2b2b;font-size:15px;line-height:1.6">
 <p style="margin:0 0 8px">${esc(t.greeting(name))}</p><p style="margin:0">${esc(intro)}</p></td></tr>
 <tr><td style="padding:20px 20px 4px">${card}</td></tr>
-${input.campaignDescription ? `<tr><td style="padding:10px 28px 0;font-size:13px;color:#6b6b6b">${esc(input.campaignDescription)}</td></tr>` : ''}
+${input.campaignDescription ? `<tr><td class="em-muted" style="padding:10px 28px 0;font-size:13px;color:#6b6b6b">${esc(input.campaignDescription)}</td></tr>` : ''}
 <tr><td align="center" style="padding:20px 28px 4px">
-<a href="${esc(input.qrPayload)}" style="display:inline-block;background:${BUTTON_BG};color:${BUTTON_TEXT};text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:999px">${esc(t.viewVoucher)}</a>
+<a class="em-btn" href="${esc(input.qrPayload)}" style="display:inline-block;background:${BUTTON_BG};color:${BUTTON_TEXT};text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:999px">${esc(t.viewVoucher)}</a>
 </td></tr>
-<tr><td style="padding:16px 28px 0;color:#2b2b2b;font-size:14px;line-height:1.6">
+<tr><td class="em-text" style="padding:16px 28px 0;color:#2b2b2b;font-size:14px;line-height:1.6">
 <div style="font-weight:700;margin-bottom:4px">${esc(t.howToTitle)}</div>
 <ol style="margin:0;padding-left:18px">${t.howTo.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
-<p style="margin:10px 0 0;color:#6b6b6b">${esc(t.contactToApply(brand))}</p></td></tr>
-<tr><td style="padding:20px 28px 28px;color:#8a8a8a;font-size:12px;line-height:1.6">
+<p class="em-muted" style="margin:10px 0 0;color:#6b6b6b">${esc(t.contactToApply(brand))}</p></td></tr>
+<tr><td class="em-foot" style="padding:20px 28px 28px;color:#8a8a8a;font-size:12px;line-height:1.6">
 ${cfg.email_branch_address ? `<div>${esc(cfg.email_branch_address)}</div>` : ''}
 ${cfg.email_hotline ? `<div>${esc(t.hotline)}: ${esc(cfg.email_hotline)}</div>` : ''}
-${cfg.email_website_url ? `<div><a href="${esc(cfg.email_website_url)}" style="color:${ACCENT}">${esc(cfg.email_website_url)}</a></div>` : ''}
+${cfg.email_website_url ? `<div><a class="em-link" href="${esc(cfg.email_website_url)}" style="color:${ACCENT}">${esc(cfg.email_website_url)}</a></div>` : ''}
 <div style="margin-top:8px">${esc(t.footer)}</div></td></tr>
 </table></td></tr></table></body></html>`;
 
@@ -173,7 +206,7 @@ export async function sendPromotionEmail(to: string, input: PromotionEmailInput)
  */
 export async function buildPromotionEmail(to: string, input: PromotionEmailInput) {
     const cfg = await getEmailConfig();
-    const [qr, cardPng, logoPng] = await Promise.all([
+    const [qr, cardPng, logoPng, logoDarkPng] = await Promise.all([
         buildPromotionQrPng(input.qrPayload),
         renderPromotionEmailCardPng({
             lang: input.lang,
@@ -187,12 +220,14 @@ export async function buildPromotionEmail(to: string, input: PromotionEmailInput
             return null;
         }),
         cfg.email_logo_url ? getBrownLogoPng(cfg.email_logo_url) : Promise.resolve(null),
+        cfg.email_logo_url ? getOriginalLogoPng(cfg.email_logo_url) : Promise.resolve(null),
     ]);
-    const { subject, html, text } = renderPromotionEmail(input, cfg, { card: !!cardPng, logo: !!logoPng });
+    const { subject, html, text } = renderPromotionEmail(input, cfg, { card: !!cardPng, logo: !!logoPng, logoDark: !!logoDarkPng });
     const attachments = [
         { filename: `${input.pass.voucherCode}-qr.png`, content: qr, cid: QR_CID, contentType: 'image/png' },
         ...(cardPng ? [{ filename: `${input.pass.voucherCode}.png`, content: cardPng, cid: CARD_CID, contentType: 'image/png' }] : []),
         ...(logoPng ? [{ filename: 'logo.png', content: logoPng, cid: LOGO_CID, contentType: 'image/png' }] : []),
+        ...(logoDarkPng ? [{ filename: 'logo-dark.png', content: logoDarkPng, cid: LOGO_DARK_CID, contentType: 'image/png' }] : []),
     ];
     return {
         message: {
