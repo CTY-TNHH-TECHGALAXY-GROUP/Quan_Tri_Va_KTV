@@ -7,7 +7,7 @@ import { API } from '@/lib/api-endpoints';
 import { roomLabel } from '@/lib/room-label';
 import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
-import { AlertCircle, AlertTriangle, BellRing, Check, CheckCircle, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Coffee, Gift, Link as LinkIcon, MessageSquare, Play, QrCode, ScrollText, ShieldAlert, Sparkles, Target, Users, Wallet, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BellRing, Check, CheckCircle, CheckCircle2, ClipboardCheck, ClipboardList, Clock, Coffee, Gift, Link as LinkIcon, MessageSquare, Play, QrCode, ScrollText, ShieldAlert, Target, Users, Wallet, X } from 'lucide-react';
 import { ProcedureModal, RoomIssueModal, RejectOrderModal, TurnQueueTypeDModal, OfficeScoreModal } from '../_components/modals';
 import { CheckInReminder } from '../_components/CheckInReminder';
 import { ScreenTimer, WorkingTimeline } from './ScreenTimer';
@@ -631,7 +631,7 @@ export function ScreenDashboard({ logic }: { logic: any }) {
               <div className="relative z-10 flex flex-col gap-4">
                 <div className="flex items-start gap-4 text-white">
                   <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shrink-0 border border-white/30">
-                    <Sparkles size={24} className="animate-pulse" />
+                    <BellRing size={24} className="animate-pulse" />
                   </div>
                   <div className="min-w-0">
                     <p className="font-black text-lg uppercase tracking-tight mb-1">Đơn mới đã sẵn sàng!</p>

@@ -2,7 +2,7 @@
 
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
-import { AlertTriangle, Camera, Loader2, Sparkles, X, Eye } from 'lucide-react';
+import { AlertTriangle, Camera, Loader2, X, Eye } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
 import { useToast } from '@/components/ui/Toast';
@@ -110,7 +110,7 @@ export function ScreenHandover({ logic }: { logic: any }) {
     <div className="p-6 md:p-10 pt-12 md:pt-16 space-y-8 md:max-w-2xl md:mx-auto w-full">
       <div className="text-center space-y-2">
         <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Sparkles className="text-blue-600" size={40} />
+          <Camera className="text-blue-600" size={40} />
         </div>
         <h2 className="text-2xl font-black text-slate-800">Bàn giao phòng</h2>
         <p className="text-slate-500 font-medium">Chụp ảnh từng mục bàn giao theo danh sách.</p>

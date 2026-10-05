@@ -3,7 +3,7 @@ import { displayBookingCode } from '@/lib/booking-display-code';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, AlertCircle, ArrowRight, ArrowLeftRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope, Square, Trash2 } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ArrowRight, ArrowLeftRight, QrCode, Star, Check, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope, Square, Trash2 } from 'lucide-react';
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 

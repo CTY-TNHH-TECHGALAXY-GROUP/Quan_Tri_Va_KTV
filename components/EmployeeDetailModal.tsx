@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload, Camera, Link as LinkIcon, ChevronDown, ChevronUp, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, User, Phone, Mail, CreditCard, Calendar, Ruler, Weight, Award, CheckCircle2, Briefcase, Edit2, Save, GraduationCap, Zap, BookOpen, Key, Loader2, Upload, Camera, Link as LinkIcon, ChevronDown, ChevronUp, Eye, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CardImageCropModal } from '@/components/admin/CardImageCropModal';
 import { Employee, SkillLevel, GalleryItem } from '@/lib/types';
 import { SKILL_KEYS, SKILL_LABELS } from '@/lib/constants/staff.constants';
@@ -1037,7 +1037,7 @@ export function EmployeeDetailModal({ employee, isOpen, onClose, onUpdate }: Emp
             {/* ── CẤU HÌNH MENU & DỊCH VỤ (GOM CỤM ĐI LIỀN NÚT ACTIVE VÀ UPLOAD ẢNH) ── */}
             <div className="mt-8 space-y-5">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                <Sparkles size={14} className="text-amber-500" /> Cấu hình Menu & Dịch Vụ
+                <BookOpen size={14} className="text-amber-500" /> Cấu hình Menu & Dịch Vụ
               </h3>
 
               {/* 🌟 1. VIP MENU (NHP) */}

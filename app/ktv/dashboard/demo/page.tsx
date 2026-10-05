@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { 
-  Clock, RefreshCw, Sparkles, CheckCircle2, Volume2, AlertTriangle, 
+  Clock, RefreshCw, CheckCircle2, Volume2, AlertTriangle, 
   Check, BookOpen, Users, Camera, RotateCcw, Play, CheckCircle, 
   ClipboardList, Image as ImageIcon, ChevronRight, Layers, ArrowRight,
   Eye, Heart, MicOff, AlertCircle, X
@@ -156,7 +156,7 @@ export default function KTVDashboardDemoPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <Sparkles className="text-amber-400 shrink-0" size={22} />
+                <Layers className="text-amber-400 shrink-0" size={22} />
                 <h1 className="text-lg sm:text-xl font-black tracking-tight">DEMO: KTV LÀM CÙNG &amp; 2 CHẶNG KHÁCH MUA THÊM DỊCH VỤ</h1>
               </div>
               <p className="text-xs text-indigo-200 leading-relaxed">
@@ -655,15 +655,19 @@ export default function KTVDashboardDemoPage() {
                 </p>
               </div>
 
-              {/* Khối Phòng & Giường 2 cột rõ ràng */}
-              <div className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 grid grid-cols-2 gap-4 text-sm">
+              {/* Khối Phòng & Giường đồng bộ khung xám */}
+              <div className="bg-slate-100/90 border border-slate-200/60 rounded-2xl p-3.5 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Phòng</p>
-                  <p className="font-black text-slate-800 text-lg mt-0.5">{currentSegment.room}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Phòng</p>
+                  <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+                    {currentSegment.room.startsWith('Phòng') ? currentSegment.room : `Phòng ${currentSegment.room}`}
+                  </p>
                 </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Giường</p>
-                  <p className="font-black text-slate-800 text-lg mt-0.5">{currentSegment.bed}</p>
+                <div className="border-l border-slate-200 pl-4">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Giường</p>
+                  <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+                    {currentSegment.bed.startsWith('Giường') ? currentSegment.bed : `Giường ${currentSegment.bed}`}
+                  </p>
                 </div>
               </div>
 

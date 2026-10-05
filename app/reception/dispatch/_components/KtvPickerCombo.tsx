@@ -58,37 +58,37 @@ export function KtvPickerCombo({
           if (picked) pick(picked);
         }}
         placeholder={currentLabel || placeholder}
-        className={`w-full rounded-lg border border-indigo-200 bg-white px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 ${currentLabel ? 'placeholder:text-indigo-700' : 'placeholder:text-gray-400 placeholder:italic'}`} />
+        className={`w-full min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs sm:text-sm font-bold outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 ${currentLabel ? 'placeholder:text-indigo-700 font-extrabold' : 'placeholder:text-gray-400 placeholder:italic'}`} />
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[220px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+        <div className="absolute z-50 mt-1 w-full max-w-[calc(100vw-2rem)] left-0 sm:min-w-[280px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
           <div className="max-h-52 space-y-0.5 overflow-y-auto p-1.5">
             {options.turnRows.map(turn => {
               const workType = turn.work_type || turn.staff?.work_type || 'TYPE_A';
               return (
                 <div key={turn.employee_id} onClick={() => pick(turn.employee_id)}
-                  className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition-all hover:bg-indigo-50 active:scale-[0.98]">
-                  <div className="flex items-center gap-2">
-                    {workType !== 'TYPE_D' && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-500">#{turn.check_in_order}</span>}
-                    <span>{ktvDisplayLabel(workType, turn.employee_id, turn.staff?.full_name)}</span>
+                  className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-gray-700 transition-all hover:bg-indigo-50 active:scale-[0.98]">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 flex-1 pr-2">
+                    {workType !== 'TYPE_D' && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-500 shrink-0">#{turn.check_in_order}</span>}
+                    <span className="truncate">{ktvDisplayLabel(workType, turn.employee_id, turn.staff?.full_name)}</span>
                     {turn.checked_in_today === false && <span className="rounded border border-amber-200 bg-amber-50 px-1 py-0.5 text-[8px] font-black leading-none text-amber-700">{tCheckin.notCheckedInTag}</span>}
                     {workType !== 'TYPE_A' && (
-                      <span className={`rounded border px-1 py-0.5 text-[8px] font-black leading-none ${workType === 'TYPE_B' ? 'border-purple-200 bg-purple-100 text-purple-700' : workType === 'TYPE_D' ? 'border-indigo-200 bg-indigo-100 text-indigo-700' : 'border-gray-200 bg-gray-100 text-gray-500'}`}>
+                      <span className={`rounded border px-1 py-0.5 text-[8px] font-black leading-none shrink-0 ${workType === 'TYPE_B' ? 'border-purple-200 bg-purple-100 text-purple-700' : workType === 'TYPE_D' ? 'border-indigo-200 bg-indigo-100 text-indigo-700' : 'border-gray-200 bg-gray-100 text-gray-500'}`}>
                         {workType === 'TYPE_B' ? 'B' : workType === 'TYPE_D' ? 'D' : 'C'}
                       </span>
                     )}
                     {/* Cùng thông tin với ô chọn A: giờ làm trong tháng (loại D) và giờ tan ca. */}
                     {workType === 'TYPE_D' && (
-                      <span className="rounded-md border border-purple-200 bg-purple-100 px-1.5 py-0.5 text-[10px] font-black text-purple-700" title="Giờ làm trong tháng">
+                      <span className="rounded-md border border-purple-200 bg-purple-100 px-1.5 py-0.5 text-[10px] font-black text-purple-700 shrink-0" title="Giờ làm trong tháng">
                         {fmtHours(turn.net_hours || 0)}
                       </span>
                     )}
                     {turn.shift_end_time && (
-                      <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700" title="Giờ tan làm của KTV">
+                      <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shrink-0" title="Giờ tan làm của KTV">
                         Tan: {turn.shift_end_time}
                       </span>
                     )}
                   </div>
-                  <span className={`text-[10px] font-semibold ${turn.status === 'working' ? 'text-amber-500' : turn.status === 'assigned' ? 'text-indigo-500' : 'text-emerald-500'}`}>
+                  <span className={`text-[10px] font-semibold shrink-0 ${turn.status === 'working' ? 'text-amber-500' : turn.status === 'assigned' ? 'text-indigo-500' : 'text-emerald-500'}`}>
                     {turn.status === 'working' ? 'Đang làm' : turn.status === 'assigned' ? 'Đã xếp lịch' : 'Rảnh'}
                   </span>
                 </div>

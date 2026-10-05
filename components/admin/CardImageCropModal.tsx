@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, ZoomIn, ZoomOut, RotateCcw, Check, Move, Sparkles } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCcw, Check, Move } from 'lucide-react';
 
 interface CardImageCropModalProps {
   isOpen: boolean;
@@ -219,7 +219,7 @@ export function CardImageCropModal({
           {/* Header */}
           <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/80">
             <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-[#e6c487]" />
+              <Move size={16} className="text-[#e6c487]" />
               <div>
                 <Dialog.Title className="text-sm font-bold text-white tracking-wide">
                   {title}

@@ -5,7 +5,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useRoomConfig, MASTER_PREP_STEPS, MASTER_HANDOVER_STEPS } from './RoomConfig.logic';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-    DoorOpen, CheckCircle2, Sparkles, Wrench, Camera,
+    DoorOpen, CheckCircle2, Bell, Wrench, Camera,
     ChevronRight, Loader2, Check, X, ListChecks,
     ChevronUp, ChevronDown
 } from 'lucide-react';
@@ -13,7 +13,7 @@ import {
 // 🔧 UI CONFIGURATION
 const TABS = [
     { id: 'services' as const, label: 'Dịch Vụ', icon: <ListChecks size={16} /> },
-    { id: 'reminders' as const, label: 'Nhắc Nhở', icon: <Sparkles size={16} /> },
+    { id: 'reminders' as const, label: 'Nhắc Nhở', icon: <Bell size={16} /> },
     { id: 'prep' as const, label: 'Mở Phòng', icon: <DoorOpen size={16} /> },
     { id: 'handover' as const, label: 'Ảnh Bàn Giao', icon: <Camera size={16} /> },
 ];

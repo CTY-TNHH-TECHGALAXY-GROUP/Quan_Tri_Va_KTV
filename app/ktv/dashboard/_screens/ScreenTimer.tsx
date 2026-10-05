@@ -327,20 +327,25 @@ export function ScreenTimer({ logic }: { logic: any }) {
           </div>
         </div>
 
-        {/* Khối Phòng - Giường 2 cột thanh thoát */}
-        <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
-          <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
-            <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Phòng</p>
-            <p className="font-black text-emerald-950 text-lg mt-0.5 truncate">
-              {roomLabel(currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName) || '—'}
+        {/* Khối Thông Số Cốt Lõi: Thanh Phòng & Giường chìm xuống khối xám nhẹ đồng bộ */}
+        <div className="bg-slate-100/90 border border-slate-200/60 rounded-2xl p-3.5 grid grid-cols-2 gap-3 text-sm mt-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Phòng</p>
+            <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+              {(() => {
+                const val = roomLabel(currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName) || '—';
+                return val.startsWith('Phòng') || val === '—' ? val : `Phòng ${val}`;
+              })()}
             </p>
           </div>
-          <div className="p-3 bg-teal-50/70 border border-teal-100 rounded-2xl">
-            <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Giường</p>
-            <p className="font-black text-teal-950 text-lg mt-0.5 truncate">
-              {(currentSeg?.bedId || booking?.assignedBedId)
-                ? String(currentSeg?.bedId || booking.assignedBedId).split('-').pop()
-                : '—'}
+          <div className="border-l border-slate-200 pl-4">
+            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Giường</p>
+            <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+              {(() => {
+                const raw = (currentSeg?.bedId || booking?.assignedBedId);
+                const val = raw ? String(raw).split('-').pop() : '—';
+                return !val || val === '—' || val.startsWith('Giường') ? (val || '—') : `Giường ${val}`;
+              })()}
             </p>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BedDouble, Clock, User, Sparkles, CheckCircle2 } from 'lucide-react';
+import { BedDouble, Clock, User, RotateCcw, CheckCircle2 } from 'lucide-react';
 import { Room, Bed, RoomOccupancy } from './RoomBoard.types';
 import { useRoomBoard } from './RoomBoard.logic';
 
@@ -95,7 +95,7 @@ export const RoomBoard: React.FC<RoomBoardProps> = ({ rooms, beds, occupancies }
                       )}
                       {isCleaning && (
                         <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Sparkles size={10} /> Đang dọn
+                          <RotateCcw size={10} /> Đang dọn
                         </span>
                       )}
                       {isBusy && (

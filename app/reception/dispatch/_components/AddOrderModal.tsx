@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, Phone, Sparkles, Loader2, Plus, Minus, Search, Clock, Tag, Image as ImageIcon, Globe, Users, Flag } from 'lucide-react';
+import { X, User, Phone, Loader2, Plus, Minus, Search, Clock, Tag, Image as ImageIcon, Globe, Users, Flag } from 'lucide-react';
 import { searchCustomers } from '../actions';
 
 interface ServiceOption {
@@ -183,7 +183,7 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
             <div className="bg-gradient-to-r from-rose-500 to-rose-600 px-8 py-6 flex items-center justify-between text-white shrink-0">
               <div className="flex items-center gap-4">
                 <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md shadow-inner">
-                  <Sparkles size={24} className="text-white" />
+                  <Plus size={24} className="text-white" />
                 </div>
                 <div>
                   <h3 className="font-black text-xl leading-tight uppercase tracking-tight">Tạo Đơn Nhanh</h3>
@@ -567,7 +567,7 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                     <Loader2 size={24} className="animate-spin" />
                   ) : (
                     <>
-                      <Sparkles size={20} className="text-rose-400" />
+                      <Plus size={20} className="text-white" />
                       Tạo Đơn Ngay
                     </>
                   )}

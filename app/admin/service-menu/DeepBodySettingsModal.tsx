@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Image as ImageIcon, Plus, Trash2, Globe, Sparkles } from 'lucide-react';
+import { X, Save, Image as ImageIcon, Plus, Trash2, Globe, BookOpen } from 'lucide-react';
 import { getDeepBodyConfig, updateDeepBodyConfig } from './actions';
 
 interface Props {
@@ -117,7 +117,7 @@ export function DeepBodySettingsModal({ isOpen, onClose }: Props) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-gray-100 bg-white gap-4 shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <Sparkles size={20} className="text-purple-600" />
+              <BookOpen size={20} className="text-purple-600" />
               <h2 className="text-xl font-bold text-gray-900">Cấu Hình Nội Dung Deep Body (5 Ngôn Ngữ)</h2>
             </div>
             <p className="text-xs text-gray-500 mt-1">Chỉnh sửa tên, mô tả, ảnh thumbnail, gallery và các ngôn ngữ cho trang Deep Body.</p>

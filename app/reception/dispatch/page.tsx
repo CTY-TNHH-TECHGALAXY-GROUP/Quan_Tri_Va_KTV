@@ -38,7 +38,7 @@ import { isDummyEmail } from '@/lib/customer.logic';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone, Globe,
-  ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, Sparkles, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info,
+  ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info,
   Users, BedDouble, CalendarClock, ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Loader2, ChevronUp, Ban, Crown, Stethoscope, RotateCcw, Star, PenLine
 } from 'lucide-react';
 import { TurnQueueBoard } from '@/components/shared/TurnQueueBoard/TurnQueueBoard';

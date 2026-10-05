@@ -1657,7 +1657,7 @@ const ServiceGroupCard = ({
                   className="bg-gray-50/50 rounded-xl px-3 py-2.5 border border-gray-100 space-y-1.5 cursor-grab active:cursor-grabbing hover:border-indigo-200 transition-colors">
                   {/* Row 1: Name | Room | Bed | Duration | Time | Print */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white shrink-0 ${getBadgeBg(idx)}`}>{hasHandoff ? (idx === 0 ? 'A' : 'B') : idx + 1}</span>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white shrink-0 ${getBadgeBg(idx)}`}>{idx + 1}</span>
                     <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{name}</span>
                     {state.selectedKtvIds.length > 1 && <div className="flex gap-0.5">
                       <button type="button" aria-label={`Đưa ${ktvId} lên trước`} disabled={!canReorder || idx === 0} onClick={() => moveKtv(idx, idx - 1)}
@@ -1666,9 +1666,9 @@ const ServiceGroupCard = ({
                         className="rounded border border-gray-200 p-1 text-gray-500 hover:bg-white disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"><ChevronDown size={14} /></button>
                     </div>}
                     {replacedB && <span className="text-[9px] font-bold text-rose-600">Đã đổi · chưa làm</span>}
-                    {/* Đổi B: cùng luật ô chọn A — sổ tua, KTV ngoài, gõ tên mới (token NEW_EXT: → processDispatch đổi mã). */}
-                    {state.confirmedSequential && idx === 1 && !timeLocked && <KtvPickerCombo ariaLabel="Nhân viên B" className="w-[160px]"
-                      turns={availableTurns} staffs={staffs} value={ktvId} placeholder="Đổi nhân viên B..."
+                    {/* Đổi nhân viên làm tiếp: cùng luật ô chọn A — sổ tua, KTV ngoài, gõ tên mới */}
+                    {state.confirmedSequential && idx === 1 && !timeLocked && <KtvPickerCombo ariaLabel="Nhân viên làm tiếp" className="w-full sm:w-[160px]"
+                      turns={availableTurns} staffs={staffs} value={ktvId} placeholder="Đổi nhân viên làm tiếp..."
                       excludeIds={state.selectedKtvIds.filter(id => id !== ktvId)}
                       onPick={picked => {
                         if (picked === ktvId) return;
@@ -1886,26 +1886,48 @@ const ServiceGroupCard = ({
                 }}>
                 {remainingMinutes > 0 ? `Còn ${remainingMinutes} phút · + Nối tiếp` : '+ Nối tiếp'}
               </button>}
-              {waitingForB && <div className="rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/30 px-3 py-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-indigo-700">B · Chưa chọn nhân viên</span>
-                  {(isDraft || onCloseEmptySlotB) && <button type="button" aria-label={tConfirm.turnOffSequential}
-                    title={tConfirm.turnOffSequential} disabled={closingSlotB}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold text-gray-500 hover:bg-white hover:text-rose-600 disabled:opacity-40"
-                    onClick={async () => {
-                      // Not saved yet → just switch the form back; nothing on the server to undo.
-                      if (isDraft) { onUpdate({ workMode: 'parallel', confirmedSequential: false }); return; }
-                      const ok = confirmAction ? await confirmAction(tConfirm.turnOffSequentialConfirm) : window.confirm(tConfirm.turnOffSequentialConfirm);
-                      if (!ok || !onCloseEmptySlotB) return;
-                      setClosingSlotB(true);
-                      try { await onCloseEmptySlotB(groupItems[0].id); } finally { setClosingSlotB(false); }
-                    }}>×</button>}
+              {waitingForB && (
+                <div className="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 p-3 sm:p-4 space-y-3 transition-all">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-xs">
+                        +
+                      </span>
+                      <span className="text-xs sm:text-sm font-black text-indigo-900">
+                        Thêm nhân viên làm tiếp
+                      </span>
+                    </div>
+                    {(isDraft || onCloseEmptySlotB) && (
+                      <button type="button" aria-label={tConfirm.turnOffSequential}
+                        title={tConfirm.turnOffSequential} disabled={closingSlotB}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold text-rose-600 hover:bg-white border border-rose-200 transition-all active:scale-95 disabled:opacity-40"
+                        onClick={async () => {
+                          if (isDraft) { onUpdate({ workMode: 'parallel', confirmedSequential: false }); return; }
+                          const ok = confirmAction ? await confirmAction(tConfirm.turnOffSequentialConfirm) : window.confirm(tConfirm.turnOffSequentialConfirm);
+                          if (!ok || !onCloseEmptySlotB) return;
+                          setClosingSlotB(true);
+                          try { await onCloseEmptySlotB(groupItems[0].id); } finally { setClosingSlotB(false); }
+                        }}>
+                        <span>✕</span>
+                        <span>Hủy</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white/90 rounded-xl p-2.5 border border-indigo-100 shadow-2xs space-y-0.5">
+                      <span className="font-bold text-indigo-800">🕒 Bắt đầu dự kiến: <strong>{state.ktvEndTimes?.[0] || 'sau nhân viên trước'}</strong></span>
+                      <p className="text-[11px] text-slate-500">{remainingMinutes > 0 ? `Thời lượng còn lại: ${remainingMinutes} phút` : 'Nhập thời lượng khi chọn KTV'}</p>
+                    </div>
+                    <div className="bg-white/90 rounded-xl p-2.5 border border-indigo-100 shadow-2xs space-y-0.5">
+                      <span className="font-bold text-slate-700">📍 Kế thừa vị trí: <strong>Cùng phòng & giường</strong></span>
+                      <p className="text-[11px] text-slate-500">Giữ nguyên vị trí của nhân viên trước</p>
+                    </div>
+                  </div>
+                  <KtvPickerCombo ariaLabel="Chọn nhân viên làm tiếp" turns={availableTurns} staffs={staffs}
+                    excludeIds={state.selectedKtvIds} placeholder="+ Chọn nhân viên làm tiếp hoặc gõ tên KTV ngoài..."
+                    onPick={picked => addKtv(picked)} />
                 </div>
-                <KtvPickerCombo ariaLabel="Chọn nhân viên B" turns={availableTurns} staffs={staffs}
-                  excludeIds={state.selectedKtvIds} placeholder="+ Chọn nhân viên B hoặc gõ tên KTV ngoài (có thể chọn sau)"
-                  onPick={picked => addKtv(picked)} />
-                <p className="text-[10px] text-gray-500">{remainingMinutes > 0 ? `Dự kiến ${state.ktvEndTimes?.[0] || 'sau A'} · ${remainingMinutes} phút còn lại` : 'Nhập thời lượng B khi chọn nhân viên.'} · Cùng phòng/giường A</p>
-              </div>}
+              )}
             </div>
           </div>
         )}

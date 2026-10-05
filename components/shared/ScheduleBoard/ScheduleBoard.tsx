@@ -21,7 +21,7 @@
  *   co useEffect bat query params -> luu localStorage("contactedFirstInfo").
  */
 import React, { useState, useMemo } from 'react';
-import { CalendarClock, User, Tag, Clock, ChevronRight, X, AlertCircle, Info, Phone, Calendar as CalendarIcon, Sparkles, Plus, ExternalLink, Users } from 'lucide-react';
+import { CalendarClock, User, Tag, Clock, ChevronRight, X, AlertCircle, Info, Phone, Calendar as CalendarIcon, UserCheck, Crown, Plus, ExternalLink, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { t } from './ScheduleBoard.i18n';
@@ -206,7 +206,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                     onClick={() => handleSelectCustomer(c)}
                     className="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-50 transition-colors flex flex-col gap-0.5"
                  >
-                    <span className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Sparkles size={11} className="text-amber-500" /> {c.fullName || '—'}</span>
+                    <span className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><UserCheck size={11} className="text-amber-500" /> {c.fullName || '—'}</span>
                     <span className="flex items-center gap-3 text-[11px] font-medium text-gray-500">
                        {c.phone && <span className="flex items-center gap-1"><Phone size={10} /> {isPlaceholderPhone(c.phone) ? `${c.phone} (mã kiosk)` : c.phone}</span>}
                        {c.email && !isDummyEmail(c.email) && <span className="flex items-center gap-1"><Tag size={10} /> {c.email}</span>}
@@ -641,7 +641,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
 
                               {block.source?.includes('VIP') && (
                                 <div className="absolute top-2 right-2 text-red-500 bg-red-100 p-0.5 rounded-full">
-                                  <Sparkles size={12} />
+                                  <Crown size={12} />
                                 </div>
                               )}
                               {block.isPreBooking && (
@@ -694,7 +694,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                             <div className="flex gap-1 flex-wrap">
                             {oldCustomerPhones.has(pb.customer_phone) && (
                                <span className="text-[9px] w-max bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wider">
-                                 <Sparkles size={10} /> {t.oldCustomer}
+                                 <UserCheck size={10} /> {t.oldCustomer}
                                </span>
                             )}
                             {isLatePreBooking(pb) && (
@@ -823,7 +823,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                      <span className={`inline-flex items-center gap-1 mt-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                         oldCustomerPhones.has(selectedPreBooking.customer_phone) ? 'bg-amber-100 text-amber-700' : 'bg-white/20 text-white'
                      }`}>
-                        <Sparkles size={10} /> {oldCustomerPhones.has(selectedPreBooking.customer_phone) ? t.oldCustomer : t.newCustomer}
+                        <UserCheck size={10} /> {oldCustomerPhones.has(selectedPreBooking.customer_phone) ? t.oldCustomer : t.newCustomer}
                      </span>
                   </div>
                   <button onClick={() => setSelectedPreBooking(null)} className="p-1 hover:bg-white/20 rounded-full transition-colors shrink-0"><X size={20}/></button>
@@ -895,7 +895,7 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
                         <label className="block text-xs font-bold text-gray-500 uppercase">Số điện thoại</label>
                         {isFormOldCustomer && (
                            <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider font-black">
-                             <Sparkles size={10} /> Khách cũ
+                             <UserCheck size={10} /> Khách cũ
                            </span>
                         )}
                      </div>

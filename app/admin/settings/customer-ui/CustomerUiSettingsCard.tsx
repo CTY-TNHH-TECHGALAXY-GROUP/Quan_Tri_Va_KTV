@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Save, Image as ImageIcon, Loader2, CheckCircle2, RotateCcw, Sparkles, ExternalLink } from 'lucide-react';
+import { Save, Image as ImageIcon, Loader2, CheckCircle2, RotateCcw, ExternalLink } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
@@ -170,7 +170,7 @@ export const CustomerUiSettingsCard = () => {
                     {/* Presets */}
                     <div className="space-y-3 pt-2">
                         <label className="text-xs font-black text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
-                            <Sparkles size={14} className="text-amber-500" />
+                            <ImageIcon size={14} className="text-amber-500" />
                             Gợi ý ảnh Spa đẹp sẵn có
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
