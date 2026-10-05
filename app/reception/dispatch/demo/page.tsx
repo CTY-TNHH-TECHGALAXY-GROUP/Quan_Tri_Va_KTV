@@ -358,58 +358,48 @@ export default function ReceptionDispatchDemoPage() {
                     {/* KHỐI CARD THÔNG TIN KHÁCH THỰC TẾ */}
                     <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-3.5 sm:p-5 space-y-3">
                       
-                      {/* DÒNG 1: MÃ ĐƠN, TÊN KHÁCH & HUY HIỆU DỊCH VỤ / NGUỒN ĐƠN */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      {/* DÒNG 1: MÃ ĐƠN, TÊN KHÁCH, SĐT TRÊN DESKTOP & CỤM TRẠNG THÁI / NGUỒN ĐƠN */}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2 min-w-0">
                           <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse shrink-0" />
                           <h2 className="font-black text-slate-900 text-sm sm:text-base flex flex-wrap items-center gap-1.5 sm:gap-2">
-                            <span>Đơn 1004</span>
+                            <span>Đơn 002</span>
                             <span className="text-slate-300">·</span>
-                            <span className="text-indigo-950">Chị Nguyễn Mai Phương</span>
+                            <span className="text-indigo-950 font-bold">BRIAN</span>
                           </h2>
 
-                          {/* BADGES VIP & ĐIỀU TRỊ */}
-                          <div className="flex items-center gap-1">
-                            <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-xs flex items-center gap-1 text-[10px] font-black" title="Menu VIP">
-                              <Crown size={11} className="fill-[#6b3e00]/20" />
-                              <span className="hidden sm:inline">VIP</span>
-                            </span>
-                            <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-xs flex items-center gap-1 text-[10px] font-black" title="Menu Điều Trị">
-                              <Stethoscope size={11} />
-                              <span className="hidden sm:inline">Điều Trị</span>
-                            </span>
-                          </div>
+                          {/* SĐT HIỂN THỊ CÙNG DÒNG TRÊN DESKTOP */}
+                          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px] font-bold ml-1">
+                            <Phone size={11} className="text-indigo-600" />
+                            +19722663473
+                          </span>
                         </div>
 
-                        {/* CỤM TRẠNG THÁI & NGUỒN ĐƠN (BOOKING / WALK IN) */}
+                        {/* CỤM TRẠNG THÁI & NGUỒN ĐƠN (GÓC PHẢI) */}
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-wide">
                             Đang điều phối
                           </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wide">
-                            BOOKING 14:30
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-slate-50 text-slate-600 border border-slate-200 uppercase tracking-wide">
+                            WALK IN
                           </span>
                         </div>
                       </div>
 
-                      {/* DÒNG 2: THÔNG TIN LIÊN HỆ (GỌN GÀNG, KHÔNG DÍNH DÒNG BẰNG GẠCH NỐI THÔ) */}
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100/80 border border-slate-200 text-slate-700 font-mono text-[11px] font-bold">
-                          <Phone size={12} className="text-indigo-600" />
-                          0908 123 456
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100/80 border border-slate-200 text-slate-700 text-[11px]">
-                          <Mail size={12} className="text-indigo-600" />
-                          maiphuong@techgalaxy.vn
+                      {/* SĐT CHỈ HIỆN TRÊN MOBILE (DÒNG 2 MOBILE) */}
+                      <div className="sm:hidden flex items-center gap-2 text-xs text-slate-600 pt-0.5">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px] font-bold">
+                          <Phone size={11} className="text-indigo-600" />
+                          +19722663473
                         </span>
                       </div>
 
-                      {/* DÒNG 3: TOÀN BỘ THÔNG TIN KHÁCH (GIỚI TÍNH + QUỐC TỊCH + SỐ LƯỢNG KHÁCH + NÚT SỬA & HỒ SƠ CÙNG 1 HÀNG) */}
-                      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                      {/* DÒNG THÔNG TIN KHÁCH (GIỚI TÍNH + QUỐC TỊCH + 1 KHÁCH) — BỎ HOÀN TOÀN BUTTON FEELING */}
+                      <div className="pt-1 flex flex-wrap items-center justify-between gap-2">
                         
                         {isEditingDemoGuest ? (
                           /* GIAO DIỆN CHỈNH SỬA: RESPONSIVE KHÔNG HARDCODE WIDTH */
-                          <div className="flex flex-wrap items-center gap-2 w-full">
+                          <div className="flex flex-wrap items-center gap-2 w-full pt-1">
                             <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider pl-1.5">Phái</span>
                               <select
@@ -417,8 +407,8 @@ export default function ReceptionDispatchDemoPage() {
                                 onChange={(e) => setDemoGuestGender(e.target.value)}
                                 className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                               >
-                                <option value="female">Nữ</option>
                                 <option value="male">Nam</option>
+                                <option value="female">Nữ</option>
                               </select>
                             </div>
 
@@ -429,12 +419,13 @@ export default function ReceptionDispatchDemoPage() {
                                 onChange={(e) => setDemoGuestNationality(e.target.value)}
                                 className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 max-w-[130px]"
                               >
+                                <option value="">Chưa chọn</option>
                                 <option value="Việt Nam">Việt Nam</option>
+                                <option value="Mỹ">Mỹ</option>
                                 <option value="Hàn Quốc">Hàn Quốc</option>
                                 <option value="Nhật Bản">Nhật Bản</option>
                                 <option value="Trung Quốc">Trung Quốc</option>
                                 <option value="Đài Loan">Đài Loan</option>
-                                <option value="Anh/Úc/Mỹ">Anh/Úc/Mỹ</option>
                                 <option value="Khác">Khác</option>
                               </select>
                             </div>
@@ -454,41 +445,49 @@ export default function ReceptionDispatchDemoPage() {
                             </button>
                           </div>
                         ) : (
-                          /* GIAO DIỆN XEM: TẤT CẢ VỪA VẶN 1 HÀNG DUY NHẤT TRÊN MOBILE, KHÔNG RỚT ICON LẺ */
+                          /* GIAO DIỆN XEM: PHẲNG, THANH LỊCH, KHÔNG CÓ CẢM GIÁC NÚT BẤM (ZERO BUTTON FEELING) */
                           <div className="flex items-center justify-between gap-2 w-full">
-                            {/* CỤM BADGES THÔNG TIN KHÁCH (GỌN GÀNG, KHÔNG DÀI DÒNG) */}
-                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                              <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
-                                {demoGuestGender === 'male' ? 'Nam' : 'Nữ'}
+                            {/* CỤM TEXT THÔNG TIN: LABEL + VALUE RÕ RÀNG */}
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                              <span className="inline-flex items-center gap-1">
+                                <span className="text-slate-400 font-medium">Giới tính:</span>
+                                <strong className="text-slate-800 font-bold">{demoGuestGender === 'male' ? 'Nam' : 'Nữ'}</strong>
                               </span>
 
-                              <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
-                                {demoGuestNationality}
+                              <span className="text-slate-300">·</span>
+
+                              <span className="inline-flex items-center gap-1">
+                                <span className="text-slate-400 font-medium">Quốc tịch:</span>
+                                <strong className={demoGuestNationality && demoGuestNationality !== 'Chưa chọn' ? "text-slate-800 font-bold" : "text-slate-400 font-normal italic"}>
+                                  {demoGuestNationality || 'Chưa chọn'}
+                                </strong>
                               </span>
 
-                              <span className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700">
+                              <span className="text-slate-300">·</span>
+
+                              <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 rounded-md text-[11px] font-black text-indigo-700 select-none">
                                 {demoGuestCount} KHÁCH
                               </span>
                             </div>
 
-                            {/* CỤM NÚT HÀNH ĐỘNG GỘP CHUNG 1 KHỐI: SỬA + HỒ SƠ KHÁCH */}
+                            {/* CỤM NÚT HÀNH ĐỘNG GỘP CHUNG: SỬA + HỒ SƠ */}
                             <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50/80 p-0.5 shrink-0 shadow-2xs">
                               <button
                                 onClick={() => setIsEditingDemoGuest(true)}
-                                className="px-2 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
+                                className="px-2.5 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
                                 title="Chỉnh sửa giới tính, quốc tịch"
                               >
                                 <PenLine size={13} className="text-indigo-600" />
-                                <span className="hidden sm:inline">Sửa</span>
+                                <span>Sửa</span>
                               </button>
                               <div className="w-px h-3.5 bg-slate-200" />
                               <button
-                                onClick={() => alert('Mở popup xem hồ sơ khách hàng đầy đủ!')}
-                                className="px-2 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
+                                onClick={() => alert('Mở popup xem hồ sơ khách hàng!')}
+                                className="px-2.5 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
                                 title="Xem hồ sơ chi tiết khách hàng"
                               >
                                 <Info size={13} className="text-indigo-600" />
-                                <span className="hidden sm:inline">Hồ sơ</span>
+                                <span>Hồ sơ</span>
                               </button>
                             </div>
                           </div>

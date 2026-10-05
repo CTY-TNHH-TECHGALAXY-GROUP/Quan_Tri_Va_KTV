@@ -2857,9 +2857,9 @@ if (!hasPermission('dispatch_board')) {
               {selectedSubOrder ? (
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-col gap-1.5">
-                    {/* DÒNG 1: MÃ ĐƠN, TÊN KHÁCH & CỤM TRẠNG THÁI / NGUỒN ĐƠN */}
-                    <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    {/* DÒNG 1: MÃ ĐƠN, TÊN KHÁCH, SĐT TRÊN DESKTOP & CỤM TRẠNG THÁI / NGUỒN ĐƠN */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
                         <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse shrink-0" />
                         <h2 className="font-black text-gray-900 text-sm sm:text-base flex flex-wrap items-center gap-1.5">
                           <span>Đơn {displayBookingCode(selectedSubOrder.originalOrder.billCode)}</span>
@@ -2891,6 +2891,20 @@ if (!hasPermission('dispatch_board')) {
                             </div>
                           );
                         })()}
+
+                        {/* SĐT & EMAIL HIỂN THỊ CÙNG DÒNG TRÊN DESKTOP */}
+                        {selectedSubOrder.originalOrder.phone && (
+                          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px] font-bold ml-1">
+                            <Phone size={11} className="text-indigo-600" />
+                            {selectedSubOrder.originalOrder.phone}
+                          </span>
+                        )}
+                        {selectedSubOrder.originalOrder.email && !isDummyEmail(selectedSubOrder.originalOrder.email) && (
+                          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-600 text-[11px]">
+                            <Mail size={11} className="text-indigo-600" />
+                            {selectedSubOrder.originalOrder.email}
+                          </span>
+                        )}
                       </div>
 
                       {/* CỤM TRẠNG THÁI & NGUỒN ĐƠN (GÓC PHẢI DÒNG 1) */}
@@ -2910,9 +2924,9 @@ if (!hasPermission('dispatch_board')) {
                       </div>
                     </div>
 
-                    {/* DÒNG 2: THÔNG TIN LIÊN HỆ (CHIP GỌN GÀNG, KHÔNG DÍNH DÒNG BẰNG GẠCH NỐI THÔ) */}
-                    {(selectedSubOrder.originalOrder.phone || selectedSubOrder.originalOrder.email) && (
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    {/* DÒNG 2: THÔNG TIN LIÊN HỆ CHỈ HIỆN TRÊN MOBILE */}
+                    {(selectedSubOrder.originalOrder.phone || (selectedSubOrder.originalOrder.email && !isDummyEmail(selectedSubOrder.originalOrder.email))) && (
+                      <div className="sm:hidden flex flex-wrap items-center gap-2 text-xs text-slate-500 pt-0.5">
                         {selectedSubOrder.originalOrder.phone && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px] font-bold">
                             <Phone size={11} className="text-indigo-600" />
@@ -2929,8 +2943,8 @@ if (!hasPermission('dispatch_board')) {
                     )}
                   </div>
 
-                  {/* DÒNG 3: TOÀN BỘ THÔNG TIN KHÁCH (GIỚI TÍNH + QUỐC TỊCH + SỐ LƯỢNG KHÁCH + CỤM NÚT SỬA & HỒ SƠ) */}
-                  <div className="w-full mt-2">
+                  {/* DÒNG THÔNG TIN KHÁCH (GIỚI TÍNH + QUỐC TỊCH + SỐ LƯỢNG KHÁCH + CỤM NÚT SỬA & HỒ SƠ) — BỎ HOÀN TOÀN BUTTON FEELING */}
+                  <div className="w-full mt-1.5">
                     {/* AUTO GUEST COUNT & EDITABLE GUEST META */}
                     {(() => {
                         let autoGuestCount = 1;
@@ -2966,10 +2980,10 @@ if (!hasPermission('dispatch_board')) {
                         const currentPaymentMethod = editingGuestInfo ? editingGuestInfo.paymentMethod : (selectedSubOrder.originalOrder.paymentMethod || 'Cash');
 
                         return (
-                              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 w-full">
+                              <div className="pt-1 flex flex-wrap items-center justify-between gap-2 w-full">
                                 {editingGuestInfo ? (
                                   /* GIAO DIỆN CHỈNH SỬA: RESPONSIVE KHÔNG HARDCODE WIDTH */
-                                  <div className="flex flex-wrap items-center gap-2 w-full">
+                                  <div className="flex flex-wrap items-center gap-2 w-full pt-1">
                                     <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
                                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider pl-1.5">Phái</span>
                                       <select
@@ -3013,8 +3027,9 @@ if (!hasPermission('dispatch_board')) {
                                         }}
                                         className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 max-w-[130px]"
                                       >
-                                        <option value="">Chọn...</option>
+                                        <option value="">Chưa chọn</option>
                                         <option value="Việt Nam">Việt Nam</option>
+                                        <option value="Mỹ">Mỹ</option>
                                         <option value="Hàn Quốc">Hàn Quốc</option>
                                         <option value="Nhật Bản">Nhật Bản</option>
                                         <option value="Trung Quốc">Trung Quốc</option>
@@ -3039,31 +3054,40 @@ if (!hasPermission('dispatch_board')) {
                                     </button>
                                   </div>
                                 ) : (
-                                  /* GIAO DIỆN XEM: TẤT CẢ VỪA VẶN 1 HÀNG DUY NHẤT TRÊN MOBILE, KHÔNG RỚT ICON LẺ */
+                                  /* GIAO DIỆN XEM: PHẲNG, THANH LỊCH, KHÔNG CÓ CẢM GIÁC NÚT BẤM (ZERO BUTTON FEELING) */
                                   <div className="flex items-center justify-between gap-2 w-full">
-                                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                      <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
-                                        {currentGender === 'male' ? 'Nam' : 'Nữ'}
+                                    {/* CỤM TEXT THÔNG TIN: LABEL + VALUE RÕ RÀNG */}
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                                      <span className="inline-flex items-center gap-1">
+                                        <span className="text-slate-400 font-medium">Giới tính:</span>
+                                        <strong className="text-slate-800 font-bold">{currentGender === 'male' ? 'Nam' : 'Nữ'}</strong>
                                       </span>
 
-                                      <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
-                                        {currentNationality || 'Chưa chọn'}
+                                      <span className="text-slate-300">·</span>
+
+                                      <span className="inline-flex items-center gap-1">
+                                        <span className="text-slate-400 font-medium">Quốc tịch:</span>
+                                        <strong className={currentNationality && currentNationality !== 'Chưa chọn' ? "text-slate-800 font-bold" : "text-slate-400 font-normal italic"}>
+                                          {currentNationality || 'Chưa chọn'}
+                                        </strong>
                                       </span>
 
-                                      <span className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
+                                      <span className="text-slate-300">·</span>
+
+                                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 rounded-md text-[11px] font-black text-indigo-700 select-none">
                                           {currentGuestCount} KHÁCH
                                       </span>
                                     </div>
 
-                                    {/* CỤM NÚT HÀNH ĐỘNG GỘP CHUNG 1 KHỐI: SỬA + HỒ SƠ KHÁCH */}
+                                    {/* CỤM NÚT HÀNH ĐỘNG GỘP CHUNG: SỬA + HỒ SƠ */}
                                     <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50/80 p-0.5 shrink-0 shadow-2xs">
                                       <button
                                         onClick={() => setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod })}
-                                        className="px-2 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
+                                        className="px-2.5 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
                                         title="Chỉnh sửa thông tin chung"
                                       >
                                         <PenLine size={13} className="text-indigo-600" />
-                                        <span className="hidden sm:inline">Sửa</span>
+                                        <span>Sửa</span>
                                       </button>
                                       <div className="w-px h-3.5 bg-slate-200" />
                                       <button
