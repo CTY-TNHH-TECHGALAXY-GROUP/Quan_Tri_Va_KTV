@@ -198,8 +198,7 @@ export async function renderPromotionEmailCardPng(input: EmailCardInput): Promis
                     )}
                 </div>
             </div>
-            {/* Ticket notch above the perforation */}
-            <div style={{ position: 'absolute', top: -NOTCH_R, left: notchX, width: NOTCH_R * 2, height: NOTCH_R * 2, borderRadius: NOTCH_R, backgroundColor: NOTCH_FILL, display: 'flex' }} />
+            {/* No ticket notch here: the email panel is white in light mode and brown in dark mode. */}
         </div>
     );
 
@@ -208,6 +207,25 @@ export async function renderPromotionEmailCardPng(input: EmailCardInput): Promis
 }
 
 const logoCache = new Map<string, Promise<Buffer | null>>();
+const originalLogoCache = new Map<string, Promise<Buffer | null>>();
+
+/** The stored (cream) logo as-is — shown on the brown header when the reader uses dark mode. */
+export function getOriginalLogoPng(url: string): Promise<Buffer | null> {
+    let p = originalLogoCache.get(url);
+    if (!p) {
+        p = (async () => {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`logo ${res.status}`);
+            return sharp(Buffer.from(await res.arrayBuffer())).png().toBuffer();
+        })().catch((e) => {
+            console.error('[PromotionEmail] logo fetch failed:', (e as Error).message);
+            originalLogoCache.delete(url);
+            return null;
+        });
+        originalLogoCache.set(url, p);
+    }
+    return p;
+}
 
 /**
  * The brand logo is cream (made for dark headers) and disappears on the light email.

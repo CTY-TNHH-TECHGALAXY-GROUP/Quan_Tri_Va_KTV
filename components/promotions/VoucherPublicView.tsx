@@ -9,6 +9,7 @@ import { voucherBrush } from './voucher.fonts';
 import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 
 // 🔧 UI CONFIGURATION
+const VOUCHER_LOGO_PATH = '/voucher/logo';
 
 /** Spa contact block (Agent A `VoucherContact`, from the email config). */
 export interface VoucherContact {
@@ -68,7 +69,8 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
           <div className="flex min-w-0 items-center gap-2">
             {contact.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={contact.logoUrl} alt={contact.brandName} className="h-9 w-auto max-w-[140px] object-contain" />
+              // Brown copy of the (cream) logo so it reads on the cream page — app/voucher/logo/route.ts.
+              <img src={VOUCHER_LOGO_PATH} alt={contact.brandName} className="h-11 w-auto max-w-[160px] object-contain" />
             ) : (
               <span className={`${voucherBrush.className} truncate text-2xl leading-none text-[#2B1A0E]`}>{contact.brandName}</span>
             )}
