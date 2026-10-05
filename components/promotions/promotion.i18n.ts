@@ -27,6 +27,12 @@ export const t = {
     usages: 'Lịch sử áp dụng',
     scan: 'Quét voucher',
   },
+  print: {
+    title: 'In e-voucher',
+    back: 'Quay lại',
+    print: 'In / Lưu PDF',
+    hint: 'Khổ A5. Trong hộp thoại in, chọn máy in hoặc "Lưu thành PDF" (điện thoại: Chia sẻ → In → PDF).',
+  },
   /** Staff labels for the order source (engine promo_booking_channel). */
   channel: { WEB_BOOKING: 'Web Booking', WALK_IN: 'Khách tại quầy', ADVANCE_BOOKING: 'Đặt trước' } as Record<'WEB_BOOKING' | 'WALK_IN' | 'ADVANCE_BOOKING', string>,
   conditions: {
@@ -242,6 +248,7 @@ export const t = {
     resendEmail: 'Gửi lại email',
     previewEmail: 'Xem trước email',
     applyToOrder: 'Áp vào đơn đang mở',
+    printPdf: 'In / Tải PDF',
     previewEmailTitle: 'Email khách nhận',
     previewEmailHint: 'Đúng email hệ thống gửi cho khách. Xem trước không gửi gì.',
     emailFrom: 'Người gửi',
