@@ -1,6 +1,7 @@
 'use client';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isPromotionItem, isUtilityService } from '@/lib/booking.logic';
+import { mergeServicesIntoParent } from './QuickDispatchTable.logic';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -190,22 +191,8 @@ export const QuickDispatchTable = ({
       selectedItems.find(s => !isPromotionItem(s)) ??
       selectedItems[0];
     const children = selectedItems.filter(s => s.id !== parent.id);
-    
-    const updatedServices = services.map(svc => {
-        if (svc.id === parent.id) {
-            return {
-                ...svc,
-                mergedServiceIds: [...(svc.mergedServiceIds || []), ...children.map(c => c.id)]
-            };
-        }
-        if (children.some(c => c.id === svc.id)) {
-            return {
-                ...svc,
-                mergedIntoId: parent.id
-            };
-        }
-        return svc;
-    });
+    // KTVs already on the parent also work the children's minutes (VIP 90 + KM 30 → 120p).
+    const updatedServices = mergeServicesIntoParent(services, parent.id, children);
     
     onUpdateServices(updatedServices);
     onUpdateServices(updatedServices);
