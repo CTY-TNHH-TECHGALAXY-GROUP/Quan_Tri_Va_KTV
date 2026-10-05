@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ChevronRight, ScanLine, Search } from 'lucide-react';
+import { ChevronRight, Printer, ScanLine, Search } from 'lucide-react';
 import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
@@ -256,6 +256,13 @@ const PassList = () => {
                   {t.pass.applyToOrder}
                 </Link>
               )}
+              <Link
+                href={PROMOTION_PATHS.printPass(preview.state.data.id)}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                <Printer size={16} aria-hidden />
+                {t.pass.printPdf}
+              </Link>
               <Link
                 href={PROMOTION_PATHS.pass(preview.state.data.id)}
                 className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
