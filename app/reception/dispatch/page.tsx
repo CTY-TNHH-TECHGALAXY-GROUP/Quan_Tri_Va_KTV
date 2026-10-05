@@ -37,7 +37,7 @@ import { phoneIdentity } from '@/lib/customer-search';
 import { isDummyEmail } from '@/lib/customer.logic';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
-  Plus, Calendar as CalendarIcon, Send, Phone, Globe,
+  Plus, Calendar as CalendarIcon, Send, Phone, Globe, Mail, Check,
   ChevronDown, ChevronLeft, Package, Volume2, VolumeX, Trash2, X, QrCode, LayoutList, Columns3, Save, Zap, AlertTriangle, Info,
   Users, BedDouble, CalendarClock, ClipboardList, BookOpen, PlusSquare, PauseCircle, MicOff, Loader2, ChevronUp, Ban, Crown, Stethoscope, RotateCcw, Star, PenLine
 } from 'lucide-react';
@@ -2845,25 +2845,28 @@ if (!hasPermission('dispatch_board')) {
 
           {/* CENTER: Assignment Panel */}
           <div className={`${selectedOrderId ? 'flex' : 'hidden md:flex'} flex-1 flex flex-col border border-gray-200 bg-white rounded-3xl overflow-hidden shadow-sm min-w-0 min-h-0 transition-all`}>
-            <div className="p-4 lg:p-5 border-b border-gray-100 bg-white shrink-0 flex items-start sm:items-center gap-3">
+            <div className="p-3.5 sm:p-5 border-b border-gray-100 bg-white shrink-0 flex items-start sm:items-center gap-2.5 sm:gap-3">
               {selectedOrderId && (
                 <button
                   onClick={() => { if (!confirmLeaveDraft()) return; draftItemsRef.current.clear(); updateDirtyRows(new Set()); setSelectedOrderId(null); setSelectedSubOrderId(null); void fetchData(); }}
-                  className="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-400 mt-1 sm:mt-0"
+                  className="md:hidden p-2 -ml-1 sm:-ml-2 hover:bg-gray-100 rounded-xl text-gray-400 mt-1 sm:mt-0"
                 >
                   <ChevronLeft size={24} />
                 </button>
               )}
               {selectedSubOrder ? (
                 <div className="flex-1 min-w-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
-                      <h2 className="font-black text-gray-900 text-base flex-1 flex flex-wrap items-center gap-2">
-                        Đơn {displayBookingCode(selectedSubOrder.originalOrder.billCode)} — {getDisplayCustomerName(selectedSubOrder)}
-                        <span className="text-gray-400 font-normal text-sm block sm:inline">
-                          — {[selectedSubOrder.originalOrder.phone, selectedSubOrder.originalOrder.email].filter(Boolean).join(' — ') || '....'}
-                        </span>
+                  <div className="flex flex-col gap-1.5">
+                    {/* DÒNG 1: MÃ ĐƠN, TÊN KHÁCH & CỤM TRẠNG THÁI / NGUỒN ĐƠN */}
+                    <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse shrink-0" />
+                        <h2 className="font-black text-gray-900 text-sm sm:text-base flex flex-wrap items-center gap-1.5">
+                          <span>Đơn {displayBookingCode(selectedSubOrder.originalOrder.billCode)}</span>
+                          <span className="text-gray-300">·</span>
+                          <span className="text-indigo-950 font-bold">{getDisplayCustomerName(selectedSubOrder)}</span>
+                        </h2>
+
                         {(() => {
                           const isVipMenu = selectedSubOrder.services.some((svc: any) =>
                             (svc.serviceId && (String(svc.serviceId).toUpperCase().startsWith('NHP') || String(svc.serviceId).toUpperCase().startsWith('VIP_'))) ||
@@ -2874,37 +2877,61 @@ if (!hasPermission('dispatch_board')) {
                             (svc.serviceName && String(svc.serviceName).toUpperCase().includes('ĐIỀU TRỊ'))
                           );
                           return (
-                            <>
+                            <div className="flex items-center gap-1">
                               {isVipMenu && (
-                                <span className="shrink-0 px-1.5 py-1 rounded-md bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-sm flex items-center justify-center" title="Menu VIP">
-                                  <Crown size={12} className="fill-[#6b3e00]/20" />
+                                <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-xs flex items-center justify-center text-[10px] font-black" title="Menu VIP">
+                                  <Crown size={11} className="fill-[#6b3e00]/20" />
                                 </span>
                               )}
                               {isTreatment && (
-                                <span className="shrink-0 px-1.5 py-1 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-sm flex items-center justify-center" title="Menu Điều Trị">
-                                  <Stethoscope size={12} />
+                                <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-xs flex items-center justify-center text-[10px] font-black" title="Menu Điều Trị">
+                                  <Stethoscope size={11} />
                                 </span>
                               )}
-                            </>
+                            </div>
                           );
-                      })()}
-                    </h2>
-                    {selectedSubOrder.originalOrder.isWebBooking ? (
-                      <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-100 uppercase ml-2" title="Đơn từ Web Booking">
-                        BOOKING {selectedSubOrder.originalOrder.timeBooking ? selectedSubOrder.originalOrder.timeBooking : ''}
-                      </span>
-                    ) : (
-                      <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black bg-slate-50 text-slate-500 border border-slate-200 uppercase ml-2" title="Đơn khách vãng lai">
-                        WALK IN {selectedSubOrder.originalOrder.timeBooking ? selectedSubOrder.originalOrder.timeBooking : ''}
-                      </span>
+                        })()}
+                      </div>
+
+                      {/* CỤM TRẠNG THÁI & NGUỒN ĐƠN (GÓC PHẢI DÒNG 1) */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-wide">
+                          Đang điều phối
+                        </span>
+                        {selectedSubOrder.originalOrder.isWebBooking ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wide" title="Đơn từ Web Booking">
+                            BOOKING {selectedSubOrder.originalOrder.timeBooking ? selectedSubOrder.originalOrder.timeBooking : ''}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-slate-50 text-slate-500 border border-slate-200 uppercase tracking-wide" title="Đơn khách vãng lai">
+                            WALK IN {selectedSubOrder.originalOrder.timeBooking ? selectedSubOrder.originalOrder.timeBooking : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* DÒNG 2: THÔNG TIN LIÊN HỆ (CHIP GỌN GÀNG, KHÔNG DÍNH DÒNG BẰNG GẠCH NỐI THÔ) */}
+                    {(selectedSubOrder.originalOrder.phone || selectedSubOrder.originalOrder.email) && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        {selectedSubOrder.originalOrder.phone && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px] font-bold">
+                            <Phone size={11} className="text-indigo-600" />
+                            {selectedSubOrder.originalOrder.phone}
+                          </span>
+                        )}
+                        {selectedSubOrder.originalOrder.email && !isDummyEmail(selectedSubOrder.originalOrder.email) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-600 text-[11px]">
+                            <Mail size={11} className="text-indigo-600" />
+                            {selectedSubOrder.originalOrder.email}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 mt-2 sm:ml-4">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Đang điều phối</p>
 
-
-                    {/* NEW INPUTS ON THE SAME ROW */}
+                  {/* DÒNG 3: TOÀN BỘ THÔNG TIN KHÁCH (GIỚI TÍNH + QUỐC TỊCH + SỐ LƯỢNG KHÁCH + CỤM NÚT SỬA & HỒ SƠ) */}
+                  <div className="w-full mt-2">
+                    {/* AUTO GUEST COUNT & EDITABLE GUEST META */}
                     {(() => {
                         let autoGuestCount = 1;
                         if (selectedSubOrder.originalOrder.parentBookingId) {
@@ -2936,144 +2963,168 @@ if (!hasPermission('dispatch_board')) {
                         const currentNationality = editingGuestInfo ? editingGuestInfo.nationality : (selectedSubOrder.originalOrder.nationality || '');
                         const currentGuestCount = autoGuestCount; // Tự động tính, không cho sửa tay
                         const currentGender = editingGuestInfo ? editingGuestInfo.customerGender : (selectedSubOrder.originalOrder.customerGender || 'male');
-                          const currentPaymentMethod = editingGuestInfo ? editingGuestInfo.paymentMethod : (selectedSubOrder.originalOrder.paymentMethod || 'Cash');
-                        const isDirty = editingGuestInfo !== null && (currentNationality !== (selectedSubOrder.originalOrder.nationality || '') || currentGender !== (selectedSubOrder.originalOrder.customerGender || 'male') || currentPaymentMethod !== (selectedSubOrder.originalOrder.paymentMethod || 'Cash'));
+                        const currentPaymentMethod = editingGuestInfo ? editingGuestInfo.paymentMethod : (selectedSubOrder.originalOrder.paymentMethod || 'Cash');
 
                         return (
-                              <div className="flex flex-wrap items-center gap-2 sm:ml-4 sm:border-l border-gray-200 sm:pl-4 mt-2 sm:mt-0 w-full sm:w-auto">
+                              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 w-full">
                                 {editingGuestInfo ? (
-                                  <>
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giới tính</span>
-                                    <select
-                                      value={currentGender}
-                                      onChange={(e) => {
-                                        const newGender = e.target.value;
-                                        setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: newGender, paymentMethod: currentPaymentMethod });
-                                        if (selectedSubOrder) {
-                                          updateBookingMeta(selectedSubOrder.bookingId, {
-                                            nationality: currentNationality,
-                                            guestCount: currentGuestCount,
-                                            customerGender: newGender,
-                                            paymentMethod: currentPaymentMethod
-                                          }).catch(console.error);
-                                          updateOrder(selectedSubOrder.bookingId, o => ({ ...o, customerGender: newGender }));
-                                        }
-                                      }}
-                                      className="w-20 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    >
-                                      <option value="male">Nam</option>
-                                      <option value="female">Nữ</option>
-                                    </select>
-                                    <div className="w-px h-4 bg-gray-200 mx-2" />
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quốc tịch</span>
-                                    <select
-                                      value={currentNationality}
-                                      onChange={(e) => {
-                                        const newNationality = e.target.value;
-                                        setEditingGuestInfo({ nationality: newNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod });
-                                        if (selectedSubOrder) {
-                                          updateBookingMeta(selectedSubOrder.bookingId, {
-                                            nationality: newNationality,
-                                            guestCount: currentGuestCount,
-                                            customerGender: currentGender,
-                                            paymentMethod: currentPaymentMethod
-                                          }).catch(console.error);
-                                          updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: newNationality }));
-                                        }
-                                      }}
-                                      className="w-32 bg-white px-2 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    >
-                                      <option value="">Chọn...</option>
-                                      <option value="Việt Nam">Việt Nam</option>
-                                      <option value="Hàn Quốc">Hàn Quốc</option>
-                                      <option value="Nhật Bản">Nhật Bản</option>
-                                      <option value="Trung Quốc">Trung Quốc</option>
-                                      <option value="Đài Loan">Đài Loan</option>
-                                      <option value="Anh/Úc/Mỹ">Anh/Úc/Mỹ</option>
-                                      <option value="Khác">Khác</option>
-                                    </select>
-                                    <div className="w-px h-4 bg-gray-200 mx-2" />
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Số lượng</span>
-                                    <div className="px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
-                                        {currentGuestCount} KHÁCH
+                                  /* GIAO DIỆN CHỈNH SỬA: RESPONSIVE KHÔNG HARDCODE WIDTH */
+                                  <div className="flex flex-wrap items-center gap-2 w-full">
+                                    <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider pl-1.5">Phái</span>
+                                      <select
+                                        value={currentGender}
+                                        onChange={(e) => {
+                                          const newGender = e.target.value;
+                                          setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: newGender, paymentMethod: currentPaymentMethod });
+                                          if (selectedSubOrder) {
+                                            updateBookingMeta(selectedSubOrder.bookingId, {
+                                              nationality: currentNationality,
+                                              guestCount: currentGuestCount,
+                                              customerGender: newGender,
+                                              paymentMethod: currentPaymentMethod
+                                            }).catch(console.error);
+                                            updateOrder(selectedSubOrder.bookingId, o => ({ ...o, customerGender: newGender }));
+                                          }
+                                        }}
+                                        className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                      >
+                                        <option value="male">Nam</option>
+                                        <option value="female">Nữ</option>
+                                      </select>
                                     </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giới tính:</span>
-                                    <span className="text-xs font-bold text-gray-700">{currentGender === 'male' ? 'Nam' : 'Nữ'}</span>
-                                    <div className="w-px h-4 bg-gray-200 mx-2" />
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quốc tịch:</span>
-                                    <span className="text-xs font-bold text-gray-700">{currentNationality || 'Chưa chọn'}</span>
-                                    <div className="w-px h-4 bg-gray-200 mx-2" />
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Số lượng</span>
-                                    <div className="px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
-                                        {currentGuestCount} KHÁCH
-                                    </div>
-                                    <button
-                                      onClick={() => setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod })}
-                                      className="p-1 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-indigo-600 transition-colors ml-2"
-                                      title="Chỉnh sửa thông tin chung"
-                                    >
-                                      <PenLine size={14} />
-                                    </button>
-                                  </>
-                                )}
-                                <button
-                                  onClick={async () => {
-                                    setIsFetchingCustomer(true);
-                                    try {
-                                      const orderToUse = selectedOrder || selectedSubOrder?.originalOrder;
-                                      const phone = phoneIdentity(orderToUse?.phone || '');
-                                      const email = (orderToUse?.email || '').trim().toLowerCase();
-                                      const contact = phone || (!isDummyEmail(email) ? email : '');
-                                      if (!orderToUse?.customerId && !contact) {
-                                        throw new Error('Đơn chưa có mã khách hoặc thông tin liên hệ hợp lệ để tìm hồ sơ.');
-                                      }
-                                      const params = new URLSearchParams(orderToUse?.customerId
-                                        ? { id: orderToUse.customerId }
-                                        : { q: contact });
-                                      const data = (await apiClient.get(`${API.CUSTOMERS}?${params}`)) as any;
-                                      if (!data.success) throw new Error(data.error || 'Không tải được hồ sơ khách hàng');
 
-                                      let matches = data.data || [];
-                                      if (orderToUse?.customerId) {
-                                        matches = matches.filter((c: any) => c.id === orderToUse.customerId);
-                                      } else if (phone) {
-                                        matches = matches.filter((c: any) => phoneIdentity(c.phone || '') === phone);
-                                        if (matches.length > 1 && !isDummyEmail(email)) {
-                                          matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
-                                        }
-                                      } else {
-                                        matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
-                                      }
-                                      if (matches.length > 1) {
-                                        throw new Error('Có nhiều hồ sơ trùng thông tin liên hệ. Vui lòng đối soát trong trang Khách Hàng.');
-                                      }
-                                      const found = matches[0];
-                                      if (found) {
-                                        setFullCustomerData(found);
-                                        setShowCustomerInfo(true);
-                                      } else {
-                                        alert('Không tìm thấy hồ sơ tương ứng với đơn. Vui lòng kiểm tra liên kết khách hàng hoặc tìm trong trang Khách Hàng.');
-                                      }
-                                    } catch (e) {
-                                      console.error('Lỗi tải dữ liệu khách:', e);
-                                      alert(e instanceof Error ? e.message : 'Lỗi tải dữ liệu khách hàng');
-                                    } finally {
-                                      setIsFetchingCustomer(false);
-                                    }
-                                  }}
-                                  disabled={isFetchingCustomer}
-                                  className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors disabled:opacity-50 ml-1"
-                                  title="Xem thông tin khách hàng"
-                                >
-                                  {isFetchingCustomer ? (
-                                    <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                                  ) : (
-                                    <Info size={14} />
-                                  )}
-                                </button>
+                                    <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider pl-1.5">Quốc tịch</span>
+                                      <select
+                                        value={currentNationality}
+                                        onChange={(e) => {
+                                          const newNationality = e.target.value;
+                                          setEditingGuestInfo({ nationality: newNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod });
+                                          if (selectedSubOrder) {
+                                            updateBookingMeta(selectedSubOrder.bookingId, {
+                                              nationality: newNationality,
+                                              guestCount: currentGuestCount,
+                                              customerGender: currentGender,
+                                              paymentMethod: currentPaymentMethod
+                                            }).catch(console.error);
+                                            updateOrder(selectedSubOrder.bookingId, o => ({ ...o, nationality: newNationality }));
+                                          }
+                                        }}
+                                        className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 max-w-[130px]"
+                                      >
+                                        <option value="">Chọn...</option>
+                                        <option value="Việt Nam">Việt Nam</option>
+                                        <option value="Hàn Quốc">Hàn Quốc</option>
+                                        <option value="Nhật Bản">Nhật Bản</option>
+                                        <option value="Trung Quốc">Trung Quốc</option>
+                                        <option value="Đài Loan">Đài Loan</option>
+                                        <option value="Anh/Úc/Mỹ">Anh/Úc/Mỹ</option>
+                                        <option value="Khác">Khác</option>
+                                      </select>
+                                    </div>
+
+                                    <div className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
+                                        {currentGuestCount} KHÁCH
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingGuestInfo(null)}
+                                      className="p-1.5 px-2.5 hover:bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-300 transition-colors flex items-center gap-1 text-xs font-bold shadow-xs ml-auto"
+                                      title="Hoàn tất chỉnh sửa"
+                                    >
+                                      <Check size={14} />
+                                      <span>Xong</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  /* GIAO DIỆN XEM: TẤT CẢ VỪA VẶN 1 HÀNG DUY NHẤT TRÊN MOBILE, KHÔNG RỚT ICON LẺ */
+                                  <div className="flex items-center justify-between gap-2 w-full">
+                                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                                      <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
+                                        {currentGender === 'male' ? 'Nam' : 'Nữ'}
+                                      </span>
+
+                                      <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
+                                        {currentNationality || 'Chưa chọn'}
+                                      </span>
+
+                                      <span className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
+                                          {currentGuestCount} KHÁCH
+                                      </span>
+                                    </div>
+
+                                    {/* CỤM NÚT HÀNH ĐỘNG GỘP CHUNG 1 KHỐI: SỬA + HỒ SƠ KHÁCH */}
+                                    <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50/80 p-0.5 shrink-0 shadow-2xs">
+                                      <button
+                                        onClick={() => setEditingGuestInfo({ nationality: currentNationality, guestCount: currentGuestCount, customerGender: currentGender, paymentMethod: currentPaymentMethod })}
+                                        className="px-2 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
+                                        title="Chỉnh sửa thông tin chung"
+                                      >
+                                        <PenLine size={13} className="text-indigo-600" />
+                                        <span className="hidden sm:inline">Sửa</span>
+                                      </button>
+                                      <div className="w-px h-3.5 bg-slate-200" />
+                                      <button
+                                        onClick={async () => {
+                                          setIsFetchingCustomer(true);
+                                          try {
+                                            const orderToUse = selectedOrder || selectedSubOrder?.originalOrder;
+                                            const phone = phoneIdentity(orderToUse?.phone || '');
+                                            const email = (orderToUse?.email || '').trim().toLowerCase();
+                                            const contact = phone || (!isDummyEmail(email) ? email : '');
+                                            if (!orderToUse?.customerId && !contact) {
+                                              throw new Error('Đơn chưa có mã khách hoặc thông tin liên hệ hợp lệ để tìm hồ sơ.');
+                                            }
+                                            const params = new URLSearchParams(orderToUse?.customerId
+                                              ? { id: orderToUse.customerId }
+                                              : { q: contact });
+                                            const data = (await apiClient.get(`${API.CUSTOMERS}?${params}`)) as any;
+                                            if (!data.success) throw new Error(data.error || 'Không tải được hồ sơ khách hàng');
+
+                                            let matches = data.data || [];
+                                            if (orderToUse?.customerId) {
+                                              matches = matches.filter((c: any) => c.id === orderToUse.customerId);
+                                            } else if (phone) {
+                                              matches = matches.filter((c: any) => phoneIdentity(c.phone || '') === phone);
+                                              if (matches.length > 1 && !isDummyEmail(email)) {
+                                                matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
+                                              }
+                                            } else {
+                                              matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
+                                            }
+                                            if (matches.length > 1) {
+                                              throw new Error('Có nhiều hồ sơ trùng thông tin liên hệ. Vui lòng đối soát trong trang Khách Hàng.');
+                                            }
+                                            const found = matches[0];
+                                            if (found) {
+                                              setFullCustomerData(found);
+                                              setShowCustomerInfo(true);
+                                            } else {
+                                              alert('Không tìm thấy hồ sơ tương ứng với đơn. Vui lòng kiểm tra liên kết khách hàng hoặc tìm trong trang Khách Hàng.');
+                                            }
+                                          } catch (e) {
+                                            console.error('Lỗi tải dữ liệu khách:', e);
+                                            alert(e instanceof Error ? e.message : 'Lỗi tải dữ liệu khách hàng');
+                                          } finally {
+                                            setIsFetchingCustomer(false);
+                                          }
+                                        }}
+                                        disabled={isFetchingCustomer}
+                                        className="px-2 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold disabled:opacity-50"
+                                        title="Xem thông tin chi tiết khách hàng"
+                                      >
+                                        {isFetchingCustomer ? (
+                                          <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <Info size={13} className="text-indigo-600" />
+                                        )}
+                                        <span className="hidden sm:inline">Hồ sơ</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                           );
                       })()}

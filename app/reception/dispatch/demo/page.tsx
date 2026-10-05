@@ -6,7 +6,8 @@ import {
   Users, Bell, Calendar as CalendarIcon, Plus, ChevronDown, 
   LayoutList, Columns3, Star, BedDouble, Globe, CalendarClock,
   Smartphone, Tablet, Monitor, CheckCircle2, Info, ArrowRight,
-  ShieldCheck, Sparkles, Check, History, Clock, X, Search, ArrowRightCircle
+  ShieldCheck, Check, History, Clock, X, Search, ArrowRightCircle,
+  PenLine, Phone, Mail, Stethoscope, Crown, Layers, Scissors, ShieldAlert, UserPlus, UserCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -95,8 +96,8 @@ const formatValue = (val: unknown) => {
 };
 
 export default function ReceptionDispatchDemoPage() {
-  // Top-level Mode: 'HEADER_MODES' | 'HISTORY_AND_SEQUENTIAL'
-  const [activeDemoTab, setActiveDemoTab] = useState<'HISTORY_AND_SEQUENTIAL' | 'HEADER_MODES'>('HISTORY_AND_SEQUENTIAL');
+  // Top-level Mode: 'HEADER_MODES' | 'HISTORY_AND_SEQUENTIAL' | 'CUSTOMER_AND_TOOLBAR'
+  const [activeDemoTab, setActiveDemoTab] = useState<'CUSTOMER_AND_TOOLBAR' | 'HISTORY_AND_SEQUENTIAL' | 'HEADER_MODES'>('CUSTOMER_AND_TOOLBAR');
 
   // Option selection cho Header: 'PA1' (2 tầng responsive) vs 'PA2' (Header Bar cố định trên cùng)
   const [option, setOption] = useState<'PA1' | 'PA2'>('PA2');
@@ -108,6 +109,14 @@ export default function ReceptionDispatchDemoPage() {
   const [hasGuestLock, setHasGuestLock] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [selectedDate, setSelectedDate] = useState('2026-10-05');
+
+  // Interactive states cho Customer Info & 3 Nút Gộp Mobile
+  const [selectedDemoGroupKeys, setSelectedDemoGroupKeys] = useState<string[]>(['svc-1', 'svc-2']);
+  const [isEditingDemoGuest, setIsEditingDemoGuest] = useState(false);
+  const [demoGuestGender, setDemoGuestGender] = useState('male');
+  const [demoGuestNationality, setDemoGuestNationality] = useState('Việt Nam');
+  const [demoGuestCount, setDemoGuestCount] = useState(2);
+  const [demoActionFeedback, setDemoActionFeedback] = useState<string | null>(null);
 
   // Interactive states cho Khung Nối Tiếp Động (Sequential Slot Demo)
   const [selectedSlotMode, setSelectedSlotMode] = useState<'SLOT_B' | 'SLOT_C' | 'SLOT_NUMERIC'>('SLOT_B');
@@ -197,7 +206,7 @@ export default function ReceptionDispatchDemoPage() {
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 pb-4">
             <div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-black uppercase tracking-wider mb-1.5">
-                <Sparkles size={13} /> Sân Khảo Sát Demo Thực Tế
+                <LayoutList size={13} /> Sân Khảo Sát Demo Thực Tế
               </div>
               <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
                 Demo UI Lịch Sử Sửa Đơn & Khung Nối Tiếp Động [ Lượt X ]
@@ -208,7 +217,18 @@ export default function ReceptionDispatchDemoPage() {
             </div>
 
             {/* DEMO TABS SWITCHER */}
-            <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl self-start lg:self-center">
+            <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl self-start lg:self-center">
+              <button
+                onClick={() => setActiveDemoTab('CUSTOMER_AND_TOOLBAR')}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+                  activeDemoTab === 'CUSTOMER_AND_TOOLBAR'
+                    ? 'bg-white text-indigo-700 shadow-md shadow-indigo-100 border border-indigo-100'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Layers size={16} />
+                Thông Tin Khách & 3 Nút Gộp Mobile
+              </button>
               <button
                 onClick={() => setActiveDemoTab('HISTORY_AND_SEQUENTIAL')}
                 className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
@@ -304,12 +324,338 @@ export default function ReceptionDispatchDemoPage() {
                 Màn hình: {deviceMode === 'MOBILE' ? 'iPhone / Mobile 390px' : deviceMode === 'TABLET' ? 'iPad 768px' : deviceMode === 'DESKTOP' ? 'Desktop 1200px' : 'Trình duyệt gốc'}
               </span>
               <span className="text-amber-400 font-bold">
-                {activeDemoTab === 'HISTORY_AND_SEQUENTIAL' ? 'DEMO LỊCH SỬ & NỐI TIẾP ĐỘNG' : 'DEMO BÁO KHÁCH'}
+                {activeDemoTab === 'CUSTOMER_AND_TOOLBAR'
+                  ? 'DEMO THÔNG TIN KHÁCH & 3 NÚT GỘP'
+                  : activeDemoTab === 'HISTORY_AND_SEQUENTIAL'
+                  ? 'DEMO LỊCH SỬ & NỐI TIẾP ĐỘNG'
+                  : 'DEMO BÁO KHÁCH'}
               </span>
             </div>
 
             {/* CONTAINER NỘI DUNG */}
             <div className="p-3 sm:p-5 bg-slate-50 min-h-[550px] space-y-6">
+
+              {/* ===================== TAB 0: CUSTOMER INFO & MERGE TOOLBAR (MOBILE OPTIMIZED) ===================== */}
+              {activeDemoTab === 'CUSTOMER_AND_TOOLBAR' && (
+                <div className="space-y-6">
+                  
+                  {/* PHẦN 1: CARD THÔNG TIN KHÁCH HÀNG */}
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <Users size={14} className="text-indigo-600" />
+                        1. Card Thông Tin Khách Hàng (Đã Bỏ Hardcode, Tối Ưu Mobile)
+                      </span>
+                      <button
+                        onClick={() => setIsEditingDemoGuest(!isEditingDemoGuest)}
+                        className="px-2.5 py-1 rounded-xl text-xs font-bold border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 transition-colors flex items-center gap-1 shadow-xs"
+                      >
+                        <PenLine size={13} />
+                        {isEditingDemoGuest ? 'Thoát Chế Độ Sửa' : 'Bật Thử Chế Độ Sửa'}
+                      </button>
+                    </div>
+
+                    {/* KHỐI CARD THÔNG TIN KHÁCH THỰC TẾ */}
+                    <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-3.5 sm:p-5 space-y-3">
+                      
+                      {/* DÒNG 1: MÃ ĐƠN, TÊN KHÁCH & HUY HIỆU DỊCH VỤ / NGUỒN ĐƠN */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse shrink-0" />
+                          <h2 className="font-black text-slate-900 text-sm sm:text-base flex flex-wrap items-center gap-1.5 sm:gap-2">
+                            <span>Đơn 1004</span>
+                            <span className="text-slate-300">·</span>
+                            <span className="text-indigo-950">Chị Nguyễn Mai Phương</span>
+                          </h2>
+
+                          {/* BADGES VIP & ĐIỀU TRỊ */}
+                          <div className="flex items-center gap-1">
+                            <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-gradient-to-b from-[#ffe866] to-[#ffc800] text-[#6b3e00] border border-[#e6b400] shadow-xs flex items-center gap-1 text-[10px] font-black" title="Menu VIP">
+                              <Crown size={11} className="fill-[#6b3e00]/20" />
+                              <span className="hidden sm:inline">VIP</span>
+                            </span>
+                            <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-700 border border-blue-200 shadow-xs flex items-center gap-1 text-[10px] font-black" title="Menu Điều Trị">
+                              <Stethoscope size={11} />
+                              <span className="hidden sm:inline">Điều Trị</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* CỤM TRẠNG THÁI & NGUỒN ĐƠN (BOOKING / WALK IN) */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-wide">
+                            Đang điều phối
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wide">
+                            BOOKING 14:30
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* DÒNG 2: THÔNG TIN LIÊN HỆ (GỌN GÀNG, KHÔNG DÍNH DÒNG BẰNG GẠCH NỐI THÔ) */}
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100/80 border border-slate-200 text-slate-700 font-mono text-[11px] font-bold">
+                          <Phone size={12} className="text-indigo-600" />
+                          0908 123 456
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100/80 border border-slate-200 text-slate-700 text-[11px]">
+                          <Mail size={12} className="text-indigo-600" />
+                          maiphuong@techgalaxy.vn
+                        </span>
+                      </div>
+
+                      {/* DÒNG 3: TOÀN BỘ THÔNG TIN KHÁCH (GIỚI TÍNH + QUỐC TỊCH + SỐ LƯỢNG KHÁCH + NÚT SỬA & HỒ SƠ CÙNG 1 HÀNG) */}
+                      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                        
+                        {isEditingDemoGuest ? (
+                          /* GIAO DIỆN CHỈNH SỬA: RESPONSIVE KHÔNG HARDCODE WIDTH */
+                          <div className="flex flex-wrap items-center gap-2 w-full">
+                            <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider pl-1.5">Phái</span>
+                              <select
+                                value={demoGuestGender}
+                                onChange={(e) => setDemoGuestGender(e.target.value)}
+                                className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                              >
+                                <option value="female">Nữ</option>
+                                <option value="male">Nam</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider pl-1.5">Quốc tịch</span>
+                              <select
+                                value={demoGuestNationality}
+                                onChange={(e) => setDemoGuestNationality(e.target.value)}
+                                className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 max-w-[130px]"
+                              >
+                                <option value="Việt Nam">Việt Nam</option>
+                                <option value="Hàn Quốc">Hàn Quốc</option>
+                                <option value="Nhật Bản">Nhật Bản</option>
+                                <option value="Trung Quốc">Trung Quốc</option>
+                                <option value="Đài Loan">Đài Loan</option>
+                                <option value="Anh/Úc/Mỹ">Anh/Úc/Mỹ</option>
+                                <option value="Khác">Khác</option>
+                              </select>
+                            </div>
+
+                            <div className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700 select-none">
+                              {demoGuestCount} KHÁCH
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingDemoGuest(false)}
+                              className="p-1.5 px-2.5 hover:bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-300 transition-colors flex items-center gap-1 text-xs font-bold shadow-xs ml-auto"
+                              title="Hoàn tất chỉnh sửa"
+                            >
+                              <Check size={14} />
+                              <span>Xong</span>
+                            </button>
+                          </div>
+                        ) : (
+                          /* GIAO DIỆN XEM: TẤT CẢ VỪA VẶN 1 HÀNG DUY NHẤT TRÊN MOBILE, KHÔNG RỚT ICON LẺ */
+                          <div className="flex items-center justify-between gap-2 w-full">
+                            {/* CỤM BADGES THÔNG TIN KHÁCH (GỌN GÀNG, KHÔNG DÀI DÒNG) */}
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                              <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
+                                {demoGuestGender === 'male' ? 'Nam' : 'Nữ'}
+                              </span>
+
+                              <span className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
+                                {demoGuestNationality}
+                              </span>
+
+                              <span className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-black text-indigo-700">
+                                {demoGuestCount} KHÁCH
+                              </span>
+                            </div>
+
+                            {/* CỤM NÚT HÀNH ĐỘNG GỘP CHUNG 1 KHỐI: SỬA + HỒ SƠ KHÁCH */}
+                            <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50/80 p-0.5 shrink-0 shadow-2xs">
+                              <button
+                                onClick={() => setIsEditingDemoGuest(true)}
+                                className="px-2 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
+                                title="Chỉnh sửa giới tính, quốc tịch"
+                              >
+                                <PenLine size={13} className="text-indigo-600" />
+                                <span className="hidden sm:inline">Sửa</span>
+                              </button>
+                              <div className="w-px h-3.5 bg-slate-200" />
+                              <button
+                                onClick={() => alert('Mở popup xem hồ sơ khách hàng đầy đủ!')}
+                                className="px-2 py-1 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition-all flex items-center gap-1 text-xs font-bold"
+                                title="Xem hồ sơ chi tiết khách hàng"
+                              >
+                                <Info size={13} className="text-indigo-600" />
+                                <span className="hidden sm:inline">Hồ sơ</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* PHẦN 2: THANH CÔNG CỤ 3 NÚT GỘP (RESPONSIVE SUB-BOOKING TOOLBAR) */}
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <Layers size={14} className="text-indigo-600" />
+                        2. Thanh Công Cụ 3 Nút Gộp (Tối Ưu Touch Mobile & Bố Cục 3 Cột)
+                      </span>
+                    </div>
+
+                    {/* KHUNG THÔNG BÁO TƯƠNG TÁC THỬ NGHIỆM */}
+                    {demoActionFeedback && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-bold text-emerald-800 flex items-center justify-between animate-fadeIn">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-emerald-600" />
+                          <span>{demoActionFeedback}</span>
+                        </div>
+                        <button
+                          onClick={() => setDemoActionFeedback(null)}
+                          className="text-emerald-600 hover:text-emerald-800"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* TOOLBAR RESPONSIVE THỰC TẾ */}
+                    <div className="sticky top-0 z-20 px-3 sm:px-6 py-2.5 sm:py-3.5 bg-white/90 backdrop-blur-md border border-slate-200/90 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between shadow-sm">
+                      
+                      {/* VÙNG CHỌN TẤT CẢ & SỐ LƯỢNG ĐÃ CHỌN */}
+                      <div className="flex items-center justify-between sm:justify-start gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none py-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedDemoGroupKeys.length === 3}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedDemoGroupKeys(['svc-1', 'svc-2', 'svc-3']);
+                              } else {
+                                setSelectedDemoGroupKeys([]);
+                              }
+                            }}
+                            className="w-4 h-4 sm:w-5 sm:h-5 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
+                          <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                            ĐÃ CHỌN ({selectedDemoGroupKeys.length}/3)
+                          </span>
+                        </label>
+
+                        {/* Mobile quick helper */}
+                        <span className="text-[10px] text-slate-400 font-bold sm:hidden">
+                          {selectedDemoGroupKeys.length >= 2 ? 'Có thể gộp đơn' : 'Chọn >= 2 để gộp'}
+                        </span>
+                      </div>
+
+                      {/* CỤM 3 NÚT HÀNH ĐỘNG GỘP/TÁCH: GRID 3 CỘT TRÊN MOBILE, HÀNG NGANG TRÊN DESKTOP */}
+                      <div className="grid grid-cols-3 gap-1.5 sm:flex sm:items-center sm:gap-2">
+                        
+                        {/* NÚT 1: GỘP CHUNG KTV */}
+                        <button
+                          onClick={() => setDemoActionFeedback(`Đã bấm: GỘP CHUNG KTV cho ${selectedDemoGroupKeys.length} dịch vụ`)}
+                          disabled={selectedDemoGroupKeys.length < 2}
+                          className="flex items-center justify-center gap-1 sm:gap-1.5 bg-white border-2 border-indigo-200 text-indigo-700 px-2 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs font-black hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-xs active:scale-95 disabled:opacity-40 disabled:pointer-events-none min-h-[40px] text-center"
+                          title="Gộp 2 hoặc nhiều dịch vụ thành 1 đơn con chung, DÙNG CHUNG KTV"
+                        >
+                          <Layers size={14} className="shrink-0 text-indigo-600" />
+                          <span className="sm:hidden">Chung KTV</span>
+                          <span className="hidden sm:inline">GỘP CHUNG KTV</span>
+                        </button>
+
+                        {/* NÚT 2: GỘP ĐƠN KHÁC KTV */}
+                        <button
+                          onClick={() => setDemoActionFeedback(`Đã bấm: GỘP ĐƠN KHÁC KTV cho ${selectedDemoGroupKeys.length} dịch vụ`)}
+                          disabled={selectedDemoGroupKeys.length < 2}
+                          className="flex items-center justify-center gap-1 sm:gap-1.5 bg-white border-2 border-emerald-200 text-emerald-700 px-2 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs font-black hover:bg-emerald-50 hover:border-emerald-300 transition-all shadow-xs active:scale-95 disabled:opacity-40 disabled:pointer-events-none min-h-[40px] text-center"
+                          title="Gộp dịch vụ vào chung 1 Đơn Con (1 người khách) nhưng KHÁC KTV"
+                        >
+                          <Users size={14} className="shrink-0 text-emerald-600" />
+                          <span className="sm:hidden">Khác KTV</span>
+                          <span className="hidden sm:inline">GỘP ĐƠN KHÁC KTV</span>
+                        </button>
+
+                        {/* NÚT 3: TÁCH KHÁCH (HỦY GỘP) */}
+                        <button
+                          onClick={() => setDemoActionFeedback(`Đã bấm: TÁCH KHÁCH (HỦY GỘP) cho ${selectedDemoGroupKeys.length} dịch vụ`)}
+                          disabled={selectedDemoGroupKeys.length < 1}
+                          className="flex items-center justify-center gap-1 sm:gap-1.5 bg-white border-2 border-amber-200 text-amber-800 px-2 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs font-black hover:bg-amber-50 hover:border-amber-300 transition-all shadow-xs active:scale-95 disabled:opacity-40 disabled:pointer-events-none min-h-[40px] text-center"
+                          title="Xé lẻ các dịch vụ đã gộp thành từng khách riêng biệt"
+                        >
+                          <Scissors size={14} className="shrink-0 text-amber-700" />
+                          <span className="sm:hidden">Tách khách</span>
+                          <span className="hidden sm:inline">TÁCH KHÁCH</span>
+                        </button>
+
+                      </div>
+
+                    </div>
+
+                    {/* DANH SÁCH DỊCH VỤ MÔ PHỎNG ĐỂ USER CHỌN THỬ */}
+                    <div className="space-y-2 pt-1">
+                      <div className="text-[11px] font-bold text-slate-500 uppercase px-1">
+                        Tick chọn các dịch vụ dưới đây để thử kích hoạt 3 nút:
+                      </div>
+
+                      {[
+                        { id: 'svc-1', name: 'Body Trị Liệu Cổ Vai Gáy (60p)', price: '450.000đ', ktv: 'KTV012 · Thúy Vy' },
+                        { id: 'svc-2', name: 'Gội Đầu Dưỡng Sinh Thảo Dược (45p)', price: '250.000đ', ktv: 'KTV008 · Bảo Ngọc' },
+                        { id: 'svc-3', name: 'Massage Chân Bấm Huyệt (45p)', price: '300.000đ', ktv: 'Chưa chỉ định KTV' },
+                      ].map((item) => {
+                        const isSelected = selectedDemoGroupKeys.includes(item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedDemoGroupKeys(selectedDemoGroupKeys.filter(k => k !== item.id));
+                              } else {
+                                setSelectedDemoGroupKeys([...selectedDemoGroupKeys, item.id]);
+                              }
+                            }}
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                              isSelected
+                                ? 'bg-indigo-50/70 border-indigo-300 shadow-xs'
+                                : 'bg-white border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}} // Đã xử lý ở thẻ cha
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-xs sm:text-sm font-bold text-slate-800 truncate">
+                                  {item.name}
+                                </div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                                  <span>{item.ktv}</span>
+                                  <span>·</span>
+                                  <span className="font-semibold text-indigo-600">{item.price}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                              isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {isSelected ? 'Đang chọn' : 'Chưa chọn'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
 
               {/* ===================== TAB 1: HISTORY & SEQUENTIAL DEMO ===================== */}
               {activeDemoTab === 'HISTORY_AND_SEQUENTIAL' && (
@@ -572,7 +918,28 @@ export default function ReceptionDispatchDemoPage() {
         </div>
 
         {/* BẢNG GIẢI THÍCH CHI TIẾT CÁC CẢI TIẾN */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-sm space-y-2">
+            <div className="flex items-center gap-2 text-indigo-700 font-black text-sm">
+              <Layers size={18} />
+              <span>Thông Tin Khách & 3 Nút Gộp</span>
+            </div>
+            <ul className="text-xs space-y-2 text-slate-600">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                <span><strong>Bỏ hardcode chiều rộng:</strong> Xóa bỏ hoàn toàn `w-20`, `w-32` và vạch chia cứng; form chỉnh sửa co giãn mượt trên mọi cỡ màn hình.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                <span><strong>Pill badge gọn gàng:</strong> Số điện thoại, email, giới tính, quốc tịch tách thành từng chip riêng, không dính dòng bằng gạch nối thô `— ....`.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                <span><strong>3 nút gộp grid 3 cột mobile:</strong> Chiều cao tối thiểu 40px, nhãn ngắn gọn ("Chung KTV", "Khác KTV", "Tách khách"), icon Lucide chuẩn mực.</span>
+              </li>
+            </ul>
+          </div>
+
           <div className="p-5 rounded-3xl border border-slate-200 bg-white shadow-sm space-y-2">
             <div className="flex items-center gap-2 text-indigo-700 font-black text-sm">
               <History size={18} />
