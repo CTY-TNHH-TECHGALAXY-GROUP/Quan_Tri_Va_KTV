@@ -10,8 +10,9 @@
  */
 
 // Apply conditions are owned by the engine (Agent A, contract v7 §2.2): reuse its types, never redefine.
-import type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionMenuDto, PromotionTextI18n } from '@/lib/types/promotion';
-export type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionTextI18n };
+import type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionMenuDto, PromotionOrderChannel, PromotionTextI18n } from '@/lib/types/promotion';
+export type { PromotionApplyCondition, PromotionApplyConditions, PromotionConditionsSummary, PromotionOrderChannel, PromotionTextI18n };
+export { PROMOTION_ORDER_CHANNELS } from '@/lib/types/promotion';
 
 export type PromotionBenefitType =
   | 'FREE_MINUTES'
@@ -267,6 +268,8 @@ export type OrderEligibility = 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'BLOCKED';
 export interface PromotionOrderCandidate extends PromotionBooking {
   /** True when the order belongs to the voucher owner — sorted first. */
   isPassOwnerOrder: boolean;
+  /** Order source from the engine (v13). */
+  channel?: PromotionOrderChannel;
   /** Server verdict; the UI never decides eligibility. */
   canApply: boolean;
   blockedReasonCode: PromotionErrorCode | null;

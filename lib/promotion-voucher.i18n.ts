@@ -1,4 +1,4 @@
-import type { PromotionConditionsSummary, PromotionEmailLang, PromotionTextI18n } from '@/lib/types/promotion';
+import type { PromotionConditionsSummary, PromotionEmailLang, PromotionOrderChannel, PromotionTextI18n } from '@/lib/types/promotion';
 
 // Copy for the PUBLIC e-voucher page /voucher?t= (customer side), 5 languages.
 // Language: ?lang= → en. UI belongs to the frontend (VoucherCard3D);
@@ -82,6 +82,15 @@ export function pickPromotionText(base: string | null, i18n: PromotionTextI18n |
 
 // ─── Conditions wording (one formatter for email + /voucher page) ───────────
 
+/** Order-source wording (v13), customer-facing in 5 languages: "Web Booking orders". */
+export const ORDER_CHANNEL_I18N: Record<PromotionEmailLang, { orders: (list: string) => string; channel: Record<PromotionOrderChannel, string> }> = {
+    vi: { orders: l => `Đơn ${l}`, channel: { WEB_BOOKING: 'Web Booking', WALK_IN: 'tại quầy', ADVANCE_BOOKING: 'đặt trước' } },
+    en: { orders: l => `${l} orders`, channel: { WEB_BOOKING: 'Web Booking', WALK_IN: 'walk-in', ADVANCE_BOOKING: 'advance booking' } },
+    cn: { orders: l => `${l}订单`, channel: { WEB_BOOKING: '网上预约', WALK_IN: '到店', ADVANCE_BOOKING: '提前预约' } },
+    jp: { orders: l => `${l}のご予約`, channel: { WEB_BOOKING: 'Web予約', WALK_IN: '店頭', ADVANCE_BOOKING: '事前予約' } },
+    kr: { orders: l => `${l} 주문`, channel: { WEB_BOOKING: '웹 예약', WALK_IN: '현장 방문', ADVANCE_BOOKING: '사전 예약' } },
+};
+
 const COND_I18N: Record<PromotionEmailLang, { fromMinutes: (n: number) => string; fromAmount: (a: string) => string; oneOf: string; and: string; or: string; anyService: string }> = {
     vi: { fromMinutes: n => `từ ${n} phút`, fromAmount: a => `đơn từ ${a}`, oneOf: 'một trong', and: ' và ', or: ' hoặc ', anyService: 'Mọi dịch vụ' },
     en: { fromMinutes: n => `${n} min or longer`, fromAmount: a => `order from ${a}`, oneOf: 'one of', and: ' and ', or: ' or ', anyService: 'Any service' },
@@ -101,6 +110,10 @@ export function formatPromotionConditions(summary: PromotionConditionsSummary | 
     if (!summary?.conditions?.length) return [];
     const parts = summary.conditions.map(c => {
         const bits: string[] = [];
+        if (c.sources?.length) {
+            const ch = ORDER_CHANNEL_I18N[lang] ?? ORDER_CHANNEL_I18N.vi;
+            bits.push(ch.orders(c.sources.map(x => ch.channel[x] ?? x).join(' / ')));
+        }
         if (c.menus.length) bits.push(c.menus.join(' / '));
         if (c.categories.length) bits.push(c.categories.join(' / '));
         if (c.services.length) bits.push(c.services.length > 1 ? `${t.oneOf} (${c.services.join(', ')})` : c.services[0]);

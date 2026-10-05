@@ -29,6 +29,7 @@ import type {
   PromotionErrorCode,
   PromotionMenu,
   PromotionOrderCandidate,
+  PromotionOrderChannel,
   PromotionPass,
   PromotionPassEffectiveStatus,
   PromotionPassWithQr,
@@ -62,6 +63,7 @@ const summaryOf = (ac: PromotionApplyConditions): PromotionConditionsSummary => 
     services: c.serviceIds.map((id) => MENUS.flatMap((m) => m.services).find((x) => x.id === id)?.name ?? id),
     minMinutes: c.minMinutes,
     minOrderAmount: c.minOrderAmount,
+    sources: c.sources ?? [],
   })),
 });
 const NO_CONDITIONS: PromotionApplyConditions = { match: 'ALL', conditions: [] };
@@ -247,7 +249,7 @@ const buildFixtures = () => {
   const orders: MockOrder[] = [
     order('BK_1028', `NH-${day}-028`, charlotte, '14:30', 'Aroma Massage', 90, 1_200_000),
     order('BK_1031', `NH-${day}-031`, minh, '15:00', 'Hot Stone VIP', 120, 1_650_000, 'PREPARING'),
-    order('BK_1032', `NH-${day}-032`, minh, '17:30', 'Foot Massage', 60, 450_000),
+    order('BK_1032', `WB-${day}-032`, minh, '17:30', 'Foot Massage', 60, 450_000),
     order('BK_1035', `NH-${day}-035`, lan, '16:00', 'Thai Massage', 90, 950_000, 'IN_PROGRESS'),
   ];
 
@@ -325,6 +327,10 @@ export const createMockPromotionApi = (): PromotionApi => {
     };
   };
 
+  /** Mirror of promo_booking_channel (v13) for the mock orders. */
+  const channelOf = (o: (typeof db.orders)[number]): PromotionOrderChannel =>
+    o.id.startsWith('WB-') || (o.billCode ?? '').startsWith('WB-') ? 'WEB_BOOKING' : o.id.startsWith('BK-') ? 'ADVANCE_BOOKING' : 'WALK_IN';
+
   const toCandidate = (o: (typeof db.orders)[number], p: PromotionPassWithQr): PromotionOrderCandidate => {
     const already = db.usages.some((u) => u.passId === p.id && u.booking.id === o.id && u.status !== 'CANCELLED');
     const blocked: PromotionErrorCode | null = already ? 'PROMOTION_ALREADY_APPLIED' : passIsUsable(p);
@@ -332,12 +338,18 @@ export const createMockPromotionApi = (): PromotionApi => {
     const first = p.conditionsSummary?.conditions[0];
     const min = first?.minMinutes ?? null;
     const longest = Math.max(0, ...o.items.filter((i) => !i.isPromotion).map((i) => i.durationMinutes));
-    const unmet =
-      !blocked && min && longest < min
-        ? [`Cần ${formatPromotionConditions(p.conditionsSummary, 'vi')[0]} — dịch vụ phù hợp dài nhất của đơn là ${longest} phút`]
-        : [];
+    const channel = channelOf(o);
+    const sources = first?.sources ?? [];
+    const unmet = blocked
+      ? []
+      : sources.length && !sources.includes(channel)
+        ? [`Cần ${formatPromotionConditions(p.conditionsSummary, 'vi')[0]} — đơn này là ${channel}`]
+        : min && longest < min
+          ? [`Cần ${formatPromotionConditions(p.conditionsSummary, 'vi')[0]} — dịch vụ phù hợp dài nhất của đơn là ${longest} phút`]
+          : [];
     return {
       ...toBooking(o),
+      channel,
       isPassOwnerOrder: o.customerId === p.customer.id,
       canApply: blocked === null && unmet.length === 0,
       blockedReasonCode: blocked,

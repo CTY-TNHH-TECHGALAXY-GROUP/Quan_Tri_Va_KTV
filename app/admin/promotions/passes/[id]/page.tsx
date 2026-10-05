@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Eye, Loader2, Mail, ScanLine } from 'lucide-react';
+import { Eye, Loader2, Mail, Printer, ScanLine } from 'lucide-react';
 import { PROMOTION_PATHS } from '@/components/promotions/promotion.paths';
 import EmailPreviewDialog from '@/components/promotions/EmailPreviewDialog';
 import { useParams } from 'next/navigation';
@@ -161,6 +161,13 @@ const PassDetailPage = () => {
                       {t.pass.resendEmail}
                     </button>
                   )}
+                  <Link
+                    href={PROMOTION_PATHS.printPass(p.id)}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    <Printer size={16} aria-hidden />
+                    {t.pass.printPdf}
+                  </Link>
                   {access.issue && (
                     <button
                       type="button"

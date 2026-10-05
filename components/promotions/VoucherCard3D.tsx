@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
+import { animate, motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
 import { Globe, MapPin, Phone, QrCode, RotateCw } from 'lucide-react';
 import type { SpaContact } from '@/lib/types/promotion-client';
 import { formatPromoDate } from '@/lib/promotion-format';
@@ -27,6 +27,9 @@ const BACK_QR_SIZE = 148;
 const STUB_QR_SIZE = 64;
 const PLACEHOLDER_CODE_LENGTH = 6;
 const SWIPE_MIN_PX = 40;
+/** Phones have no hover: the card sways gently so it reads as 3D (pointer position 0.5 ± range). */
+const IDLE_SWAY_RANGE = 0.25;
+const IDLE_SWAY_SECONDS = 3;
 /**
  * iOS Safari / WebKit: both faces need a real 3D transform (translateZ) so they are
  * composited in the same 3D context. With a 2D-only front (rotateY(0) → matrix) WebKit
@@ -119,8 +122,29 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.en, brandName = t.vo
   const shadowX = useTransform(tiltY, [-MAX_TILT_DEG, MAX_TILT_DEG], [18, -18]);
   const shadowY = useTransform(tiltX, [-MAX_TILT_DEG, MAX_TILT_DEG], [-6, 30]);
 
+  // Touch screens: idle sway while untouched; the card follows the finger while pressed.
+  const [touching, setTouching] = useState(false);
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: none) and (pointer: coarse)');
+    const update = () => setCoarse(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!coarse || reduceMotion || touching) return;
+    const opts = { repeat: Infinity, repeatType: 'mirror' as const, ease: 'easeInOut' as const };
+    const a = animate(px, [0.5 - IDLE_SWAY_RANGE, 0.5 + IDLE_SWAY_RANGE], { ...opts, duration: IDLE_SWAY_SECONDS });
+    const b = animate(py, [0.42, 0.58], { ...opts, duration: IDLE_SWAY_SECONDS * 1.4 });
+    return () => {
+      a.stop();
+      b.stop();
+    };
+  }, [coarse, reduceMotion, touching, px, py]);
+
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (reduceMotion || e.pointerType === 'touch') return;
+    if (reduceMotion || (e.pointerType === 'touch' && !swipeRef.current)) return;
     const r = e.currentTarget.getBoundingClientRect();
     px.set((e.clientX - r.left) / r.width);
     py.set((e.clientY - r.top) / r.height);
@@ -133,11 +157,18 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.en, brandName = t.vo
   const swipeRef = useRef<{ x: number; y: number } | null>(null);
   const swipedRef = useRef(false);
   const onSwipeStart = (e: React.PointerEvent) => {
-    if (e.pointerType !== 'mouse') swipeRef.current = { x: e.clientX, y: e.clientY };
+    if (e.pointerType === 'mouse') return;
+    swipeRef.current = { x: e.clientX, y: e.clientY };
+    setTouching(true);
+  };
+  const endTouch = () => {
+    swipeRef.current = null;
+    setTouching(false);
+    resetTilt();
   };
   const onSwipeEnd = (e: React.PointerEvent) => {
     const start = swipeRef.current;
-    swipeRef.current = null;
+    endTouch();
     if (!start) return;
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
@@ -195,6 +226,7 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.en, brandName = t.vo
           }}
           onPointerDown={onSwipeStart}
           onPointerUp={onSwipeEnd}
+          onPointerCancel={endTouch}
           aria-pressed={flipped}
           aria-label={`${data.campaignName || L.untitled} — ${flipLabel}`}
           className={`relative block w-full cursor-pointer touch-pan-y select-none rounded-[24px] text-left transform-3d focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300 ${hasContact ? CARD_ASPECT_WITH_CONTACT : CARD_ASPECT}`}

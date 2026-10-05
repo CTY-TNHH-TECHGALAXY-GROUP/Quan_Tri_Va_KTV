@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Check, Plus, Trash2, X } from 'lucide-react';
-import type { CampaignFormInput, PromotionApplyCondition, PromotionMenu } from '@/lib/types/promotion-client';
+import { PROMOTION_ORDER_CHANNELS, type CampaignFormInput, type PromotionApplyCondition, type PromotionMenu } from '@/lib/types/promotion-client';
 import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 import { EMPTY_APPLY_CONDITION, MAX_APPLY_CONDITIONS } from './CampaignForm.logic';
 import { SelectControl } from './FormControls';
@@ -93,6 +93,15 @@ const ApplyConditionsEditor = ({ value, onChange, menus, disabled = false, error
                 <Trash2 size={16} aria-hidden />
               </button>
             </legend>
+
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-gray-600">{t.conditions.sources}</p>
+              <div className="flex flex-wrap gap-2">
+                {PROMOTION_ORDER_CHANNELS.map((ch) => (
+                  <Chip key={ch} on={!!c.sources?.includes(ch)} label={t.channel[ch]} onClick={() => update(i, { sources: toggle(c.sources ?? [], ch) as PromotionApplyCondition['sources'] })} />
+                ))}
+              </div>
+            </div>
 
             <div>
               <p className="mb-1.5 text-xs font-medium text-gray-600">{t.conditions.menus}</p>

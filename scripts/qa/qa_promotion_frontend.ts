@@ -15,6 +15,7 @@ import {
   EMPTY_CAMPAIGN_FORM,
   toCampaignPayload,
   toLockedCampaignPatch,
+  applyConditionsError,
   validateCampaignForm,
 } from '../../components/promotions/CampaignForm.logic';
 import { isOverrideNoteValid, lookupFromUrl, pickDefaultOrderId } from '../../app/admin/promotions/scan/ScanVoucher.logic';
@@ -401,6 +402,17 @@ const main = async () => {
   check('thẻ admin mặc định EN', voucherCardFromCampaign(campI18n).campaignName === campI18n.name);
   check('thẻ admin đổi VI → tên VI', voucherCardFromCampaign(campI18n, 'vi').campaignName === campI18n.nameI18n?.vi);
   check('nhãn thẻ có EN', VOUCHER_CARD_LABELS.en.lang === 'en');
+
+  console.log('\n— Order source condition (v13)');
+  const srcSummary = { match: 'ALL' as const, conditions: [{ menus: ['Menu VIP'], categories: [], services: [], minMinutes: 90, minOrderAmount: null, sources: ['WEB_BOOKING' as const] }] };
+  check('EN: Web Booking orders · Menu VIP · 90 min', formatPromotionConditions(srcSummary, 'en')[0] === 'Web Booking orders · Menu VIP · 90 min or longer', formatPromotionConditions(srcSummary, 'en'));
+  check('VI: Đơn Web Booking · Menu VIP · từ 90 phút', formatPromotionConditions(srcSummary, 'vi')[0] === 'Đơn Web Booking · Menu VIP · từ 90 phút', formatPromotionConditions(srcSummary, 'vi'));
+  check('no sources → wording unchanged', formatPromotionConditions({ ...srcSummary, conditions: [{ ...srcSummary.conditions[0], sources: [] }] }, 'en')[0] === 'Menu VIP · 90 min or longer');
+  const srcOnly = { match: 'ALL' as const, conditions: [{ menus: [], categories: [], serviceIds: [], minMinutes: null, minOrderAmount: null, sources: ['WALK_IN' as const, 'ADVANCE_BOOKING' as const] }] };
+  check('condition with only sources is valid (form)', !applyConditionsError(srcOnly));
+  check('condition with only sources is valid (engine schema)', CreatePromotionCampaignSchema.safeParse({ ...toCampaignPayload({ ...EMPTY_CAMPAIGN_FORM, name: 'S', campaignCode: 'SRC1', validFrom: '2026-10-01', validUntil: '2026-10-31', applyConditions: srcOnly }) }).success);
+  check('schema rejects unknown source', !CreatePromotionCampaignSchema.safeParse({ ...toCampaignPayload({ ...EMPTY_CAMPAIGN_FORM, name: 'S', campaignCode: 'SRC2', validFrom: '2026-10-01', validUntil: '2026-10-31', applyConditions: { match: 'ALL', conditions: [{ ...srcOnly.conditions[0], sources: ['FACEBOOK' as never] }] } }) }).success);
+  check('payload keeps sources', JSON.stringify(toCampaignPayload({ ...EMPTY_CAMPAIGN_FORM, applyConditions: srcOnly }).applyConditions.conditions[0].sources) === '["WALK_IN","ADVANCE_BOOKING"]');
 
   console.log('\n— Every error code has a staff message');
   const codes: PromotionErrorCode[] = ['CAMPAIGN_LOCKED', 'CUSTOMER_NO_EMAIL', 'EMAIL_SEND_FAILED', 'ACCOUNT_LOCKED', 'INTERNAL_ERROR', 'USAGE_COMPLETED', 'PROMOTION_ITEM_IN_SERVICE'];
