@@ -54,7 +54,7 @@ export interface PromotionEmailPreview {
     replyTo: string;
     to: string | null;
     subject: string;
-    /** Inline images (cid:) replaced by data URIs so the page can show it in an iframe. */
+    /** Email HTML; images load from the spa site (/voucher/card, /voucher/qr, /voucher/logo). */
     html: string;
 }
 
@@ -75,10 +75,7 @@ export const PromotionEmailService = {
             campaignDescription: campaign.success ? pickPromotionText(campaign.data.description, campaign.data.descriptionI18n, lang) : null,
             conditionsSummary: pass.conditionsSummary,
         });
-        let html = message.html;
-        for (const a of message.attachments) {
-            html = html.split(`cid:${a.cid}`).join(`data:${a.contentType};base64,${a.content.toString('base64')}`);
-        }
+        const html = message.html; // images are absolute links (no cid attachments)
         return {
             success: true,
             data: { lang, from: message.from, replyTo: message.replyTo, to: pass.customer.email ?? null, subject: message.subject, html },

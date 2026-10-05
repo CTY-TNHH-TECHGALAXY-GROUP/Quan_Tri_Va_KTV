@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './PrintableInvoice.module.css';
+import { isPromotionItem } from '@/lib/booking.logic';
 
 export interface InvoiceConfig {
     spaName: string;
@@ -246,7 +247,8 @@ export const PrintableInvoice = ({ config, bookingData, lang = 'vi' }: Printable
         method = t.paymentTransfer;
     }
 
-    const items = bookingData?.items || [];
+    // Promotion lines (voucher: KM####, options.isPromotion) always print last; others keep their order.
+    const items = [...(bookingData?.items || [])].sort((a: any, b: any) => Number(isPromotionItem(a)) - Number(isPromotionItem(b)));
     
     // Calculate total from items if needed, or use bookingData.totalAmount
     const subTotal = items.reduce((sum: number, item: any) => sum + (item.price || 0) * (item.quantity || 1), 0);

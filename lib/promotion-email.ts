@@ -2,7 +2,7 @@ import 'server-only';
 import QRCode from 'qrcode';
 import nodemailer from 'nodemailer';
 import { getEmailConfig, type EmailConfig } from '@/lib/email-config';
-import { CARD_DISPLAY_WIDTH, getBrownLogoPng, getOriginalLogoPng, renderPromotionEmailCardPng } from '@/lib/promotion-email-card';
+import { CARD_DISPLAY_WIDTH } from '@/lib/promotion-email-card';
 import { PROMOTION_EMAIL_I18N } from '@/lib/promotion-email.i18n';
 import { formatPromotionConditions } from '@/lib/promotion-voucher.i18n';
 import type { PromotionConditionsSummary, PromotionEmailLang, PromotionPassDto } from '@/lib/types/promotion';
@@ -10,10 +10,6 @@ import type { PromotionConditionsSummary, PromotionEmailLang, PromotionPassDto }
 // 🔧 EMAIL CONFIGURATION
 const QR_SIZE_PX = 480;
 const QR_DISPLAY_PX = 132;
-const QR_CID = 'promotion-voucher-qr';
-const CARD_CID = 'promotion-voucher-card';
-const LOGO_CID = 'promotion-brand-logo';
-const LOGO_DARK_CID = 'promotion-darkmode-logo'; // must not share a prefix with LOGO_CID (preview replaces cid: by prefix)
 const CREAM = '#FFF4E0';
 const CREAM_TEXT = '#F7D9A6';
 // Oria Spa e-voucher palette (same as the 3D card): brown ink, amber, dark band.
@@ -55,10 +51,30 @@ export interface PromotionEmailInput {
     conditionsSummary?: PromotionConditionsSummary | null;
 }
 
-/** Which inline images were attached; missing ones fall back to HTML / text. */
-export interface PromotionEmailImages { card: boolean; logo: boolean; logoDark?: boolean }
+/**
+ * Images are LINKED from the spa site (app/voucher/{card,qr,logo}), never attached: some mail
+ * apps list inline attachments as files the customer can open separately (user 05/10/2026).
+ * Same origin + token as the "View e-voucher" link; null when that link is not absolute.
+ */
+const voucherImageUrls = (qrPayload: string, lang: PromotionEmailLang) => {
+    try {
+        const u = new URL(qrPayload);
+        const tok = encodeURIComponent(u.searchParams.get('t') ?? '');
+        if (!/^https?:$/.test(u.protocol) || !tok) return null;
+        return {
+            card: `${u.origin}/voucher/card?t=${tok}&lang=${lang}`,
+            qr: `${u.origin}/voucher/qr?t=${tok}`,
+            logo: `${u.origin}/voucher/logo`,
+            logoDark: `${u.origin}/voucher/logo?tone=original`,
+        };
+    } catch {
+        return null;
+    }
+};
 
-export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfig, images: PromotionEmailImages = { card: false, logo: false }) {
+export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfig) {
+    const img = voucherImageUrls(input.qrPayload, input.lang);
+    const images = { card: !!img, logo: !!img && !!cfg.email_logo_url, logoDark: !!img && !!cfg.email_logo_url };
     const t = PROMOTION_EMAIL_I18N[input.lang] ?? PROMOTION_EMAIL_I18N.vi;
     const { pass } = input;
     const brand = cfg.email_brand_name || 'Spa';
@@ -77,19 +93,19 @@ export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfi
     // Light reader: brown logo on cream. Dark reader (Apple Mail, iOS Mail, Outlook): cream logo
     // on brown — both are in the mail, CSS below shows one (Gmail ignores it → light version).
     const lightLogo = images.logo
-        ? `<img class="em-logo-light" src="cid:${LOGO_CID}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px;margin:0 auto">`
+        ? `<img class="em-logo-light" src="${esc(img?.logo)}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px;margin:0 auto">`
         : `<div class="em-logo-light" style="font-size:22px;letter-spacing:4px;color:${INK};font-weight:700">${esc(brand)}</div>`;
     const darkLogo = images.logoDark
-        ? `<div class="em-logo-dark" style="display:none;max-height:0;overflow:hidden;mso-hide:all"><img src="cid:${LOGO_DARK_CID}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px;margin:0 auto"></div>`
+        ? `<div class="em-logo-dark" style="display:none;max-height:0;overflow:hidden;mso-hide:all"><img src="${esc(img?.logoDark)}" alt="${esc(brand)}" height="72" style="display:block;height:72px;width:auto;max-width:220px;margin:0 auto"></div>`
         : `<div class="em-logo-dark" style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:22px;letter-spacing:4px;color:${CREAM_TEXT};font-weight:700">${esc(brand)}</div>`;
     const header = lightLogo + darkLogo;
 
     // Painted e-voucher (PNG of the 3D card front) + a large QR for the counter.
     const cardImage = `
-<img src="cid:${CARD_CID}" alt="${esc(`${pass.campaign.name} — ${benefit} — ${pass.voucherCode}`)}" width="${CARD_DISPLAY_WIDTH}" style="display:block;width:100%;max-width:${CARD_DISPLAY_WIDTH}px;height:auto;margin:0 auto;border-radius:18px">
+<img src="${esc(img?.card)}" alt="${esc(`${pass.campaign.name} — ${benefit} — ${pass.voucherCode}`)}" width="${CARD_DISPLAY_WIDTH}" style="display:block;width:100%;max-width:${CARD_DISPLAY_WIDTH}px;height:auto;margin:0 auto;border-radius:18px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;border-collapse:separate;border:1px solid #F0D9B5;border-radius:16px;background:#FFF8EC">
 <tr><td align="center" style="padding:16px">
-  <img src="cid:${QR_CID}" alt="${esc(t.qrAlt)}" width="${QR_DISPLAY_PX}" height="${QR_DISPLAY_PX}" style="display:block;width:${QR_DISPLAY_PX}px;height:auto">
+  <img src="${esc(img?.qr)}" alt="${esc(t.qrAlt)}" width="${QR_DISPLAY_PX}" height="${QR_DISPLAY_PX}" style="display:block;width:${QR_DISPLAY_PX}px;height:auto">
   <div style="font-family:monospace;font-size:14px;letter-spacing:2px;color:${INK};margin-top:8px;font-weight:700">${esc(pass.voucherCode)}</div>
 </td></tr></table>`;
 
@@ -107,7 +123,7 @@ export function renderPromotionEmail(input: PromotionEmailInput, cfg: EmailConfi
   ${conditions.length ? `<div style="font-size:12px;color:#cfc6b6;margin-top:4px">${esc(t.conditions)}: <b style="color:#f7f1e6">${conditions.map(esc).join('<br>')}</b></div>` : ''}
 </td>
 <td valign="middle" align="center" style="padding:16px 12px;background:#fbf8f2;border-left:2px dashed ${ACCENT};width:36%">
-  <img src="cid:${QR_CID}" alt="${esc(t.qrAlt)}" width="${QR_DISPLAY_PX}" height="${QR_DISPLAY_PX}" style="display:block;width:${QR_DISPLAY_PX}px;max-width:100%;height:auto">
+  <img src="${esc(img?.qr)}" alt="${esc(t.qrAlt)}" width="${QR_DISPLAY_PX}" height="${QR_DISPLAY_PX}" style="display:block;width:${QR_DISPLAY_PX}px;max-width:100%;height:auto">
   <div style="font-family:monospace;font-size:12px;letter-spacing:1px;color:#2b2b2b;margin-top:8px;word-break:break-all">${esc(pass.voucherCode)}</div>
 </td>
 </tr></table>`;
@@ -200,35 +216,10 @@ export async function sendPromotionEmail(to: string, input: PromotionEmailInput)
     }
 }
 
-/**
- * Full message (also used by the admin preview). The card image and brown logo are
- * best-effort: if either fails the email still goes out with the HTML card / text brand.
- */
+/** Full message (also used by the admin preview). No attachments: images are links (see voucherImageUrls). */
 export async function buildPromotionEmail(to: string, input: PromotionEmailInput) {
     const cfg = await getEmailConfig();
-    const [qr, cardPng, logoPng, logoDarkPng] = await Promise.all([
-        buildPromotionQrPng(input.qrPayload),
-        renderPromotionEmailCardPng({
-            lang: input.lang,
-            pass: input.pass,
-            qrPayload: input.qrPayload,
-            conditionsSummary: input.conditionsSummary,
-            brandName: cfg.email_brand_name || 'Spa',
-            contact: { hotline: cfg.email_hotline, websiteUrl: cfg.email_website_url, address: cfg.email_branch_address || cfg.email_branch_name },
-        }).catch((e) => {
-            console.error('[PromotionEmail] card image failed, sending HTML card:', (e as Error)?.message);
-            return null;
-        }),
-        cfg.email_logo_url ? getBrownLogoPng(cfg.email_logo_url) : Promise.resolve(null),
-        cfg.email_logo_url ? getOriginalLogoPng(cfg.email_logo_url) : Promise.resolve(null),
-    ]);
-    const { subject, html, text } = renderPromotionEmail(input, cfg, { card: !!cardPng, logo: !!logoPng, logoDark: !!logoDarkPng });
-    const attachments = [
-        { filename: `${input.pass.voucherCode}-qr.png`, content: qr, cid: QR_CID, contentType: 'image/png' },
-        ...(cardPng ? [{ filename: `${input.pass.voucherCode}.png`, content: cardPng, cid: CARD_CID, contentType: 'image/png' }] : []),
-        ...(logoPng ? [{ filename: 'logo.png', content: logoPng, cid: LOGO_CID, contentType: 'image/png' }] : []),
-        ...(logoDarkPng ? [{ filename: 'logo-dark.png', content: logoDarkPng, cid: LOGO_DARK_CID, contentType: 'image/png' }] : []),
-    ];
+    const { subject, html, text } = renderPromotionEmail(input, cfg);
     return {
         message: {
             from: `"${FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`,
@@ -237,7 +228,6 @@ export async function buildPromotionEmail(to: string, input: PromotionEmailInput
             subject,
             html,
             text,
-            attachments,
         },
     };
 }
