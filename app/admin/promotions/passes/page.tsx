@@ -264,6 +264,14 @@ const PassList = () => {
                 {t.pass.printPdf}
               </Link>
               <Link
+                href={PROMOTION_PATHS.printCard(preview.state.data.id)}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50/60 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100/70"
+                title="Xuất file in namecard 2 mặt 5.5 x 9 cm"
+              >
+                <Printer size={16} aria-hidden />
+                {t.pass.printCard}
+              </Link>
+              <Link
                 href={PROMOTION_PATHS.pass(preview.state.data.id)}
                 className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
               >

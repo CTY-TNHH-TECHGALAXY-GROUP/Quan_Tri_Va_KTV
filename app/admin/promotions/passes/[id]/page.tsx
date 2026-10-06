@@ -168,6 +168,14 @@ const PassDetailPage = () => {
                     <Printer size={16} aria-hidden />
                     {t.pass.printPdf}
                   </Link>
+                  <Link
+                    href={PROMOTION_PATHS.printCard(p.id)}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50/60 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100/70"
+                    title="Xuất file in namecard 2 mặt 5.5 x 9 cm"
+                  >
+                    <Printer size={16} aria-hidden />
+                    {t.pass.printCard}
+                  </Link>
                   {access.issue && (
                     <button
                       type="button"
