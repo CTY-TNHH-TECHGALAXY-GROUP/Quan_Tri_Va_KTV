@@ -66,6 +66,17 @@ const VoucherPrint = () => {
   const autoPrinted = useRef(false);
   const pass = usePromotionQuery(() => promotionApi.getPass(id), [id]);
   const p = pass.state.status === 'success' ? pass.state.data : null;
+  const [campaignInstruction, setCampaignInstruction] = useState<Record<string, string> | null>(null);
+
+  useEffect(() => {
+    if (!p?.campaign?.id) return;
+    fetch(`/api/admin/promotions/campaigns/${p.campaign.id}/webbooking-instruction`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) setCampaignInstruction(res.data);
+      })
+      .catch(() => {});
+  }, [p?.campaign?.id]);
 
   // ?auto=1 (from the "In / Tải PDF" button): open the print dialog once the card is painted.
   useEffect(() => {
@@ -88,6 +99,10 @@ const VoucherPrint = () => {
   const conditions = formatPromotionConditions(p.conditionsSummary, lang);
   const campaignName = pickPromotionText(p.campaign.name, p.campaign.nameI18n, lang);
   const imgBase = `/api/admin/promotions/passes/${encodeURIComponent(p.id)}/card-image`;
+  const isWebBooking = p.conditionsSummary?.conditions?.some((c) => c.sources?.includes('WEB_BOOKING'));
+  const guidanceText = isWebBooking
+    ? (campaignInstruction?.[lang] || contact?.webBookingInstructions?.[lang] || page.webBookingInstruction || 'Please book through our website to apply this voucher.')
+    : page.contactToApply(contact?.brandName ?? 'Oria Spa');
 
   return (
     <div className="space-y-4">
@@ -155,7 +170,7 @@ const VoucherPrint = () => {
           </dl>
         </div>
 
-        <p className="text-sm font-medium">{page.contactToApply(contact?.brandName ?? 'Oria Spa')}</p>
+        <p className="text-sm font-medium">{guidanceText}</p>
         {contact && (
           <div className="space-y-0.5 text-xs text-[#6B4A2A]">
             {contact.hotline && <p>{page.hotline}: {contact.hotline}</p>}

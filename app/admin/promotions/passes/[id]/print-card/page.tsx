@@ -16,7 +16,7 @@ import { t } from '@/components/promotions/promotion.i18n';
 import { formatPromoDate, promotionErrorMessage } from '@/lib/promotion-format';
 import { formatPromotionConditions, pickPromotionText, PROMOTION_VOUCHER_PAGE_I18N } from '@/lib/promotion-voucher.i18n';
 import { promotionApi } from '@/lib/services/promotionApi';
-import type { PromotionEmailLang } from '@/lib/types/promotion-client';
+import type { PromotionEmailLang, SpaContact } from '@/lib/types/promotion-client';
 import { BACK_PAPER, FRONT_BOARD, ORIA } from '@/components/promotions/voucher.theme';
 import { voucherBrush } from '@/components/promotions/voucher.fonts';
 import { Cinnamon, Mortar, SpaStill, Sprig } from '@/components/promotions/VoucherBotanicals';
@@ -30,11 +30,18 @@ const BACK_QR_SIZE = 64; // QR on back
 const PRINT_ROOT_ID = 'voucher-card-print-root';
 
 // Thông tin liên hệ mặc định của Oria Spa (đồng bộ với cấu hình SystemConfigs & bản A5)
-const DEFAULT_CONTACT = {
+const DEFAULT_CONTACT: SpaContact = {
   brandName: 'ORIA SPA',
   hotline: '+84 964 090 277',
   address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
   websiteUrl: 'https://oria-spa.vercel.app',
+  webBookingInstructions: {
+    vi: 'Vui lòng đặt lịch qua website để áp dụng voucher này.',
+    en: 'Please book through our website to apply this voucher.',
+    cn: '请通过我们的网站预约以使用此优惠券。',
+    jp: '当クーポンをご利用の際は、ウェブサイトよりご予約ください。',
+    kr: '이 바우처를 사용하시려면 웹사이트를 통해 예약해 주세요.',
+  },
 };
 
 const PRINT_CARD_CSS = `
@@ -111,7 +118,18 @@ const VoucherCardPrint = () => {
   const brandName = contact.brandName || DEFAULT_CONTACT.brandName;
   const hotline = contact.hotline || DEFAULT_CONTACT.hotline;
   const address = contact.address || DEFAULT_CONTACT.address;
-  const website = (contact.websiteUrl || DEFAULT_CONTACT.websiteUrl).replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const website = (contact.websiteUrl || DEFAULT_CONTACT.websiteUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const [campaignInstruction, setCampaignInstruction] = useState<Record<string, string> | null>(null);
+
+  useEffect(() => {
+    if (!p?.campaign?.id) return;
+    fetch(`/api/admin/promotions/campaigns/${p.campaign.id}/webbooking-instruction`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) setCampaignInstruction(res.data);
+      })
+      .catch(() => {});
+  }, [p?.campaign?.id]);
 
   // ?auto=1: open the browser print dialog once data is loaded
   useEffect(() => {
@@ -131,6 +149,10 @@ const VoucherCardPrint = () => {
   const conditions = formatPromotionConditions(p.conditionsSummary, lang);
   const conditionText = conditions.length ? L.conditionPrefix(conditions.join('; ')) : null;
   const campaignName = pickPromotionText(p.campaign.name, p.campaign.nameI18n, lang);
+  const isWebBooking = p.conditionsSummary?.conditions?.some((c) => c.sources?.includes('WEB_BOOKING'));
+  const guidanceText = isWebBooking
+    ? (campaignInstruction?.[lang] || contact.webBookingInstructions?.[lang] || page.webBookingInstruction || 'Please book through our website to apply this voucher.')
+    : page.contactToApply(brandName);
 
   const renderCardFaces = (forPrint = false) => (
     <div className={forPrint ? '' : 'flex flex-col lg:flex-row items-center justify-center gap-8 py-4'}>
@@ -387,7 +409,7 @@ const VoucherCardPrint = () => {
             className="relative z-10 flex items-center justify-between px-3 py-0.5 text-[6.5px] border-t border-[#F4A64A]/25"
             style={{ backgroundColor: 'rgba(244,166,74,0.15)', color: ORIA.inkSoft }}
           >
-            <span>{page.contactToApply(brandName)}</span>
+            <span>{guidanceText}</span>
             <span className="italic font-medium">{L.qrInstruction}</span>
           </div>
         </article>

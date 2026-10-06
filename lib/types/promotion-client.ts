@@ -159,6 +159,7 @@ export interface SpaContact {
   hotline: string | null;
   address: string | null;
   websiteUrl: string | null;
+  webBookingInstructions?: Record<PromotionEmailLang, string>;
 }
 
 export interface PromotionCustomerRef {
