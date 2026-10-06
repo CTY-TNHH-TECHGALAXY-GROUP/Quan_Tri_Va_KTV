@@ -280,7 +280,7 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         // 🔧 EGRESS FIX: Only select needed columns for Bookings
         const { data: bData, error: bError } = await supabase
             .from('Bookings')
-            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, rating_scale, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix, vatRequested')
+            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, rating_scale, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix')
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
@@ -302,7 +302,9 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         bookings = bookings.map(b => ({
             ...b,
             // Nhãn VAT: khách có MST HOẶC quầy đánh dấu đơn cần hoá đơn — một công thức (CustomerVatService).
-            hasVat: hasVatBadge(taxCodeMap[b.customerId], b.vatRequested)
+            // ⚠️ `Bookings.vatRequested` CHƯA có trên DB thật (migration 20260821164210 chưa apply, 06/10/2026):
+            // không select cột này cho tới khi apply xong, nếu không toàn bộ bảng điều phối sập (42703).
+            hasVat: hasVatBadge(taxCodeMap[b.customerId], b.vatRequested ?? null)
         }));
 
         // Fetch historical visits for returning customer tag (using shared library)

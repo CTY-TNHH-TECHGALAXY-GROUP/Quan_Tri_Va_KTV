@@ -83,9 +83,10 @@ export class BookingModificationService {
                 vatInvoice: data.vatInvoice,
             });
             const customerId = customer.customerId;
-            // Cờ VAT theo ĐƠN (cột có thật trên Bookings). `Customers` không có cột này —
-            // thông tin công ty nằm ở 5 cột taxCode/company* (xem CustomerVatService).
-            const vatRequested = data.vatRequested === true || customer.vat !== null;
+            // Cờ VAT theo ĐƠN: `Bookings.vatRequested` CHƯA có trên DB thật (migration 20260821164210
+            // chưa apply, kiểm tra 06/10/2026) → tạm KHÔNG ghi, nếu không INSERT Bookings đổ.
+            // Thông tin công ty vẫn vào 5 cột taxCode/company* của Customers (CustomerVatService).
+            // Bật lại `vatRequested: data.vatRequested === true || customer.vat !== null` sau khi apply migration.
 
             // 3. Tạo Booking
             const { data: booking, error: bError } = await supabase
@@ -105,7 +106,6 @@ export class BookingModificationService {
                     paymentMethod: 'Tiền mặt',
                     guestCount: data.guestCount || 1,
                     nationality: data.nationality || null,
-                    vatRequested,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 })
