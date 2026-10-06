@@ -107,6 +107,19 @@ Thay đổi công thức (Mức 2) → mô phỏng bằng mock data (mục 10) v
 | Hiệu suất, điểm, kỷ luật | `app/ktv/performance` | `app/admin/ktv-office`, `app/admin/employees` |
 | Đánh giá / feedback | `app/ktv/dashboard` (REVIEW/REWARD) | `app/reception/feedback` |
 
+### 4.5. Phạm vi ảnh hưởng (vùng nổ) — BẮT BUỘC trước khi code
+
+Mọi thay đổi Mức 1–2 phải trả lời đủ 4 câu, ghi vào plan (cùng chỗ bảng 4.1):
+
+1. **Tính năng khác dùng chung gì?** Grep mọi nơi gọi hàm / service / query / cột sắp sửa. Hàm nuôi cả một màn hình (`getDispatchData`, `fetchBooking` của KTV Dashboard, `/api/customers`, `getDispatchItemState`…) là **đường nóng**: lỗi một chỗ = sập cả màn.
+2. **Nếu sai thì sập cái gì?** Không hỏi "người dùng thấy khác gì" mà hỏi "quầy / KTV / khách **còn làm việc được không**". Có thể sập đường nóng → xếp **Mức 2** dù chỉ 1 dòng.
+3. **Luồng khách có đụng không?** WebBooking, WRB nội bộ, email xác nhận, trang hoá đơn / journey, QR voucher. Có → ghi rõ; không → ghi "Không — vì …".
+4. **Cô lập được không?** Tính năng phụ không được kéo sập tính năng chính: dữ liệu phụ (nhãn, badge, thống kê, cột mới) phải query riêng hoặc bọc try/catch, **không chèn vào select chính** của đường nóng.
+
+Không trả lời đủ 4 câu → chưa được code. Phát hiện giữa chừng rằng thay đổi lan sang tính năng khác → **dừng, báo user**, không tự mở rộng phạm vi.
+
+> Bài học 06/10/2026: thêm một cột vào select của `getDispatchData` để hiện nhãn VAT (tính năng phụ) làm toàn bộ bảng điều phối không tải được (cột chưa có trên DB thật). Plan có đủ bảng 4.1 nhưng không có dòng nào về vùng nổ.
+
 ---
 
 ## 5. Git
@@ -129,11 +142,11 @@ Không tính: sửa comment, refactor không đổi hành vi, script QA chỉ đ
 
 > ⚠️ **Ảnh hưởng vận hành — `<tóm tắt commit>`**
 >
-> | Ai | Khác gì so với hôm nay | Cần báo / hướng dẫn gì |
-> |---|---|---|
-> | Quầy | … | … |
-> | KTV | … | … |
-> | Admin / khác | … | … |
+> | Ai | Khác gì so với hôm nay | Nếu lỗi thì ai không làm việc được | Cần báo / hướng dẫn gì |
+> |---|---|---|---|
+> | Quầy | … | … | … |
+> | KTV | … | … | … |
+> | Admin / khách | … | … | … |
 >
 > **Rủi ro & cách lùi:** … (revert commit nào; dữ liệu đã ghi có lùi được không)
 > **Deploy:** nhánh này đã / chưa lên bản đang chạy; cần làm kèm gì (migration, script, cấu hình).
@@ -175,6 +188,7 @@ Không tính: sửa comment, refactor không đổi hành vi, script QA chỉ đ
 - **BẮT BUỘC đọc `TableInSupabase.md` (gốc repo) trước** khi viết/sửa: query `.from(...)`, migration, trigger/function/RPC, realtime subscription.
 - Xác nhận tên bảng, cột, kiểu, constraint từ file đó. **Không giả định** bảng/cột tồn tại.
 - Thêm/đổi cột hoặc bảng → tạo migration SQL **và** cập nhật `TableInSupabase.md` trong cùng thay đổi.
+- `TableInSupabase.md` và file trong `supabase/migrations/` là **tài liệu**, không phải DB. Trước khi select / insert / gọi RPC ở đường nóng (mục 4.5), **probe trực tiếp DB thật** bằng script chỉ đọc với service key. Cột có trong migration nhưng chưa apply thì coi như **không tồn tại** — phải ghi vào plan và xin duyệt Mức 2 để apply.
 
 ---
 
