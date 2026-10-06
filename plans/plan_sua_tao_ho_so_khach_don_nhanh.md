@@ -92,6 +92,15 @@ Mock Supabase in-memory, in bảng kết quả cho 5 ca:
 5. Nút Hồ sơ với `GUEST-…` → tìm exact ra hồ sơ; không có → thông điệp "chưa liên kết".
 Chạy thêm dưới `TZ=UTC` (bookingDate dùng `Asia/Ho_Chi_Minh`, không đổi).
 
+## 5b. Sự cố sau deploy 06/10 & việc còn lại
+
+- **Sự cố**: `getDispatchData` select `Bookings.vatRequested` → `42703 column does not exist` → toàn bộ bảng điều phối không tải. Nguyên nhân: migration `20260821164210_add_vat_requested.sql` có trong repo nhưng **chưa từng apply** lên DB thật; tôi tin file migration thay vì kiểm tra DB (vi phạm rule mục 7 "không giả định cột tồn tại").
+- **Hotfix** `fec89390`: bỏ select và bỏ ghi `vatRequested`; nhãn VAT tạm chỉ theo `taxCode`. Phần hồ sơ khách, chọn khách cũ, khối VAT ghi vào `Customers`, nút "Hồ sơ" **vẫn hoạt động đầy đủ**.
+- **Còn thiếu để đủ tính năng "đánh dấu đơn cần VAT khi chưa có MST"** (Mức 2, chờ duyệt):
+  1. Apply `ALTER TABLE "Bookings" ADD COLUMN IF NOT EXISTS "vatRequested" BOOLEAN DEFAULT false;` lên DB thật (`scripts/apply_migration_file.ts`, cần `DIRECT_URL`). Additive, không khoá bảng lâu, không ảnh hưởng dữ liệu cũ.
+  2. Bật lại 2 dòng đã tắt ở `getDispatchData` (select) và `createQuickBooking` (insert).
+  3. Kiểm tra RPC `split_booking_into_sub_bookings` đang chạy trên DB có copy `vatRequested` không (bản migration 20260821165237 có, nhưng bản deploy thực tế chưa rõ).
+
 ## 6. Rủi ro & cách lùi
 - Bước 1–4: revert commit, không có migration.
 - Bước 5: script ghi `customerId`; lưu file JSON `before/after` để lùi bằng update ngược.

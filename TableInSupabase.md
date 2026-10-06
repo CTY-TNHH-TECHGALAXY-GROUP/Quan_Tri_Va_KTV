@@ -28,7 +28,7 @@
 | `focusAreaNote` | text | Ghi chú vùng cần tập trung (VD: "Đau vai") |
 | `notes` | text | Ghi chú đơn hàng chung |
 | `guestCount` | integer | Số lượng khách (1: Khách lẻ, >1: Khách nhóm) |
-| `vatRequested` | boolean | Đơn này cần xuất hoá đơn VAT (default false). Ghi bởi tạo đơn nhanh ở Dispatch; RPC tách đơn copy xuống đơn con. Nhãn VAT trên Kanban = cột này HOẶC khách có `taxCode` (`hasVatBadge` trong `CustomerVatService`) |
+| `vatRequested` | boolean | ⚠️ **CHƯA CÓ trên DB thật** (kiểm tra 06/10/2026): migration `20260821164210_add_vat_requested.sql` nằm trong repo nhưng chưa được apply. Select/insert cột này sẽ lỗi 42703 (đã sập bảng điều phối 06/10, hotfix `fec89390`). Khi apply xong: đơn này cần xuất hoá đơn VAT; nhãn VAT Kanban = cột này HOẶC khách có `taxCode` (`hasVatBadge`) |
 | `customerGender` | text | Giới tính khách hàng (male / female) |
 | `technicianCode` | text | Mã KTV chính được phân công |
 | `reception_feedback` | text | Đánh giá/phản hồi chung của quầy Lễ tân cho đơn hàng này |
