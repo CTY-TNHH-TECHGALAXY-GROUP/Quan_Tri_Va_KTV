@@ -285,7 +285,7 @@ export const PrintableInvoice = ({ config, bookingData, lang = 'vi' }: Printable
                             </div>
                             <div className={styles.row}>
                                 <div className={styles.label}>{t.address}</div>
-                                <div>{config.address || '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh'}</div>
+                                <div>{config.address || '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam'}</div>
                             </div>
                             <div className={styles.row}>
                                 <div className={styles.label}>{t.phone}</div>
@@ -429,7 +429,7 @@ export const PrintableInvoice = ({ config, bookingData, lang = 'vi' }: Printable
                         <div>
                             <strong>{config.spaName || 'ORIA SPA'}</strong><br />
                             Hotline: <span>{config.hotline || config.phone || '0900 000 000'}</span><br />
-                            {t.address}: <span>{config.address || '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh'}</span>
+                            {t.address}: <span>{config.address || '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam'}</span>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                             {t.footerInvoice}<br />

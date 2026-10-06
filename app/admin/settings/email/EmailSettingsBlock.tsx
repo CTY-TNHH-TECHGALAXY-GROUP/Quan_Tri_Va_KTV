@@ -293,7 +293,7 @@ export function EmailSettingsBlock({ defaultExpanded = false }: { defaultExpande
                                             hint="Hiện ở dòng &quot;Địa chỉ&quot; trong bảng chi tiết lịch hẹn. Bỏ trống thì ẩn dòng này."
                                             value={config.email_branch_address}
                                             onChange={(v: string) => change('email_branch_address', v)}
-                                            placeholder="11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh"
+                                            placeholder="11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam"
                                         />
                                         <TextField
                                             label="Link logo"

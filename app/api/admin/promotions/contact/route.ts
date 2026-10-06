@@ -15,7 +15,7 @@ export async function GET() {
 
     try {
         const cfg = await getEmailConfig();
-        const address = cfg.email_branch_address || cfg.email_branch_name || '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh';
+        const address = cfg.email_branch_address || cfg.email_branch_name || '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam';
         const hotline = cfg.email_hotline || '+84 964 090 277';
         const brandName = cfg.email_brand_name || 'ORIA SPA';
         const websiteUrl = cfg.email_website_url || 'https://oria-spa.vercel.app';

@@ -61,7 +61,7 @@ export const EMAIL_CONFIG_DEFAULTS: EmailConfig = {
     email_website_url: 'https://oria-spa.vercel.app',
     email_hotline: '+84 964 090 277',
     email_branch_name: 'ORIA SPA',
-    email_branch_address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
+    email_branch_address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam',
     email_manage_booking_url: '', // Chưa có trang cho khách tự đổi lịch
     email_grace_minutes: 5,
     email_company_name: 'TECHGALAXY GROUP',

@@ -33,7 +33,7 @@ const PRINT_ROOT_ID = 'voucher-card-print-root';
 const DEFAULT_CONTACT: SpaContact = {
   brandName: 'ORIA SPA',
   hotline: '+84 964 090 277',
-  address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
+  address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam',
   websiteUrl: 'https://oria-spa.vercel.app',
   webBookingInstructions: {
     vi: 'Vui lòng đặt lịch qua website để áp dụng voucher này.',
