@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Clock, User, Phone, DollarSign, MessageSquare, CheckCircle2, XCircle, ChevronRight, CalendarDays, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 import { WebBooking } from './actions';
+import { VISIT_LABEL, VISIT_BADGE_CLASS } from '@/lib/constants/customer-visit.i18n';
 import { formatBodyAreas, normalizeStrength, stripBodyAreaTags } from '@/lib/booking.logic';
 
 // ─── STATUS CONFIG ────────────────────────────────────────────────────────────
@@ -142,9 +143,9 @@ const WebBookingCard = ({ booking, onConfirm, onReject, onViewDetail, isLoading 
           <div className="min-w-0">
             <p className="font-black text-sm text-gray-900 truncate flex items-center gap-1.5">
               <span>{booking.customerName}</span>
-              {booking.isReturningCustomer && (
-                <span className="inline-flex items-center rounded bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
-                  Khách cũ
+              {booking.visitStatus && booking.visitStatus !== 'NEW' && (
+                <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[9px] font-bold ${VISIT_BADGE_CLASS[booking.visitStatus]}`}>
+                  {VISIT_LABEL[booking.visitStatus]}
                 </span>
               )}
             </p>

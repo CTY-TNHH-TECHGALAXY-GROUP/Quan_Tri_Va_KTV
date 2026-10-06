@@ -35,6 +35,9 @@ import { apiClient, getActorHeaders } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { phoneIdentity } from '@/lib/customer-search';
 import { isDummyEmail, isGuestPlaceholderPhone } from '@/lib/customer.logic';
+import { VISIT_LABEL, VISIT_BADGE_CLASS, tVisit } from '@/lib/constants/customer-visit.i18n';
+import { formatCancelRate } from '@/lib/services/CustomerVisitService';
+import { mergedIntoIdOf, withFollowingServices } from '@/lib/dispatch/merged-service';
 import { CUSTOMER_NOT_CREATED, CUSTOMER_NOT_FOUND } from '@/lib/services/QuickBookingCustomerService';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
@@ -1539,22 +1542,23 @@ if (!hasPermission('dispatch_board')) {
       const primarySeg = primaryStaff?.segments[0];
 
       const itemUpdates = clonedOrder.services.map((svc, index) => {
-          const isChild = !!(svc.mergedIntoId || svc.options?.mergedIntoId);
+          const isChild = !!mergedIntoIdOf(svc);
           // Dòng chưa có KTV (vừa bỏ KTV cuối) không được gửi thành chặng ktvId rỗng — server sẽ từ chối.
-          const allSegments = svc.staffList.filter(r => r.ktvId).flatMap(r =>
-            r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration }))
+          // Dịch vụ SAU (đã ghép) không có chặng: phút của nó nằm trong chặng của dịch vụ trước.
+          const allSegments = isChild ? [] : svc.staffList.filter(r => r.ktvId).flatMap(r =>
+            r.segments.map(seg => ({ ...seg, ktvId: r.ktvId }))
           );
 
           return {
               id: svc.id,
               roomName: allSegments[0]?.roomId || primarySeg?.roomId,
               bedId: allSegments[0]?.bedId || primarySeg?.bedId,
-              technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.filter(row=>row.segments.some(seg=>(seg as any).voided!==true && (seg as any).voided!=='true')).map(r => r.ktvId).filter(Boolean),
+              technicianCodes: (isChild || isUtilityService(svc)) ? [] : svc.staffList.filter(row=>row.segments.some(seg=>(seg as any).voided!==true && (seg as any).voided!=='true')).map(r => r.ktvId).filter(Boolean),
               segments: allSegments,
               options: {
                   ...parseKtvOptions(svc.options),
                   displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
-                  mergedIntoId: svc.mergedIntoId,
+                  mergedIntoId: mergedIntoIdOf(svc) ?? null, // null (không phải undefined): JSON bỏ khoá undefined → DB giữ dấu ghép cũ, Hủy gộp không ăn
                   mergedServiceIds: svc.mergedServiceIds,
                   customerGroupId: svc.customerGroupId || svc.id,
                   order: index,
@@ -1790,7 +1794,8 @@ if (!hasPermission('dispatch_board')) {
 
       // 🚀 BƯỚC 2: CHUẨN BỊ PAYLOADS ĐIỀU PHỐI
       // Determine what services we actually want to dispatch
-      const targetSvcIds = isPartial ? specificSvcIds! : (selectedSubOrder ? selectedSubOrder.services.map((s: any) => s.id) : clonedOrder.services.map((s:any) => s.id));
+      // Lưu theo thẻ: luôn kèm dịch vụ SAU đã ghép vào dịch vụ của thẻ, kể cả khi nó đang hiện ở thẻ khác.
+      const targetSvcIds = withFollowingServices(isPartial ? specificSvcIds! : (selectedSubOrder ? selectedSubOrder.services.map((s: any) => s.id) : clonedOrder.services.map((s:any) => s.id)), clonedOrder.services);
 
       const dispatchPayloads: Array<{
           bookingId: string;
@@ -1910,23 +1915,24 @@ if (!hasPermission('dispatch_board')) {
 
           const itemUpdates = targetServicesInGroup.map(svc => {
               const originalIndex = clonedOrder.services.findIndex(s => s.id === svc.id);
-              const isChild = !!(svc.mergedIntoId || svc.options?.mergedIntoId);
+              const isChild = !!mergedIntoIdOf(svc);
 
               // Segment duration from updateGroup already contains the correct TOTAL merged duration
               const correctedStaffList = svc.staffList;
 
-              const allSegments = correctedStaffList.filter(r => r.ktvId).flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId, duration: isChild ? 0 : seg.duration })));
+              // Dịch vụ SAU (đã ghép) không có chặng — server cũng tự bỏ (applyDispatchEdit), đây là lớp đầu.
+              const allSegments = isChild ? [] : correctedStaffList.filter(r => r.ktvId).flatMap(r => r.segments.map(seg => ({ ...seg, ktvId: r.ktvId })));
               return {
                   id: svc.id,
                   roomName: allSegments[0]?.roomId || primarySeg?.roomId,
                   bedId: allSegments[0]?.bedId || primarySeg?.bedId,
-                  technicianCodes: (svc.mergedIntoId || isUtilityService(svc)) ? [] : svc.staffList.filter(row=>row.segments.some(seg=>(seg as any).voided!==true && (seg as any).voided!=='true')).map(r => r.ktvId).filter(Boolean),
-                  status: (svc.mergedIntoId || !svc.staffList.some(r => r.ktvId)) ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'),
+                  technicianCodes: (isChild || isUtilityService(svc)) ? [] : svc.staffList.filter(row=>row.segments.some(seg=>(seg as any).voided!==true && (seg as any).voided!=='true')).map(r => r.ktvId).filter(Boolean),
+                  status: (isChild || !svc.staffList.some(r => r.ktvId)) ? 'WAITING' : ((svc.status && !['NEW', 'WAITING'].includes(svc.status)) ? svc.status : 'PREPARING'),
                   segments: allSegments,
                   options: {
                       ...parseKtvOptions(svc.options),
                       displayName: svc.displayName || svc.options?.displayName || svc.serviceName,
-                      mergedIntoId: svc.mergedIntoId,
+                      mergedIntoId: mergedIntoIdOf(svc) ?? null, // null (không phải undefined): JSON bỏ khoá undefined → DB giữ dấu ghép cũ, Hủy gộp không ăn
                       mergedServiceIds: svc.mergedServiceIds,
                       customerGroupId: svc.customerGroupId,
                       order: originalIndex !== -1 ? originalIndex : 999,
@@ -2757,16 +2763,17 @@ if (!hasPermission('dispatch_board')) {
                             </>
                           );
                         })()}
-                        {order.isReturning && (
-                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-50 text-purple-600 border border-purple-100 uppercase" title={`Đã đến ${order.visitCount} lần`}>
-                            Khách cũ
-                          </span>
-                        )}
-                        {!order.isReturning && (
-                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase">
-                            Khách mới
-                          </span>
-                        )}
+                        {(() => {
+                          const visitStatus = order.visitStatus || (order.isReturning ? 'RETURNING' : 'NEW');
+                          return (
+                            <span
+                              className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black border uppercase ${VISIT_BADGE_CLASS[visitStatus]}`}
+                              title={`${tVisit.tooltip(order.visitCount || 0, order.cancelledVisits || 0)} · ${tVisit.cancelRate}: ${formatCancelRate({ cancelledVisits: order.cancelledVisits || 0, closedVisits: order.closedVisits || 0, cancelRate: order.cancelRate ?? null })}`}
+                            >
+                              {VISIT_LABEL[visitStatus]}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1.5"><Clock size={12} className="text-gray-300" /> {getEstimatedEndTime(order, subOrder.services) || order.time}</span>
                     </div>
@@ -3207,6 +3214,26 @@ if (!hasPermission('dispatch_board')) {
                   <QuickDispatchTable
                     confirmAction={askConfirm}
                     onCloseEmptySlotB={(itemId) => closeEmptySlotB(selectedSubOrder.bookingId, itemId)}
+                    onUnmergeRunning={async (leading) => {
+                      // Hủy gộp dịch vụ ĐANG LÀM — xem trước số phút, xác nhận, bắt buộc lý do; server làm phần còn lại.
+                      const now = Date.now(); const seen = new Set<string>();
+                      const lines = leading.staffList.flatMap(row => row.ktvId ? row.segments.filter((seg: any) => (seg as any).voided !== true).slice(0, 1).map((seg: any) => {
+                        if (seen.has(row.ktvId)) return null; seen.add(row.ktvId);
+                        const worked = seg.actualStartTime ? Math.ceil((workedMsOf(seg, now) ?? 0) / 60000) : 0;
+                        return tConfirm.unmergeRunningLine(row.ktvId, Number(seg.duration) || 0, Math.max(Number(leading.duration) || 0, worked), worked);
+                      }) : []).filter((line): line is string => !!line);
+                      const follows = selectedSubOrder.services.concat(selectedSubOrder.originalOrder?.services || [])
+                        .filter((svc, i, all) => mergedIntoIdOf(svc) === leading.id && all.findIndex(x => x.id === svc.id) === i)
+                        .map(svc => svc.displayName || svc.serviceName);
+                      if (!(await askConfirm(tConfirm.unmergeRunningConfirm(lines, follows), { title: tConfirm.unmergeRunningTitle }))) return;
+                      const reason = (window.prompt(tConfirm.unmergeRunningReason) || '').trim();
+                      if (reason.length < 5) { alert(tConfirm.unmergeRunningReasonShort); return; }
+                      const { unmergeRunningService } = await import('./actions');
+                      const res = await unmergeRunningService(selectedSubOrder.bookingId, leading.id, reason);
+                      if (!res.success) { alert(tConfirm.unmergeRunningFailed(res.error || '')); return; }
+                      alert([tConfirm.unmergeRunningDone, ...((res as any).warnings || [])].join('\n'));
+                      fetchData();
+                    }}
                     services={selectedSubOrder.services}
                     orderId={selectedSubOrder.bookingId}
                     onLiveHandoff={(itemId, fromKtvId, toKtvId, plannedStartTime) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId, plannedStartTime)}
@@ -3256,31 +3283,9 @@ if (!hasPermission('dispatch_board')) {
                           const newServices = updatedServices.filter(u => !o.services.some(orig => orig.id === u.id));
                           mergedServices = [...mergedServices, ...newServices];
 
-                          // Now, sync any target services to match their source service
-                          mergedServices = mergedServices.map(svc => {
-                             if (svc.mergedIntoId) {
-                                const sourceSvc = mergedServices.find(s => s.id === svc.mergedIntoId);
-                                if (sourceSvc) {
-                                   return {
-                                      ...svc,
-                                      staffList: svc.staffList.map((r, i) => {
-                                         const sourceRow = sourceSvc.staffList[i] || sourceSvc.staffList[0];
-                                         if (!sourceRow) return r;
-                                         return {
-                                            ...r,
-                                            ktvId: sourceRow.ktvId,
-                                            ktvName: sourceRow.ktvName,
-                                            segments: r.segments.map((cSeg, cIdx) => {
-                                               const pSeg = sourceRow.segments[cIdx] || sourceRow.segments[0];
-                                               return { ...cSeg, roomId: pSeg?.roomId || null, bedId: pSeg?.bedId || null };
-                                            })
-                                         };
-                                      })
-                                   };
-                                }
-                             }
-                             return svc;
-                          });
+                          // Ghép dịch vụ: dịch vụ SAU không có KTV/chặng riêng — KTV của dịch vụ trước làm luôn phần phút
+                          // (lib/dispatch/merged-service.ts). Trước 07/10 chỗ này chép KTV sang dịch vụ sau → lưu bị từ chối.
+                          mergedServices = mergedServices.map(svc => mergedIntoIdOf(svc) ? { ...svc, staffList: [] } : svc);
 
                           return { ...o, services: mergedServices };
                       });
@@ -3294,7 +3299,9 @@ if (!hasPermission('dispatch_board')) {
                       const key=`${bookingId}/${item.id}`;
                       const { saveDispatchForm } = await import('./actions');
                       let revision=Number(item.options?.dispatchRevision || 0);
-                      const save=(confirmed=false)=>saveDispatchForm(bookingId,item.id,item.staffList,revision,sequential,item.options?.displayName,confirmed);
+                      // Ghép dịch vụ: lưu dòng KTV của dịch vụ trước thì lưu kèm dấu ghép của các dịch vụ sau.
+                      const followingIds=withFollowingServices([item.id],selectedSubOrder.originalOrder?.services || selectedSubOrder.services).filter(id=>id!==item.id);
+                      const save=(confirmed=false)=>saveDispatchForm(bookingId,item.id,item.staffList,revision,sequential,item.displayName || item.options?.displayName || item.serviceName,confirmed,followingIds);
                       const acknowledge=(result:any) => {
                         if (!result.savedItem) return;
                         const current=draftItemsRef.current.get(key) || item;

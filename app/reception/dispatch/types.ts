@@ -113,6 +113,11 @@ export interface PendingOrder {
   guestCount?: number;
   isReturning?: boolean;
   visitCount?: number;
+  /** Nhãn khách — CustomerVisitService (một công thức với CRM). */
+  visitStatus?: 'RETURNING' | 'VISITED' | 'NEW';
+  cancelledVisits?: number;
+  closedVisits?: number;
+  cancelRate?: number | null;
   nationality?: string;
   customerGender?: string;
   timeStart?: string | null;

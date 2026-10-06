@@ -43,7 +43,9 @@ export type CounterAction =
      * and the reason was lost. `by` is the KTV code.
      */
     | 'KTV_EARLY_EXIT'
-    | 'KTV_EMERGENCY';
+    | 'KTV_EMERGENCY'
+    /** Quầy hủy gộp dịch vụ ghép KHI ĐANG LÀM (07/10/2026): note = "KTV 130p → 60p · tách … · lý do". */
+    | 'UNMERGE_RUNNING';
 
 export interface CounterLogEntry {
     action: CounterAction;

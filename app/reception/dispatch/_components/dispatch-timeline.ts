@@ -1,6 +1,8 @@
 import { isUtilityService } from '@/lib/booking.logic';
 import { PendingOrder, ServiceBlock, GuestBlock } from '../types';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
+// Ghép dịch vụ: đọc cả dấu vừa bấm (bộ nhớ) lẫn dấu đã lưu — dịch vụ sau về chung thẻ NGAY khi bấm ghép.
+import { mergedIntoIdOf } from '@/lib/dispatch/merged-service';
 
 // Thẻ chỉ tách theo nối tiếp khi đã LƯU. Bật "Nối tiếp" trong form mới là bản nháp
 // (options._draftSequential) — chưa được tách thẻ trước khi quầy bấm Lưu.
@@ -81,7 +83,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             if (isPrivateRoom) return;
             
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
-            if (opts.mergedIntoId) return;
+            if (mergedIntoIdOf(svc)) return;
             
             if (!svc.staffList) return;
             
@@ -153,7 +155,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             if (isPrivateRoom) return; 
 
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
-            if (opts.mergedIntoId) return;
+            if (mergedIntoIdOf(svc)) return;
 
             if (svc.staffList) {
                 svc.staffList = svc.staffList.map(st => {
@@ -207,10 +209,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             if (isPrivateRoom) return; 
 
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
-            if (opts.mergedIntoId) {
+            if (mergedIntoIdOf(svc)) {
                 let foundParent = false;
                 for (let group of guestGroups.values()) {
-                    if (group.services.some(s => s.id === opts.mergedIntoId)) {
+                    if (group.services.some(s => s.id === mergedIntoIdOf(svc))) {
                         group.services.push(svc);
                         foundParent = true;
                         break; // Stop searching once found
@@ -353,8 +355,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 let dStatus = svc.status || 'NEW';
                 const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
                 
-                if (opts.mergedIntoId) {
-                    return { ...svc, status: dStatus, _isChild: true, _parentId: opts.mergedIntoId, _splitTime: (svc as any)._splitTime };
+                if (mergedIntoIdOf(svc)) {
+                    return { ...svc, status: dStatus, _isChild: true, _parentId: mergedIntoIdOf(svc), _splitTime: (svc as any)._splitTime };
                 }
 
                 if (!isTwoSlotSequential(svc.options) && dStatus !== 'CANCELLED' && dStatus !== 'DONE' && dStatus !== 'PAUSED') {

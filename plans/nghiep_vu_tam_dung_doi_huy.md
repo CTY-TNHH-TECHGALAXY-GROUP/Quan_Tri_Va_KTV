@@ -99,6 +99,21 @@ Quầy áp voucher `FREE_MINUTES` → engine thêm 1 dịch vụ `KM####` giá 0
 
 ---
 
+### 2.2. Sự kiện "Hủy gộp khi đang làm" — HG (07/10/2026)
+
+Dịch vụ ghép ("Gộp chung KTV", 60p + 70p = 130p) đã bắt đầu, quầy hủy gộp qua popup + **lý do bắt buộc**. Action riêng `unmergeRunningService` (gọi lại luồng "đổi thời lượng dịch vụ đã bắt đầu"). Đã xong (dọn phòng / chờ đánh giá / hoàn tất) → **chặn**. Chi tiết: `plans/plan_sua_gop_chung_ktv_dispatch.md` mục 9.
+
+| Khía cạnh | A — KTV đang làm dịch vụ trước | Dịch vụ sau (S) |
+|---|---|---|
+| Tiền tua / giờ tích luỹ | phút gán mới = **max(phút gốc dịch vụ trước, phút đã làm thật — làm tròn lên, trừ thời gian dừng)** | chưa ai hưởng; KTV mới như đơn thường |
+| Lượt tua | giữ, không phạt, không ghi thêm `TurnLedger` | KTV mới: lượt thường |
+| Thưởng / đánh giá / dọn phòng / nợ phòng / hạn mức bỏ qua | như thường trên dịch vụ trước | KTV mới như thường |
+| Hàng đợi | `KtvAssignments` giữ ACTIVE, `planned_end_time` = giờ bắt đầu thật + phút mới | về `WAITING` (chờ điều phối), không KTV |
+| App KTV / đồng hồ | giữ `actualStartTime`, tổng mới; thông báo `KTV_ORDER_CHANGED` (đổi thời gian + tách dịch vụ) | — |
+| Kanban / tên | tên gốc dịch vụ trước | hiện thành dịch vụ chờ điều phối trong cùng đơn |
+| Nhật ký quầy | `UNMERGE_RUNNING` "A 130p → 60p (đã làm 40p) · tách S · lý do" | cùng dòng |
+| Đã kiểm | `npm run test:huy-gop-dang-lam-db` (DB TEST, chặng dạng chuỗi như prod, phân công ACTIVE): 40p / 80p / đang tạm dừng / đã xong (chặn) / lý do ngắn / chưa bắt đầu / đường lưu thường bị chặn; 9 bảng sổ KTV không đổi | |
+
 ## 3. Trạng thái triển khai (11/09/2026 · cập nhật 21/09/2026)
 
 - Hoàn tất bình thường nhận đủ tiền theo phút gán: đã sửa engine và calculator legacy trong mã nguồn; chưa deploy/backfill dữ liệu thật. Plan: `plan_fix_type_d_subsecond_commission.md`.

@@ -223,7 +223,8 @@ Phạm vi: `app/api/ktv/booking/route.ts` (orchestrator) và `app/api/ktv/bookin
 7. **Orchestrator pattern**:
    - `route.ts` chỉ: parse request → query shared state → gọi handler → apply booking update → trả response.
    - Handler tự xử lý DB cho `BookingItems`, `TurnQueue`, `KtvAssignments`; trả `{ bookingUpdatePayload, earlyResponse? }`.
-8. **Test edge case — luôn bắt buộc** (ngoại lệ của mục 10): 1KTV-1DV, 1KTV-2DV (gộp), 2KTV-1DV, ca đêm (qua nửa đêm).
+8. **Test edge case — luôn bắt buộc** (ngoại lệ của mục 10): 1KTV-1DV, 1KTV-2DV (gộp), 2KTV-1DV, ca đêm (qua nửa đêm), **đơn đã tách A/B rồi ghép**, **gán KTV trước rồi mới ghép**, **lưu theo thẻ / lưu từng dòng KTV**.
+9. **Ghép 2 dịch vụ ("Gộp chung KTV")**: không có chính/con, chỉ có **trước/sau**. Dịch vụ sau KHÔNG có chặng, KHÔNG có KTV (lý do: `lib/dispatch/merged-service.ts`). Mọi chỗ đọc dấu ghép dùng `mergedIntoIdOf`; sửa luồng này phải chạy `npm run test:ghep` (`scripts/qa/qa_22_ghep_dich_vu.ts`) và in tổng phút đồng hồ KTV.
 
 ---
 

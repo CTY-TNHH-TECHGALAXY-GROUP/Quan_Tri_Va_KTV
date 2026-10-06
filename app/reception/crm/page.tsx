@@ -12,6 +12,7 @@ import { CustomerDetailModal } from './_components/CustomerDetailModal';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { isDummyEmail } from '@/lib/customer.logic';
+import { VISIT_LABEL, VISIT_BADGE_CLASS, tVisit } from '@/lib/constants/customer-visit.i18n';
 
 // 🔧 UI CONFIGURATION
 const MODAL_ANIMATION_MS = 200;
@@ -62,7 +63,7 @@ export default function CRMPage() {
   const [showFilter, setShowFilter] = useState(false);
   const [filterVip, setFilterVip] = useState('all'); // 'all', 'vip', 'member'
   const [filterVipMenu, setFilterVipMenu] = useState('all'); // 'all', 'used'
-  const [filterVisit, setFilterVisit] = useState('all'); // 'all', 'new', 'old'
+  const [filterVisit, setFilterVisit] = useState('all'); // 'all', 'new', 'visited', 'old'
   const [filterGuestType, setFilterGuestType] = useState('all'); // 'all', 'group', 'single'
   const [filterNationality, setFilterNationality] = useState('all'); // 'all', dynamic values
   const [filterDate, setFilterDate] = useState('all'); // 'all', 'today', 'yesterday', 'this_week', 'this_month'
@@ -236,9 +237,10 @@ export default function CRMPage() {
     if (filterVipMenu === 'used' && (c.vipMenuCount || 0) === 0) return false;
 
     // 4. Visit count Filter
-    const visits = c.visitCount || 0;
-    if (filterVisit === 'new' && visits > 1) return false;
-    if (filterVisit === 'old' && visits <= 1) return false;
+    const visitStatus = c.visitStatus || 'NEW';
+    if (filterVisit === 'new' && visitStatus !== 'NEW') return false;
+    if (filterVisit === 'old' && visitStatus !== 'RETURNING') return false;
+    if (filterVisit === 'visited' && visitStatus !== 'VISITED') return false;
 
     // 5. Guest Type Filter
     if (filterGuestType === 'group' && c.guestType !== 'Khách nhóm') return false;
@@ -422,10 +424,11 @@ export default function CRMPage() {
 
               {/* Visit frequency filter */}
               <DropdownMenu 
-                button={{ label: filterVisit === 'new' ? 'Phân loại: Khách mới' : filterVisit === 'old' ? 'Phân loại: Khách cũ' : 'Phân loại: Tất cả', size: 'sm' }}
+                button={{ label: filterVisit === 'new' ? 'Phân loại: Khách mới' : filterVisit === 'old' ? 'Phân loại: Khách cũ' : filterVisit === 'visited' ? tVisit.filterVisited : 'Phân loại: Tất cả', size: 'sm' }}
                 items={[
                   { label: 'Phân loại: Tất cả', onClick: () => setFilterVisit('all') },
                   { label: 'Phân loại: Khách mới', onClick: () => setFilterVisit('new') },
+                  { label: tVisit.filterVisited, onClick: () => setFilterVisit('visited') },
                   { label: 'Phân loại: Khách cũ', onClick: () => setFilterVisit('old') }
                 ]}
               />
@@ -878,10 +881,11 @@ const CustomerRow = ({ customer, formatVND, onViewDetail, onUpdate, onPreviewAva
             <Star size={12} />
             {(customer.visitCount || 0) > 10 ? 'VIP' : 'Member'}
           </span>
-          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
-            (customer.visitCount || 0) > 1 ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-green-50 text-green-600 border border-green-100'
-          }`}>
-            {(customer.visitCount || 0) > 1 ? 'Khách cũ' : 'Khách mới'}
+          <span
+            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold border ${VISIT_BADGE_CLASS[customer.visitStatus || 'NEW']}`}
+            title={tVisit.tooltip(customer.visitCount || 0, customer.cancelledVisits || 0)}
+          >
+            {VISIT_LABEL[customer.visitStatus || 'NEW']}
           </span>
         </div>
       </td>

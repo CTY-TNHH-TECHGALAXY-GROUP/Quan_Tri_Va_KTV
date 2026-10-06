@@ -4,12 +4,13 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission, requireBusinessUser } from '@/lib/auth-server';
 import { sendPushNotification } from '@/lib/push-helper';
 import { createNotification } from '@/lib/notification-helper';
-import { closeOpenPause, voidSegment } from '@/lib/segment-time';
+import { closeOpenPause, voidSegment, workedMsOf } from '@/lib/segment-time';
+import { addMinutesToHHmm } from '@/app/reception/dispatch/_components/QuickDispatchTable.logic';
 import { liveDispatchConflict, savedPlanFields } from '@/lib/dispatch-live-guard';
 import { ktvMetadataMap, parseKtvOptions, parseKtvSegments, ktvMatchesSeg } from '@/lib/ktvUtils';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 import { performSequentialLifecycle } from '@/lib/services/SequentialLifecycleService';
-import { currentCounterActor } from '@/lib/counter-action-log';
+import { currentCounterActor, logCounterAction } from '@/lib/counter-action-log';
 import { loadRatingConfig, clampRating, type RatingScale } from '@/lib/services/RatingScaleService';
 import { punishTurnIfIdle } from '@/lib/turn-punish';
 import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
@@ -19,8 +20,10 @@ import { isPlaceholderStaffId, isNewExternalKtvToken, externalNameOfToken, exter
 import { ensureTurnQueueRowForSequentialB, renameMetadataKey } from '@/lib/dispatch/sequential-b-prep';
 import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
 import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
-import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
+import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
 import { hasVatBadge } from '@/lib/services/CustomerVatService';
+import { computeCustomerVisit } from '@/lib/services/CustomerVisitService';
+import { normalizeFollowingItemUpdates, findInvalidSegment } from '@/lib/dispatch/merged-service';
 import { unstable_noStore as noStore } from 'next/cache';
 import { after } from 'next/server';
 
@@ -42,11 +45,42 @@ async function resolveRatingScale(supabase: any, scaleShown?: number): Promise<R
 
 async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
     payload = stripDraftOnlyOptions(payload);
+    // GHÉP 2 DỊCH VỤ — lớp chặn ở server: dịch vụ SAU không bao giờ mang chặng/KTV xuống DB,
+    // dù form gửi gì (lib/dispatch/merged-service.ts). Chỉ BỎ dữ liệu thừa, không thêm điều kiện chặn mới.
+    if (['DRAFT','DISPATCH'].includes(action) && Array.isArray(payload?.itemUpdates)) {
+        // HỦY GỘP chỉ khi CHƯA bắt đầu: đã chạy thì tiền tua / giờ / đồng hồ KTV đang tính theo chặng ghép.
+        const releasing = payload.itemUpdates.filter((u: any) => u?.options && u.options.mergedIntoId === null).map((u: any) => u.id);
+        // Chỉ action riêng unmergeRunningService (popup xác nhận + lý do) được hủy gộp khi đang làm.
+        if (releasing.length && payload._allowRunningUnmerge !== true) {
+            const { data: rows } = await supabase.from('BookingItems').select('id,options').in('id', releasing);
+            const leadIds = [...new Set((rows || []).map((r: any) => parseKtvOptions(r.options).mergedIntoId).filter(Boolean))] as string[];
+            if (leadIds.length) {
+                const { data: leads } = await supabase.from('BookingItems').select('id,status,segments').in('id', leadIds);
+                const started = (leads || []).find((l: any) => ['IN_PROGRESS','PAUSED','CLEANING','FEEDBACK','DONE','COMPLETED'].includes(String(l.status))
+                    || parseKtvSegments(l.segments, true).some((seg: any) => seg.actualStartTime || seg.actualEndTime));
+                if (started) return { data: null, error: { message: 'Dịch vụ ghép đã bắt đầu — không hủy gộp được. Dùng Đổi KTV hoặc Kết thúc sớm nếu cần thay đổi.' } };
+            }
+        }
+    }
+    if (payload && '_allowRunningUnmerge' in payload) {
+        const { _allowRunningUnmerge, ...rest } = payload;
+        payload = rest;
+    }
+    if (Array.isArray(payload?.itemUpdates)) {
+        const normalized = normalizeFollowingItemUpdates(payload.itemUpdates);
+        if (normalized.stripped.length) console.warn('[Dispatch] ghép dịch vụ: bỏ chặng/KTV ở dịch vụ sau', JSON.stringify(normalized.stripped));
+        payload = { ...payload, itemUpdates: normalized.itemUpdates };
+    }
     const actor = await currentCounterActor();
     const result = await supabase.rpc(['DRAFT','DISPATCH'].includes(action) ? 'dispatch_commit_form' : 'dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
         p_payload: payload, p_actor: actor });
     if (result.error?.message === 'OVERLAP_CONFIRM_REQUIRED') {
         try { return { data: JSON.parse(result.error.details), error: null }; } catch { /* Keep the database error. */ }
+    }
+    // DB chỉ nói "Giờ hoặc thời lượng không hợp lệ" — chỉ rõ dịch vụ nào, KTV nào, bao nhiêu phút.
+    if (/thời lượng/i.test(result.error?.message || '') && Array.isArray(payload?.itemUpdates)) {
+        const detail = findInvalidSegment(payload.itemUpdates);
+        if (detail) return { ...result, error: { ...result.error, message: detail } };
     }
     return result;
 }
@@ -295,9 +329,10 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         const customerIds = Array.from(new Set(bookings.map(b => b.customerId).filter(Boolean)));
         const { data: customersData } = await supabase
             .from('Customers')
-            .select('id, taxCode')
+            .select('id, taxCode, createdAt')
             .in('id', customerIds);
         const taxCodeMap = Object.fromEntries((customersData || []).map(c => [c.id, c.taxCode]));
+        const customerCreatedAtMap: Record<string, string | null> = Object.fromEntries((customersData || []).map(c => [c.id, c.createdAt]));
 
         bookings = bookings.map(b => ({
             ...b,
@@ -305,83 +340,58 @@ export async function getDispatchData(date: string, _timestamp?: number) {
             hasVat: hasVatBadge(taxCodeMap[b.customerId])
         }));
 
-        // Fetch historical visits for returning customer tag (using shared library)
-
-        const uniqueCustomerIds = Array.from(new Set(bookings.map(b => b.customerId).filter(Boolean)));
-        const validPhones = Array.from(new Set(bookings.map(b => !b.customerId && !isDummyPhone(b.customerPhone) ? b.customerPhone : null).filter(Boolean)));
-        const validEmails = Array.from(new Set(bookings.map(b => !b.customerId && isDummyPhone(b.customerPhone) && !isDummyEmail(b.customerEmail) ? b.customerEmail : null).filter(Boolean)));
-        
-        // Find bookings that have NO customerId AND (dummy phone) AND (dummy email) AND HAVE a name
-        const dummyBookings = bookings.filter(b => !b.customerId && isDummyPhone(b.customerPhone) && isDummyEmail(b.customerEmail) && b.customerName);
-        
-        let visitMap: Record<string, number> = {};
-        
-        // For customerId: fetch customerName too for name-matching (same algorithm as CRM)
-        // Manager often reuses one guest account for many different people
-        const historicalByCustomerId = new Map<string, any[]>();
-        if (uniqueCustomerIds.length > 0) {
-            const { data } = await supabase.from('Bookings')
-                .select('customerId, customerName')
-                .in('status', COMPLETED_STATUSES)
-                .in('customerId', uniqueCustomerIds);
-            if (data) {
-                data.forEach(d => {
-                    if (d.customerId) {
-                        if (!historicalByCustomerId.has(d.customerId)) historicalByCustomerId.set(d.customerId, []);
-                        historicalByCustomerId.get(d.customerId)!.push(d);
-                    }
+        // Nhãn khách (Khách cũ / Đã từng tới / Khách mới) + tỉ lệ huỷ — MỘT công thức với CRM
+        // (CustomerVisitService). Nhãn là dữ liệu phụ: lỗi ở đây KHÔNG được làm sập bảng điều phối
+        // (CLAUDE.md 4.5-4) → bọc try/catch, lỗi thì mọi đơn rơi về "Khách mới".
+        try {
+            const realPhoneOf = (b: any) => (b.customerPhone && !isDummyPhone(b.customerPhone) && !/^GUEST-/i.test(b.customerPhone)) ? b.customerPhone : '';
+            const realEmailOf = (b: any) => !isDummyEmail(b.customerEmail || '') ? String(b.customerEmail).trim().toLowerCase() : '';
+            const ids = Array.from(new Set(bookings.map(b => b.customerId).filter(Boolean)));
+            const phones = Array.from(new Set(bookings.map(realPhoneOf).filter(Boolean)));
+            const emails = Array.from(new Set(bookings.map(realEmailOf).filter(Boolean)));
+            const clauses: string[] = [];
+            if (ids.length) clauses.push(`customerId.in.(${ids.map(v => JSON.stringify(v)).join(',')})`);
+            if (phones.length) clauses.push(`customerPhone.in.(${phones.map(v => JSON.stringify(v)).join(',')})`);
+            if (emails.length) clauses.push(`customerEmail.in.(${emails.map(v => JSON.stringify(v)).join(',')})`);
+            const history: any[] = [];
+            if (clauses.length) {
+                for (let from = 0; ; from += 1000) {
+                    const { data, error } = await supabase.from('Bookings')
+                        .select('id, status, source, parent_booking_id, bookingDate, createdAt, customerId, customerPhone, customerEmail')
+                        .or(clauses.join(',')).order('id').range(from, from + 999);
+                    if (error) throw error;
+                    history.push(...(data || []));
+                    if (!data || data.length < 1000) break;
+                }
+            }
+            bookings = bookings.map(b => {
+                const phone = realPhoneOf(b);
+                const email = realEmailOf(b);
+                if (!b.customerId && !phone && !email) {
+                    return { ...b, visitStatus: 'NEW', visitCount: 0, cancelledVisits: 0, closedVisits: 0, cancelRate: null, isReturning: false };
+                }
+                const rows = history.filter(h => (b.customerId && h.customerId === b.customerId)
+                    || (phone && h.customerPhone === phone)
+                    || (email && String(h.customerEmail || '').trim().toLowerCase() === email));
+                const visit = computeCustomerVisit(rows, {
+                    excludeBookingId: b.id,
+                    before: b.bookingDate || b.createdAt,
+                    profileCreatedAt: b.customerId ? customerCreatedAtMap[b.customerId] : null,
                 });
-            }
+                return {
+                    ...b,
+                    visitStatus: visit.status,
+                    visitCount: visit.completedVisits,
+                    cancelledVisits: visit.cancelledVisits,
+                    closedVisits: visit.closedVisits,
+                    cancelRate: visit.cancelRate,
+                    isReturning: visit.status === 'RETURNING',
+                };
+            });
+        } catch (visitError: any) {
+            console.warn('⚠️ [Dispatch] visit tag failed (non-blocking):', visitError?.message || visitError);
+            bookings = bookings.map(b => ({ ...b, visitStatus: 'NEW', visitCount: 0, isReturning: false }));
         }
-
-        if (validPhones.length > 0) {
-            const { data } = await supabase.from('Bookings').select('customerPhone').in('status', COMPLETED_STATUSES).in('customerPhone', validPhones);
-            if (data) data.forEach(d => { if (d.customerPhone) visitMap[d.customerPhone] = (visitMap[d.customerPhone] || 0) + 1; });
-        }
-
-        if (validEmails.length > 0) {
-            const { data } = await supabase.from('Bookings').select('customerEmail').in('status', COMPLETED_STATUSES).in('customerEmail', validEmails);
-            if (data) data.forEach(d => { if (d.customerEmail) visitMap[d.customerEmail] = (visitMap[d.customerEmail] || 0) + 1; });
-        }
-
-        // Handle dummy bookings by checking both dummy phone/email AND name
-        if (dummyBookings.length > 0) {
-            await Promise.all(dummyBookings.map(async (b) => {
-                const key = `DUMMY_${b.id}`;
-                let query = supabase.from('Bookings').select('id', { count: 'exact' })
-                    .in('status', COMPLETED_STATUSES)
-                    .ilike('customerName', b.customerName.trim());
-                
-                if (b.customerPhone) query = query.eq('customerPhone', b.customerPhone);
-                else query = query.filter('customerPhone', 'in', '("",null)');
-                
-                if (b.customerEmail) query = query.eq('customerEmail', b.customerEmail);
-                else query = query.filter('customerEmail', 'in', '("",null)');
-                
-                const { count } = await query;
-                visitMap[key] = count || 0;
-            }));
-        }
-
-        bookings = bookings.map(b => {
-            let count = 0;
-            if (b.customerId && historicalByCustomerId.has(b.customerId)) {
-                // Real accounts sharing customerId should be counted as the same customer regardless of name
-                count = historicalByCustomerId.get(b.customerId)!.length;
-            } else if (!isDummyPhone(b.customerPhone)) {
-                count = visitMap[b.customerPhone] || 0;
-            } else if (!isDummyEmail(b.customerEmail)) {
-                count = visitMap[b.customerEmail] || 0;
-            } else if (b.customerName) {
-                count = visitMap[`DUMMY_${b.id}`] || 0;
-            }
-
-            return {
-                ...b,
-                visitCount: count,
-                isReturning: isReturningCustomer(count)
-            };
-        });
 
         // 4. Fetch Services FIRST to build map (safer than complex filtering)
         const { data: allServices, error: svcError } = await supabase
@@ -1238,6 +1248,8 @@ async function resolveNewExternalKtvIds(
 }
 
 export async function saveDraftDispatch(bookingId: string, dispatchData: {
+    /** Nội bộ: chỉ unmergeRunningService đặt cờ này. */
+    _allowRunningUnmerge?: boolean;
     date?: string;
     confirmOverlap?: boolean;
     confirmedOverlapItemIds?: string[];
@@ -1641,7 +1653,9 @@ export async function saveSequentialPair(bookingId: string, itemId: string, rows
 /** Save one item through the same atomic form commit used by global Save and Dispatch. */
 export async function saveDispatchForm(bookingId: string, itemId: string, rows: {
     ktvId: string; segments: any[]; noteForKtv?: string; serviceNameForKtv?: string;
-}[], expectedRevision: number, sequential: boolean, displayName?: string, confirmedOverlap = false) {
+}[], expectedRevision: number, sequential: boolean, displayName?: string, confirmedOverlap = false,
+    /** Dịch vụ SAU đang ghép vào dịch vụ này trên form — lưu kèm để không "đổi tên + cộng giờ nhưng còn sót". */
+    followingIds: string[] = []) {
     try {
         await requirePermission('dispatch_board');
         const supabase = getSupabaseAdmin();
@@ -1687,16 +1701,146 @@ export async function saveDispatchForm(bookingId: string, itemId: string, rows: 
                 ...(savedB ? [{employeeId:oldB.ktvId,minutes:Number(savedB.duration),startTime:savedB.startTime,endTime:savedB.endTime}] : [])]);
             return {success:true,savedItems:[data.savedItem],savedItem:data.savedItem,revisions:{[itemId]:data.revision},warnings,durationChanges:[{itemId}]};
         }
+        // Lưu dòng KTV của dịch vụ TRƯỚC thì lưu kèm dấu ghép của các dịch vụ SAU (cùng đơn), đọc từ DB.
+        const followIds=[...new Set(followingIds.filter(id=>id && id!==itemId))];
+        let followUpdates:any[]=[];
+        // Hủy gộp rồi lưu theo dòng: dịch vụ sau KHÔNG còn trong danh sách → nhả dấu ghép (null), không KTV — quầy gán lại.
+        const previousFollowIds:string[]=Array.isArray(options.mergedServiceIds) ? options.mergedServiceIds : [];
+        const releasedIds=previousFollowIds.filter(id=>!followIds.includes(id));
+        if (releasedIds.length) {
+            const { data: released, error: releasedError } = await supabase.from('BookingItems').select('id,bookingId,options').in('id',releasedIds);
+            if (releasedError) throw releasedError;
+            for (const rel of released || []) {
+                const relOptions=parseKtvOptions(rel.options);
+                if (rel.bookingId!==bookingId || relOptions.mergedIntoId!==itemId) continue;
+                followUpdates.push({id:rel.id,technicianCodes:[],segments:[],options:{...relOptions,mergedIntoId:null}});
+            }
+        }
+        if (followIds.length) {
+            const { data: follows, error: followError } = await supabase.from('BookingItems')
+                .select('id,bookingId,status,segments,options').in('id',followIds);
+            if (followError) throw followError;
+            for (const id of followIds) {
+                const follow=(follows || []).find((row:any)=>row.id===id);
+                const followOptions=parseKtvOptions(follow?.options);
+                if (!follow || follow.bookingId!==bookingId)
+                    throw new Error(`Dịch vụ ghép "${followOptions.displayName || id}" không cùng khách với dịch vụ trước; tải lại đơn rồi ghép lại.`);
+                const followSegs=parseKtvSegments(follow.segments,true);
+                if (followSegs.some((seg:any)=>seg.actualStartTime))
+                    throw new Error(`Dịch vụ "${followOptions.displayName || id}" đã bắt đầu, không ghép vào dịch vụ khác được.`);
+                // Đã ghép đúng trong DB (trỏ về dịch vụ này, không chặng) → không ghi lại.
+                if (followOptions.mergedIntoId===itemId && !followSegs.length) continue;
+                followUpdates.push({id,technicianCodes:[],segments:[],
+                    options:{...followOptions,mergedIntoId:itemId,customerGroupId:followOptions.customerGroupId || options.customerGroupId || itemId}});
+            }
+        }
         const result=await saveDraftDispatch(bookingId,{roomName:booking.roomName,bedId:booking.bedId,notes:booking.notes,
-            confirmedOverlapItemIds:confirmedOverlap ? [itemId] : [],itemUpdates:[{id:itemId,
+            confirmedOverlapItemIds:confirmedOverlap ? [itemId] : [],itemUpdates:[...followUpdates,{id:itemId,
                 roomName:segments[0]?.roomId || item.roomName,bedId:segments[0]?.bedId || item.bedId,
                 technicianCodes:activeRows.map(row=>row.ktvId),segments,
                 options:{...options,dispatchRevision:expectedRevision,sequentialSlots:sequential ? 2 : options.sequentialSlots,
+                    ...(followIds.length || releasedIds.length ? {mergedServiceIds:followIds} : {}),
                     displayName:displayName || options.displayName,
                     serviceNamesForKtvs:ktvMetadataMap(parseKtvOptions(options.serviceNamesForKtvs),activeRows,'serviceNameForKtv'),
                     notesForKtvs:ktvMetadataMap(parseKtvOptions(options.notesForKtvs),activeRows,'noteForKtv')}}]});
         return {...result,savedItem:result.savedItems?.find((saved:any)=>saved.id===itemId)};
     } catch(error:any) { return {success:false,error:error.message || 'Không lưu được bản nháp'}; }
+}
+
+/**
+ * HỦY GỘP KHI ĐANG LÀM (sự kiện HG — plans/plan_sua_gop_chung_ktv_dispatch.md mục 9, user duyệt 07/10/2026).
+ *
+ * Chỉ dùng khi dịch vụ TRƯỚC đã bắt đầu và CHƯA xong. Chưa bắt đầu → quầy hủy gộp trên form như thường.
+ * Đã xong (dọn phòng / chờ đánh giá / hoàn tất) → chặn: tiền đã chốt.
+ *
+ * KHÔNG viết luồng mới cho tiền / đồng hồ / hàng đợi: gọi lại saveDraftDispatch — đúng luồng "đổi thời lượng
+ * dịch vụ đã bắt đầu" (RPC nhánh ca đang chạy, notifyAdjustedDurations, đồng bộ sổ tua). Thêm đúng 3 việc:
+ *   1. Dịch vụ SAU: bỏ dấu ghép, không KTV, về WAITING (chờ điều phối).
+ *   2. Nhật ký quầy UNMERGE_RUNNING kèm lý do (bắt buộc ≥ 5 ký tự).
+ *   3. Thông báo KTV_ORDER_CHANGED nói rõ dịch vụ bị tách và thời gian còn lại.
+ * Phút mới của mỗi KTV = max(phút gốc dịch vụ trước, phút đã làm thật lúc hủy) — KTV không bao giờ mất phút đã làm.
+ */
+export async function unmergeRunningService(bookingId: string, leadingId: string, reason: string) {
+    try {
+        await requirePermission('dispatch_board');
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+        const note = String(reason || '').trim();
+        if (note.length < 5) throw new Error('Nhập lý do hủy gộp (ít nhất 5 ký tự).');
+
+        const { data: items, error: itemsError } = await supabase.from('BookingItems')
+            .select('id,bookingId,serviceId,status,segments,options,technicianCodes,roomName,bedId').eq('bookingId', bookingId);
+        if (itemsError) throw itemsError;
+        const lead = (items || []).find((i: any) => i.id === leadingId);
+        if (!lead) throw new Error('Không tìm thấy dịch vụ');
+        const leadOpts = parseKtvOptions(lead.options);
+        const followers = (items || []).filter((i: any) => parseKtvOptions(i.options).mergedIntoId === leadingId);
+        if (!followers.length) throw new Error('Dịch vụ này không có dịch vụ ghép.');
+        if (['CLEANING', 'FEEDBACK', 'DONE', 'COMPLETED', 'CANCELLED'].includes(String(lead.status)))
+            throw new Error('Dịch vụ ghép đã xong — tiền đã chốt, không hủy gộp được.');
+        const segs = parseKtvSegments(lead.segments, true);
+        const live = segs.filter((s: any) => s.ktvId && s.voided !== true && s.voided !== 'true');
+        if (!live.some((s: any) => s.actualStartTime)) return { success: false, code: 'NOT_RUNNING', error: 'Dịch vụ chưa bắt đầu — hủy gộp trên form rồi lưu.' };
+        if (live.some((s: any) => s.actualEndTime)) throw new Error('KTV đã kết thúc chặng — không hủy gộp được.');
+
+        const serviceIds = [...new Set([lead.serviceId, ...followers.map((f: any) => f.serviceId)])];
+        const { data: svcRows } = await supabase.from('Services').select('id,nameVN,duration').in('id', serviceIds);
+        const nameOf = (id: string) => { const n = (svcRows || []).find((s: any) => s.id === id)?.nameVN; return typeof n === 'object' && n ? (n.vn || n.en || id) : (n || id); };
+        const baseMin = Number((svcRows || []).find((s: any) => s.id === lead.serviceId)?.duration) || Number(leadOpts.duration) || 60;
+
+        const now = Date.now();
+        const seenKtv = new Set<string>();
+        const changes: { ktvId: string; before: number; after: number; worked: number; endTime: string }[] = [];
+        const nextSegs = segs.map((s: any) => {
+            if (!s.ktvId || s.voided === true || s.voided === 'true' || seenKtv.has(s.ktvId)) return s;
+            seenKtv.add(s.ktvId);
+            const worked = s.actualStartTime ? Math.ceil((workedMsOf(s, now) ?? 0) / 60000) : 0;
+            const after = Math.max(baseMin, worked);
+            const endTime = s.startTime ? addMinutesToHHmm(s.startTime, after) : s.endTime;
+            const plannedStart = Date.parse(s.plannedStartAt || '');
+            changes.push({ ktvId: s.ktvId, before: Number(s.duration) || 0, after, worked, endTime });
+            return { ...s, duration: after, endTime,
+                ...(Number.isFinite(plannedStart) ? { plannedEndAt: new Date(plannedStart + after * 60000).toISOString() } : {}) };
+        });
+
+        const { data: booking, error: bookingError } = await supabase.from('Bookings').select('roomName,bedId,notes').eq('id', bookingId).single();
+        if (bookingError || !booking) throw bookingError || new Error('Không tìm thấy đơn');
+        const leadName = nameOf(lead.serviceId);
+        const followNames = followers.map((f: any) => parseKtvOptions(f.options).displayName || nameOf(f.serviceId));
+        const saved = await saveDraftDispatch(bookingId, {
+            _allowRunningUnmerge: true,
+            roomName: booking.roomName, bedId: booking.bedId, notes: booking.notes, confirmedOverlapItemIds: [],
+            itemUpdates: [
+                { id: lead.id, roomName: lead.roomName, bedId: lead.bedId, technicianCodes: lead.technicianCodes, segments: nextSegs,
+                  options: { ...leadOpts, mergedServiceIds: [], displayName: leadName } },
+                ...followers.map((f: any) => ({ id: f.id, technicianCodes: [], segments: [],
+                    options: { ...parseKtvOptions(f.options), mergedIntoId: null } })),
+            ],
+        });
+        if (!saved?.success) return { success: false, error: (saved as any)?.error || 'Không lưu được hủy gộp' };
+
+        const warnings: string[] = [...((saved as any).warnings || [])];
+        const followIds = followers.filter((f: any) => !['DONE', 'CANCELLED'].includes(String(f.status))).map((f: any) => f.id);
+        if (followIds.length) {
+            const { error: waitError } = await supabase.from('BookingItems').update({ status: 'WAITING' }).in('id', followIds);
+            if (waitError) warnings.push('Đã hủy gộp nhưng chưa đưa dịch vụ tách ra về "chờ điều phối"; tải lại đơn.');
+        }
+        const summary = changes.map(c => `${c.ktvId} ${c.before}p → ${c.after}p (đã làm ${c.worked}p)`).join(', ');
+        const actor = await currentCounterActor();
+        await logCounterAction(supabase, [lead.id, ...followers.map((f: any) => f.id)], {
+            action: 'UNMERGE_RUNNING', by: actor.id, byName: actor.name, verified: actor.verified,
+            note: `${summary} · tách ${followNames.join(', ')} · ${note}`,
+        });
+        for (const c of changes) {
+            const ok = await createNotification({ bookingId, employeeId: c.ktvId, type: 'KTV_ORDER_CHANGED',
+                message: `Quầy đã tách dịch vụ «${followNames.join(', ')}» khỏi đơn của bạn. Thời gian của bạn còn ${c.after} phút (kết thúc ${c.endTime}).` }).catch(() => false);
+            if (!ok) warnings.push(`Chưa báo được cho ${c.ktvId}; vui lòng báo trực tiếp.`);
+        }
+        return { success: true, changes, released: followers.map((f: any) => f.id), warnings };
+    } catch (error: any) {
+        console.error('❌ [Server] unmergeRunningService error:', error);
+        return { success: false, error: error.message || 'Không hủy gộp được' };
+    }
 }
 
 /**

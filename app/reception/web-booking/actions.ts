@@ -11,6 +11,7 @@ import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
 import { buildServiceSection, emailBookingCode, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
 import { isDummyPhone, isDummyEmail, makeGuestEmail } from '@/lib/customer.logic';
+import { computeCustomerVisit, type VisitStatus } from '@/lib/services/CustomerVisitService';
 
 const WEB_BOOKING_SOURCES = ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'];
 
@@ -50,6 +51,7 @@ export interface WebBooking {
   source: string;
   items: WebBookingItem[];
   isReturningCustomer?: boolean;
+  visitStatus?: VisitStatus;
   guestCount?: number;
   customerGender?: string | null;
   nationality?: string | null;
@@ -133,28 +135,41 @@ export async function getWebBookings(startDate: string, endDate: string) {
       .select('*')
       .in('bookingId', bookingIds);
 
-    // Identify returning customers by checking Phone, Email, or Name for each booking
-    const returningChecks = bookings.map(async (b: any) => {
-        let orStrings = [];
-        if (b.customerPhone) orStrings.push(`customerPhone.eq.${b.customerPhone}`);
-        if (b.customerEmail) orStrings.push(`customerEmail.eq.${b.customerEmail}`);
-        if (b.customerName) orStrings.push(`customerName.eq.${b.customerName}`);
-        
-        if (orStrings.length > 0) {
-            const { data } = await supabase
+    // Nhãn khách — MỘT công thức với CRM và bảng điều phối (CustomerVisitService).
+    // Khớp theo customerId / SĐT thật / email thật; KHÔNG khớp theo tên (trùng tên ≠ cùng người).
+    // Dữ liệu phụ: lỗi thì rơi về "Khách mới", không chặn danh sách lịch hẹn (CLAUDE.md 4.5-4).
+    const visitChecks = bookings.map(async (b: any): Promise<{ id: string; status: VisitStatus }> => {
+        try {
+            const phone = b.customerPhone && !isDummyPhone(b.customerPhone) && !/^GUEST-/i.test(b.customerPhone) ? b.customerPhone : '';
+            const email = !isDummyEmail(b.customerEmail || '') ? b.customerEmail : '';
+            const orStrings: string[] = [];
+            if (b.customerId) orStrings.push(`customerId.eq.${JSON.stringify(b.customerId)}`);
+            if (phone) orStrings.push(`customerPhone.eq.${JSON.stringify(phone)}`);
+            if (email) orStrings.push(`customerEmail.eq.${JSON.stringify(email)}`);
+            if (!orStrings.length) return { id: b.id, status: 'NEW' };
+            const { data, error } = await supabase
                 .from('Bookings')
-                .select('id')
-                .in('status', ['COMPLETED', 'DONE', 'FEEDBACK'])
-                .neq('id', b.id)
+                .select('id, status, source, parent_booking_id, bookingDate, createdAt')
                 .or(orStrings.join(','))
-                .limit(1);
-            return { id: b.id, isReturning: data && data.length > 0 };
+                .limit(500);
+            if (error) throw error;
+            const { data: profile } = b.customerId
+                ? await supabase.from('Customers').select('createdAt').eq('id', b.customerId).maybeSingle()
+                : { data: null };
+            const visit = computeCustomerVisit(data || [], {
+                excludeBookingId: b.id,
+                before: b.bookingDate || b.createdAt,
+                profileCreatedAt: profile?.createdAt || null,
+            });
+            return { id: b.id, status: visit.status };
+        } catch (e: any) {
+            console.warn('⚠️ [WebBooking] visit tag failed (non-blocking):', e?.message || e);
+            return { id: b.id, status: 'NEW' };
         }
-        return { id: b.id, isReturning: false };
     });
     
-    const returningResults = await Promise.all(returningChecks);
-    const returningMap = new Map(returningResults.map(r => [r.id, r.isReturning]));
+    const visitResults = await Promise.all(visitChecks);
+    const visitStatusMap = new Map(visitResults.map(r => [r.id, r.status]));
 
     // Map to WebBooking type
     const result: WebBooking[] = bookings.map((b: any) => {
@@ -219,7 +234,8 @@ export async function getWebBookings(startDate: string, endDate: string) {
         accessToken: b.accessToken || null,
         source: b.source || 'WEB_BOOKING',
         items: bookingItems,
-        isReturningCustomer: returningMap.get(b.id) || false,
+        isReturningCustomer: visitStatusMap.get(b.id) === 'RETURNING',
+        visitStatus: visitStatusMap.get(b.id) || 'NEW',
         guestCount: parseGuestCountFromNotes(b.notes, b.guestCount || 1),
         customerGender: b.customerGender || null,
         nationality: b.nationality || null,

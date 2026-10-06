@@ -6,6 +6,7 @@ import { isDummyEmail, isDummyPhone } from '@/lib/customer.logic';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 import { customerSearchFilter, searchPattern } from '@/lib/customer-search';
+import { computeProfileVisit } from '@/lib/services/CustomerVisitService';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: true, data: [] });
         }
 
-        // 2. Fetch all bookings (except CANCELLED) to calculate stats & fetch recent selections like language
+        // 2. Fetch all bookings (kể cả CANCELLED — cần cho tỉ lệ huỷ; các thống kê cũ lọc CANCELLED lại bên dưới)
         let allBookings: any[];
         try {
             const select = `
@@ -67,12 +68,12 @@ export async function GET(request: Request) {
                     const emails = [...new Set(group.map(c => c.email).filter((email: string) => !isDummyEmail(email)))];
                     const orphanEmails = emails.map(email => `customerEmail.ilike.${searchPattern(String(email).trim())}`).join(',');
                     const filter = `customerId.in.(${ids})${orphanEmails ? `,and(customerId.is.null,or(${orphanEmails}))` : ''}`;
-                    const rows = await fetchAll('Bookings', select, q => q.or(filter).neq('status', 'CANCELLED').order('id'));
+                    const rows = await fetchAll('Bookings', select, q => q.or(filter).order('id'));
                     rows.forEach(row => byBookingId.set(row.id, row));
                 }
                 allBookings = [...byBookingId.values()];
             } else {
-                allBookings = await fetchAll('Bookings', select, q => q.neq('status', 'CANCELLED').order('id'));
+                allBookings = await fetchAll('Bookings', select, q => q.order('id'));
             }
         } catch (bError) {
             console.error('Error fetching bookings for stats:', bError);
@@ -133,19 +134,25 @@ export async function GET(request: Request) {
             
             // Filter byId: only keep bookings where customerName matches this customer
             // All bookings linked to this customerId belong to this profile
-            const combinedBookings = [...byId];
-            const existingIds = new Set(combinedBookings.map(b => b.id));
+            const allCombined = [...byId];
+            const existingIds = new Set(allCombined.map(b => b.id));
             
             byNameEmail.forEach(b => {
                 if (!existingIds.has(b.id)) {
-                    combinedBookings.push(b);
+                    allCombined.push(b);
                 }
             });
+            // Nhãn khách + tỉ lệ huỷ: MỘT công thức với bảng điều phối (CustomerVisitService).
+            // Nhãn theo đầu ngày hôm nay (= nhãn trên thẻ điều phối); số lượt & tỉ lệ huỷ tính toàn bộ.
+            const visit = computeProfileVisit(allCombined, customer.createdAt);
+            // Các thống kê cũ (chi tiêu, khung giờ, KTV quen…) giữ nguyên: không tính đơn huỷ.
+            const combinedBookings = allCombined.filter(b => b.status !== 'CANCELLED');
             
             // Parent bookings only for visit metrics
             const parentBookings = combinedBookings.filter(b => !b.parent_booking_id);
             
-            const visitCount = parentBookings.length;
+            // "Số lần đến" = số lượt đã HOÀN TẤT (trước 06/10/2026 đếm cả đơn NEW chưa phục vụ).
+            const visitCount = visit.completedVisits;
             const totalSpent = combinedBookings.reduce((sum, b) => {
                 const isCompleted = ['COMPLETED', 'DONE', 'FEEDBACK', 'CLEANING'].includes(b.status);
                 return sum + (isCompleted ? (Number(b.totalAmount) || 0) : 0);
@@ -383,6 +390,10 @@ export async function GET(request: Request) {
                 guestType,
                 maxGuestCount,
                 visitCount,
+                visitStatus: visit.status,
+                cancelledVisits: visit.cancelledVisits,
+                closedVisits: visit.closedVisits,
+                cancelRate: visit.cancelRate,
                 totalSpent,
                 ktvReviews: uniqueKtvReviews,
                 lastVisited: lastBooking ? (lastBooking.bookingDate || lastBooking.createdAt) : customer.lastVisited,

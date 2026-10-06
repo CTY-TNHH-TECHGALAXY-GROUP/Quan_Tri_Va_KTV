@@ -3,7 +3,8 @@ import { isLiveKtvSegment, ktvMetadataMap, parseKtvOptions } from '@/lib/ktvUtil
 import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isPromotionItem, isUtilityService } from '@/lib/booking.logic';
-import { mergeServicesIntoParent } from './QuickDispatchTable.logic';
+import { mergeServicesIntoParent, ktvsRemovedByMerge, unmergeFromLeading, hasStartedWork, hasFinishedWork } from './QuickDispatchTable.logic';
+import { pickLeadingService, originalMergedMinutes } from '@/lib/dispatch/merged-service';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2, ArrowLeftRight, Save, Layers, Users, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -69,6 +70,8 @@ interface QuickDispatchTableProps {
   confirmAction?: (message: string) => Promise<boolean>;
   /** Close an empty, already-saved slot B (admin turned "Nối tiếp" on by mistake). */
   onCloseEmptySlotB?: (itemId: string) => Promise<boolean>;
+  /** Hủy gộp dịch vụ ghép ĐANG LÀM: popup xác nhận + lý do → unmergeRunningService. */
+  onUnmergeRunning?: (leading: ServiceBlock) => Promise<void>;
   subOrderCodeProp?: string;
 }
 
@@ -103,7 +106,7 @@ const sequentialSlotsFor = (state: { confirmedSequential?: boolean }, itemCount:
 
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, staffs = [], busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, reminders = [], onSaveStaffRow, onTriggerMergePrompt, onLiveHandoff, onRemoveSvc, billCode, subOrderCodeProp, confirmAction, onCloseEmptySlotB
+  onUpdateServices, onPrintGroup, reminders = [], onSaveStaffRow, onTriggerMergePrompt, onLiveHandoff, onRemoveSvc, billCode, subOrderCodeProp, confirmAction, onCloseEmptySlotB, onUnmergeRunning
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
@@ -190,14 +193,13 @@ export const QuickDispatchTable = ({
     
     if (selectedItems.length < 2) return;
     
-    // The parent names the group (and the KTV app): never a promotion item, prefer a main service.
-    const parent =
-      selectedItems.find(s => !isPromotionItem(s) && !isUtilityService(s)) ??
-      selectedItems.find(s => !isPromotionItem(s)) ??
-      selectedItems[0];
+    // GHÉP DỊCH VỤ: không có chính/con, chỉ có TRƯỚC/SAU — dịch vụ đứng trước trên đơn giữ chặng
+    // (tiện ích như Phòng riêng không đứng trước). KTV của dịch vụ trước làm luôn phút của dịch vụ sau.
+    const parent = pickLeadingService(selectedItems, services, s => isUtilityService(s));
     const children = selectedItems.filter(s => s.id !== parent.id);
-    // KTVs already on the parent also work the children's minutes (VIP 90 + KM 30 → 120p).
+    const removedKtvs = ktvsRemovedByMerge(services, parent.id, children.map(c => c.id));
     const updatedServices = mergeServicesIntoParent(services, parent.id, children);
+    if (removedKtvs.length) alert(tConfirm.mergeRemovedKtvs(removedKtvs));
     
     onUpdateServices(updatedServices);
     onUpdateServices(updatedServices);
@@ -260,6 +262,13 @@ export const QuickDispatchTable = ({
     if (selectedItems.length === 0) return;
     
     let updatedServices = [...services];
+    // Tách khách mà nhóm đang ghép: hủy gộp trước (trừ phút, trả tên) — cùng điều kiện chưa bắt đầu.
+    if (selectedItems.some(p => (p.mergedServiceIds || []).length && (hasStartedWork(p)
+        || services.some(s => (p.mergedServiceIds || []).includes(s.id) && hasStartedWork(s))))) {
+      alert(tConfirm.unmergeStarted);
+      return;
+    }
+    selectedItems.forEach(p => { if ((p.mergedServiceIds || []).length) updatedServices = unmergeFromLeading(updatedServices, p.id); });
     
     selectedItems.forEach(parent => {
         const childrenIds = parent.mergedServiceIds || [];
@@ -319,13 +328,21 @@ export const QuickDispatchTable = ({
     const parent = groupItems[0];
     const childrenIds = parent.mergedServiceIds || [];
     if (childrenIds.length === 0) return;
+    // Đã bắt đầu thì tiền/tua/giờ đang chạy theo chặng ghép — không cho hủy gộp (đổi KTV / kết thúc sớm thay thế).
+    if (hasStartedWork(parent) || services.some(s => childrenIds.includes(s.id) && hasStartedWork(s))) {
+      // Đã xong → chặn cứng (tiền đã chốt). Đang làm → popup xác nhận + lý do, server xử lý (unmergeRunningService).
+      if (hasFinishedWork(parent) || !onUnmergeRunning) { alert(tConfirm.unmergeFinished); return; }
+      void onUnmergeRunning(parent);
+      return;
+    }
 
-    const updatedServices = services.map(svc => {
+    // Trừ lại phút, trả tên gốc, xoá dấu ghép ở dịch vụ sau (lib: unmergeFromLeading).
+    const updatedServices = unmergeFromLeading(services, parent.id).map(svc => {
         if (svc.id === parent.id) {
-            return { ...svc, mergedServiceIds: [], customerGroupId: undefined };
+            return { ...svc, customerGroupId: undefined };
         }
         if (childrenIds.includes(svc.id)) {
-            return { ...svc, mergedIntoId: undefined, customerGroupId: undefined };
+            return { ...svc, customerGroupId: undefined };
         }
         if (svc.customerGroupId === parent.customerGroupId || svc.customerGroupId === parent.id) {
             return { ...svc, customerGroupId: undefined };
@@ -1640,6 +1657,13 @@ const ServiceGroupCard = ({
                 const startT = (state.ktvStartTimes || [])[idx] || '';
                 const endT = (state.ktvEndTimes || [])[idx] || '';
                 const ktvDur = state.ktvDurations?.[idx] ?? duration;
+                // Ghép dịch vụ: quầy được rút ngắn, nhưng phải thấy là đang ngắn hơn tổng 2 dịch vụ.
+                const leadingItem = groupItems[0];
+                const followingItems = (leadingItem?.mergedServiceIds || [])
+                  .map(id => allServices.find(s => s.id === id)).filter((s): s is ServiceBlock => !!s);
+                const mergedTotal = followingItems.length && leadingItem
+                  ? originalMergedMinutes(leadingItem, followingItems, s => isUtilityService(s)) : 0;
+                const shorterThanMerged = mergedTotal > 0 && !!ktvDur && ktvDur < mergedTotal;
                 const ktvNote = (state.ktvNotes || [])[idx] || '';
                 const ownSegment = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => isLiveKtvSegment({ ...seg, ktvId }, ktvId));
                 const timeLocked = !!ownSegment?.actualStartTime || (Number(ownSegment?.sequenceSlot) === 1 && groupItems.some(item => item.staffList.some(row => row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true' && seg.actualStartTime)))) || groupItems.some(item => ['CLEANING', 'FEEDBACK', 'DONE', 'CANCELLED'].includes(item.status || ''));
@@ -1785,6 +1809,11 @@ const ServiceGroupCard = ({
                                 </motion.div>
                             )}
                         </AnimatePresence>
+                        {shorterThanMerged && (
+                            <span className="absolute left-0 top-full mt-0.5 whitespace-nowrap text-[9px] font-bold text-amber-600" role="status">
+                                {tConfirm.mergeShorterThanTotal(ktvDur, mergedTotal)}
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-1">
                       <input type="time" aria-label={canEditBStart || (state.confirmedSequential && idx === 1) ? 'Giờ bắt đầu B' : `Giờ bắt đầu KTV ${idx + 1}`}

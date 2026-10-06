@@ -29,6 +29,19 @@ export const t = {
     assignBSaved: (ktv: string) => `Đã gán lượt B cho ${ktv} và gửi thông báo cho nhân viên.`,
     assignBAlreadySaved: (ktv: string) => `Đã điều phối thành công — lượt B của ${ktv} đã được lưu ở lần bấm trước.`,
 
+    // Ghép dịch vụ ("Gộp chung KTV")
+    mergeRemovedKtvs: (ktvs: string[]) => `Đã ghép dịch vụ. KTV của dịch vụ trước làm luôn dịch vụ sau.\nĐã gỡ ${ktvs.join(', ')} khỏi dịch vụ sau — phân công lại nếu cần.`,
+    unmergeFinished: 'Dịch vụ ghép đã xong — tiền tua đã chốt, không hủy gộp được.',
+    unmergeRunningTitle: 'Hủy gộp dịch vụ đang làm',
+    unmergeRunningConfirm: (lines: string[], follows: string[]) => `Dịch vụ đang làm. Hủy gộp sẽ:\n\n${lines.map(l => `• ${l}`).join('\n')}\n• Tách «${follows.join(', ')}» về chờ điều phối (gán KTV mới nếu khách vẫn làm)\n• Gửi thông báo cho nhân viên\n\nTiếp tục?`,
+    unmergeRunningLine: (ktv: string, before: number, after: number, worked: number) => `${ktv}: ${before} → ${after} phút (đã làm ${worked} phút)`,
+    unmergeRunningReason: 'Lý do hủy gộp (bắt buộc, ít nhất 5 ký tự):',
+    unmergeRunningReasonShort: 'Cần nhập lý do ít nhất 5 ký tự. Chưa hủy gộp.',
+    unmergeRunningDone: 'Đã hủy gộp và gửi thông báo cho nhân viên.',
+    unmergeRunningFailed: (error: string) => `Chưa hủy gộp được: ${error}`,
+    unmergeStarted: 'Dịch vụ ghép đã bắt đầu — không hủy gộp được, vì tiền tua và giờ làm đang tính theo chặng ghép.\nDùng Đổi KTV hoặc Kết thúc sớm nếu cần thay đổi.',
+    mergeShorterThanTotal: (minutes: number, total: number) => `Ngắn hơn tổng 2 dịch vụ (${minutes}/${total} phút)`,
+
     // Nút "Hồ sơ" (i) & tạo đơn nhanh — liên kết hồ sơ khách
     customerNotLinked: 'Đơn chưa liên kết hồ sơ khách và không có SĐT/email để tìm.\nMở trang Khách Hàng để tạo hoặc gán hồ sơ cho đơn.',
     customerProfileMissing: 'Hồ sơ khách gắn với đơn không còn tồn tại. Kiểm tra trong trang Khách Hàng.',
