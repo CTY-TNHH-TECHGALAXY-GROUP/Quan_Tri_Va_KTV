@@ -26,8 +26,16 @@ const CARD_W_MM = '90mm';
 const CARD_H_MM = '55mm';
 const STUB_PERCENT = 27; // 27% width for ticket stub (cuống vé)
 const STUB_QR_SIZE = 48; // QR on stub
-const BACK_QR_SIZE = 72; // QR on back
+const BACK_QR_SIZE = 64; // QR on back
 const PRINT_ROOT_ID = 'voucher-card-print-root';
+
+// Thông tin liên hệ mặc định của Oria Spa (đồng bộ với cấu hình SystemConfigs & bản A5)
+const DEFAULT_CONTACT = {
+  brandName: 'ORIA SPA',
+  hotline: '+84 964 090 277',
+  address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
+  websiteUrl: 'https://oria-spa.vercel.app',
+};
 
 const PRINT_CARD_CSS = `
 @page {
@@ -92,11 +100,18 @@ const VoucherCardPrint = () => {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const params = useSearchParams();
-  const contact = useSpaContact();
+  const contactFromHook = useSpaContact();
   const [lang, setLang] = useState<PromotionEmailLang>('vi');
   const autoPrinted = useRef(false);
   const pass = usePromotionQuery(() => promotionApi.getPass(id), [id]);
   const p = pass.state.status === 'success' ? pass.state.data : null;
+
+  // Sử dụng thông tin từ DB hoặc fallback mặc định chính thức của Oria Spa (không bao giờ bị trống)
+  const contact = contactFromHook || DEFAULT_CONTACT;
+  const brandName = contact.brandName || DEFAULT_CONTACT.brandName;
+  const hotline = contact.hotline || DEFAULT_CONTACT.hotline;
+  const address = contact.address || DEFAULT_CONTACT.address;
+  const website = (contact.websiteUrl || DEFAULT_CONTACT.websiteUrl).replace(/^https?:\/\//, '').replace(/\/$/, '');
 
   // ?auto=1: open the browser print dialog once data is loaded
   useEffect(() => {
@@ -116,15 +131,10 @@ const VoucherCardPrint = () => {
   const conditions = formatPromotionConditions(p.conditionsSummary, lang);
   const conditionText = conditions.length ? L.conditionPrefix(conditions.join('; ')) : null;
   const campaignName = pickPromotionText(p.campaign.name, p.campaign.nameI18n, lang);
-  const brandName = contact?.brandName ?? 'ORIA SPA';
-  const hotline = contact?.hotline;
-  const address = contact?.address;
-  const website = (contact?.websiteUrl ?? '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const hasContact = Boolean(hotline || address || website);
 
   const renderCardFaces = (forPrint = false) => (
     <div className={forPrint ? '' : 'flex flex-col lg:flex-row items-center justify-center gap-8 py-4'}>
-      {/* ──────────────── MẶT TRƯỚC (FRONT: ĐẦY ĐỦ THÂN VÉ + CUỐNG VÉ NHƯ EVOUCHER GỐC) ──────────────── */}
+      {/* ──────────────── MẶT TRƯỚC (FRONT: 90 x 55 mm) ──────────────── */}
       <div className={forPrint ? '' : 'flex flex-col items-center gap-2'}>
         {!forPrint && (
           <span className="text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-100 px-3 py-1 rounded-full">
@@ -143,17 +153,17 @@ const VoucherCardPrint = () => {
           }}
           lang={lang}
         >
-          {/* Botanical ornaments (đúng tỉ lệ & vị trí như VoucherCard3D) */}
+          {/* Botanical ornaments */}
           <Sprig className="pointer-events-none absolute -left-[5%] top-[16%] w-[22%] rotate-[100deg] opacity-85" />
           <Sprig className="pointer-events-none absolute left-[22%] -top-[4%] w-[24%] rotate-[6deg] opacity-80" />
           <Sprig className="pointer-events-none absolute -right-[4%] -top-[4%] w-[16%] -scale-x-100 rotate-[160deg] opacity-80" />
           <SpaStill
             className="pointer-events-none absolute w-[28%] opacity-90"
-            style={{ right: `${STUB_PERCENT + 1}%`, bottom: hasContact ? '18%' : '5%' }}
+            style={{ right: `${STUB_PERCENT + 1}%`, bottom: '20%' }}
           />
           <Mortar
             className="pointer-events-none absolute -right-[2%] w-[18%] opacity-85"
-            style={{ bottom: hasContact ? '17%' : '4%' }}
+            style={{ bottom: '18%' }}
           />
 
           {/* Vết khuyết vé (Ticket Notches) cắt vào mép trên/dưới tại rãnh xé */}
@@ -161,12 +171,6 @@ const VoucherCardPrint = () => {
             className="pointer-events-none absolute -top-2 w-3.5 h-3.5 rounded-full bg-white z-20"
             style={{ right: `calc(${STUB_PERCENT}% - 7px)` }}
           />
-          {!hasContact && (
-            <div
-              className="pointer-events-none absolute -bottom-2 w-3.5 h-3.5 rounded-full bg-white z-20"
-              style={{ right: `calc(${STUB_PERCENT}% - 7px)` }}
-            />
-          )}
 
           {/* NỘI DUNG 2 PHẦN: THÂN VÉ (73%) + ĐƯỜNG XÉ + CUỐNG VÉ (27%) */}
           <div className="relative z-10 flex min-h-0 flex-1">
@@ -257,40 +261,34 @@ const VoucherCardPrint = () => {
             </div>
           </div>
 
-          {/* DẢI BĂNG LIÊN HỆ ĐÁY THẺ (CONTACT FOOTER BAND NÂU ĐẬM) */}
-          {hasContact && (
-            <div
-              className="relative z-10 flex shrink-0 items-center justify-between px-3 py-1 text-[7px] border-t border-[#F4A64A]/30"
-              style={{ backgroundColor: ORIA.band, color: ORIA.bandText }}
-            >
-              {hotline && (
-                <span className="inline-flex items-center gap-1 font-bold">
-                  <Phone size={8} aria-hidden />
-                  {hotline}
-                </span>
-              )}
-              {address && (
-                <span className="inline-flex items-center gap-1 truncate max-w-[50%]">
-                  <MapPin size={8} className="shrink-0" aria-hidden />
-                  <span className="truncate">{address}</span>
-                </span>
-              )}
-              {website && (
-                <span className="inline-flex items-center gap-1">
-                  <Globe size={8} className="shrink-0" aria-hidden />
-                  <span>{website}</span>
-                </span>
-              )}
+          {/* DẢI BĂNG LIÊN HỆ ĐÁY THẺ (HOTLINE · WEBSITE · ĐỊA CHỈ) */}
+          <div
+            className="relative z-10 flex shrink-0 flex-col justify-center px-3 py-1 text-[7px] border-t border-[#F4A64A]/30 leading-tight"
+            style={{ backgroundColor: ORIA.band, color: ORIA.bandText }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1 font-bold">
+                <Phone size={7.5} aria-hidden />
+                <span>{page.hotline || 'Hotline'}: {hotline}</span>
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Globe size={7.5} aria-hidden />
+                <span>{website}</span>
+              </span>
             </div>
-          )}
+            <div className="inline-flex items-center gap-1 mt-0.5 text-[6.8px] opacity-90">
+              <MapPin size={7.5} className="shrink-0" aria-hidden />
+              <span className="truncate">{page.address || 'Địa chỉ'}: {address}</span>
+            </div>
+          </div>
         </article>
       </div>
 
-      {/* ──────────────── MẶT SAU (BACK: GIẤY NGÀ CHI TIẾT + QR LỚN + ĐIỀU KIỆN) ──────────────── */}
+      {/* ──────────────── MẶT SAU (BACK: ĐẦY ĐỦ THÔNG TIN LIÊN HỆ NHƯ BẢN PDF A5) ──────────────── */}
       <div className={forPrint ? '' : 'flex flex-col items-center gap-2'}>
         {!forPrint && (
           <span className="text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-100 px-3 py-1 rounded-full">
-            Mặt Sau — Điều Kiện & Tra Cứu (90 x 55 mm)
+            Mặt Sau — Điều Kiện & Liên Hệ Đầy Đủ (90 x 55 mm)
           </span>
         )}
         <article
@@ -307,12 +305,12 @@ const VoucherCardPrint = () => {
         >
           {/* Botanical ornaments */}
           <Sprig className="pointer-events-none absolute -right-2 -top-2 w-[22%] -scale-x-100 rotate-[175deg] opacity-75" />
-          <Cinnamon className="pointer-events-none absolute right-[2%] bottom-[16%] w-[15%] opacity-80" />
+          <Cinnamon className="pointer-events-none absolute right-[2%] bottom-[16%] w-[15%] opacity-75" />
 
-          {/* Body: Cột trái QR lớn + Mã, Cột phải Thông tin chi tiết */}
-          <div className="relative z-10 flex flex-1 items-center gap-2.5 px-3 pt-2">
-            {/* Cột trái: QR lớn ~20mm */}
-            <div className="flex shrink-0 flex-col items-center gap-1">
+          {/* Body: Cột trái QR lớn + Mã, Cột phải Thông tin chi tiết + Khối liên hệ */}
+          <div className="relative z-10 flex flex-1 items-start gap-2.5 px-3 pt-2">
+            {/* Cột trái: QR lớn ~18mm + Mã voucher */}
+            <div className="flex shrink-0 flex-col items-center gap-1 mt-0.5">
               <div
                 className="flex items-center justify-center rounded-xl p-1 shadow-sm ring-1 ring-[#2B1A0E]/15"
                 style={{ backgroundColor: '#FFFDF7' }}
@@ -327,20 +325,20 @@ const VoucherCardPrint = () => {
                     bgColor="#FFFDF7"
                   />
                 ) : (
-                  <div className="h-[72px] w-[72px] flex items-center justify-center text-[8px] text-gray-400">
+                  <div className="h-[64px] w-[64px] flex items-center justify-center text-[8px] text-gray-400">
                     No QR
                   </div>
                 )}
               </div>
-              <span className="font-mono text-[9px] font-bold tracking-wider text-[#2B1A0E]">
+              <span className="font-mono text-[8.5px] font-bold tracking-wider text-[#2B1A0E]">
                 {p.voucherCode}
               </span>
             </div>
 
-            {/* Cột phải: Thông tin & điều kiện sử dụng */}
-            <div className="min-w-0 flex-1 space-y-1 text-[8px] leading-tight">
+            {/* Cột phải: Thông tin điều kiện + KHỐI LIÊN HỆ ĐẦY ĐỦ NHƯ BẢNG A5 */}
+            <div className="min-w-0 flex-1 space-y-1 text-[7.5px] leading-tight">
               <div>
-                <p className={`${voucherBrush.className} text-[15px] leading-none text-[#2B1A0E]`}>
+                <p className={`${voucherBrush.className} text-[14px] leading-none text-[#2B1A0E]`}>
                   {brandName}
                 </p>
                 {p.customer.name && (
@@ -361,43 +359,37 @@ const VoucherCardPrint = () => {
                 <span className="font-semibold" style={{ color: ORIA.inkSoft }}>
                   {page.applicableMenus}:
                 </span>{' '}
-                <span className="font-medium line-clamp-2">
+                <span className="font-medium line-clamp-1">
                   {conditions.length ? conditions.join('; ') : page.allMenus}
                 </span>
               </div>
 
-              <p className="line-clamp-1 italic text-[7.5px]" style={{ color: ORIA.inkSoft }}>
-                {L.qrInstruction}
-              </p>
+              {/* 📞 KHỐI LIÊN HỆ ĐẦY ĐỦ Y NHƯ BẢNG A5 (HOTLINE · ĐỊA CHỈ · WEBSITE) */}
+              <div className="mt-1 pt-1 border-t border-[#E8D0B3] space-y-0.5 text-[7px] text-[#6B4A2A]">
+                <p className="flex items-center gap-1 font-semibold text-[#2B1A0E]">
+                  <Phone size={7.5} className="shrink-0 text-[#8B4513]" aria-hidden />
+                  <span>{page.hotline || 'Hotline'}: {hotline}</span>
+                </p>
+                <p className="flex items-start gap-1 text-[#2B1A0E]">
+                  <MapPin size={7.5} className="shrink-0 text-[#8B4513] mt-0.5" aria-hidden />
+                  <span className="line-clamp-2 leading-tight">{page.address || 'Địa chỉ'}: {address}</span>
+                </p>
+                <p className="flex items-center gap-1 text-[#2B1A0E]">
+                  <Globe size={7.5} className="shrink-0 text-[#8B4513]" aria-hidden />
+                  <span>Website: {website}</span>
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Dải chân trang thông tin liên hệ */}
-          {hasContact && (
-            <div
-              className="relative z-10 flex items-center justify-between px-3 py-1 text-[7px] font-medium border-t border-[#F4A64A]/30"
-              style={{ backgroundColor: ORIA.band, color: ORIA.bandText }}
-            >
-              {hotline && (
-                <span className="inline-flex items-center gap-1 font-bold">
-                  <Phone size={8} aria-hidden />
-                  {hotline}
-                </span>
-              )}
-              {address && (
-                <span className="inline-flex items-center gap-1 truncate max-w-[50%]">
-                  <MapPin size={8} className="shrink-0" aria-hidden />
-                  <span className="truncate">{address}</span>
-                </span>
-              )}
-              {website && (
-                <span className="inline-flex items-center gap-1">
-                  <Globe size={8} className="shrink-0" aria-hidden />
-                  <span>{website}</span>
-                </span>
-              )}
-            </div>
-          )}
+          {/* Dải chân trang dập chìm Oria */}
+          <div
+            className="relative z-10 flex items-center justify-between px-3 py-0.5 text-[6.5px] border-t border-[#F4A64A]/25"
+            style={{ backgroundColor: 'rgba(244,166,74,0.15)', color: ORIA.inkSoft }}
+          >
+            <span>{page.contactToApply(brandName)}</span>
+            <span className="italic font-medium">{L.qrInstruction}</span>
+          </div>
         </article>
       </div>
     </div>
@@ -428,9 +420,9 @@ const VoucherCardPrint = () => {
         </button>
       </div>
 
-      <div className="rounded-xl bg-amber-50/70 border border-amber-200/60 p-3 text-xs text-amber-900 print:hidden flex items-center justify-between">
+      <div className="rounded-xl bg-amber-50/70 border border-amber-200/60 p-3 text-xs text-amber-900 print:hidden flex flex-wrap items-center justify-between gap-2">
         <span>💡 {t.print.hintCard}</span>
-        <span className="font-semibold text-amber-800">Khổ chuẩn: 90 x 55 mm (2 mặt)</span>
+        <span className="font-semibold text-amber-800">Đầy đủ Hotline, Địa chỉ & Website như bản A5</span>
       </div>
 
       {/* Khung xem trước trên màn hình */}
