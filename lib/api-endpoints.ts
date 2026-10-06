@@ -55,6 +55,7 @@ export const API = {
   ROOMS: '/api/rooms',
   CUSTOMERS: '/api/customers',
   CUSTOMERS_EXPORT: '/api/customers/export',
+  TAX_LOOKUP: '/api/reception/tax-lookup',
   EMPLOYEES: '/api/employees',
   STAFF_LIST: '/api/staff/list',
   TURNS: '/api/turns',

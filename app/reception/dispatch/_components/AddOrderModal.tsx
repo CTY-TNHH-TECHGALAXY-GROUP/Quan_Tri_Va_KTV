@@ -2,8 +2,13 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, Phone, Loader2, Plus, Minus, Search, Clock, Tag, Image as ImageIcon, Globe, Users, Flag } from 'lucide-react';
+import { X, User, Phone, Loader2, Plus, Minus, Search, Clock, Tag, Image as ImageIcon, Globe, Users, Flag, Building2, UserCheck } from 'lucide-react';
 import { searchCustomers } from '../actions';
+import { apiClient } from '@/lib/apiClient';
+import { API } from '@/lib/api-endpoints';
+import { isDummyEmail, isGuestPlaceholderPhone } from '@/lib/customer.logic';
+import { normalizeTaxCode, type VatInvoiceInput } from '@/lib/services/CustomerVatService';
+import { t } from './AddOrderModal.i18n';
 
 interface ServiceOption {
   id: string;
@@ -22,7 +27,7 @@ interface AddOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   services: ServiceOption[];
-  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; vatRequested?: boolean; }) => Promise<void>;
+  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; vatRequested?: boolean; customerId?: string | null; vatInvoice?: VatInvoiceInput | null; }) => Promise<void>;
   selectedDate: string;
 }
 
@@ -41,6 +46,8 @@ const NATIONALITY_OPTIONS = [
 
 // 🔧 UI CONFIGURATION
 const ANIMATION_DURATION = 0.3;
+const VAT_FIELD_LABEL = 'text-[10px] font-black text-gray-400 uppercase tracking-wider ml-1';
+const VAT_FIELD_INPUT = 'w-full px-3 py-2.5 min-h-[44px] bg-white border border-gray-100 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all outline-none text-sm font-semibold text-gray-700 placeholder:text-gray-300';
 
 export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDate }: AddOrderModalProps) => {
   const [customerName, setCustomerName] = useState('');
@@ -51,6 +58,16 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
   const [guestCount, setGuestCount] = useState<number>(1);
   const [nationality, setNationality] = useState<string>('');
   const [vatRequested, setVatRequested] = useState<boolean>(false);
+  // Hồ sơ quầy chọn từ ô gợi ý — gắn thẳng vào đơn, service không tìm/tạo lại (kể cả hồ sơ chỉ có SĐT GUEST-).
+  const [selectedCustomer, setSelectedCustomer] = useState<{ id: string; fullName: string } | null>(null);
+  // Hoá đơn VAT công ty — cùng 5 trường với WRB nội bộ (CustomerVatService).
+  const [taxCode, setTaxCode] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [companyEmail, setCompanyEmail] = useState('');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [taxLookup, setTaxLookup] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [taxLookupError, setTaxLookupError] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('Tất cả');
@@ -100,14 +117,51 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
 
   const handleSelectCustomer = (customer: any) => {
     setCustomerName(customer.fullName || '');
-    if (customer.phone) {
+    setSelectedCustomer({ id: customer.id, fullName: customer.fullName || '' });
+    // SĐT giả GUEST-… / email ảo không phải liên hệ: để trống ô, liên kết đã đi theo customerId.
+    if (customer.phone && !isGuestPlaceholderPhone(customer.phone)) {
       setContactType('phone');
       setContactValue(customer.phone);
-    } else if (customer.email) {
+    } else if (customer.email && !isDummyEmail(customer.email)) {
       setContactType('email');
       setContactValue(customer.email);
+    } else {
+      setContactValue('');
     }
     setShowSuggestions(false);
+  };
+
+  const resetVatFields = () => {
+    setTaxCode('');
+    setCompanyName('');
+    setCompanyAddress('');
+    setCompanyEmail('');
+    setCompanyPhone('');
+    setTaxLookup('idle');
+    setTaxLookupError('');
+  };
+
+  const handleTaxLookup = async () => {
+    const code = normalizeTaxCode(taxCode);
+    if (!code) {
+      setTaxLookup('error');
+      setTaxLookupError(t.taxCodeInvalid);
+      return;
+    }
+    setTaxLookup('loading');
+    setTaxLookupError('');
+    try {
+      const res = await apiClient.get<any>(`${API.TAX_LOOKUP}?taxCode=${encodeURIComponent(code)}`);
+      if (!res?.success || !res.data) throw new Error(res?.error || t.lookupFailed);
+      setTaxCode(res.data.taxCode || code);
+      if (res.data.companyName) setCompanyName(res.data.companyName);
+      if (res.data.companyAddress) setCompanyAddress(res.data.companyAddress);
+      if (res.data.companyPhone && !companyPhone) setCompanyPhone(res.data.companyPhone);
+      setTaxLookup('idle');
+    } catch (err) {
+      setTaxLookup('error');
+      setTaxLookupError(err instanceof Error && err.message ? err.message : t.lookupFailed);
+    }
   };
 
   const categories = useMemo(() => {
@@ -134,6 +188,11 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
       alert('Vui lòng nhập tên khách và chọn dịch vụ!');
       return;
     }
+    // MST gõ dở thì chặn ngay; để trống MST vẫn cho đi (đơn chỉ được đánh dấu cần VAT).
+    if (vatRequested && taxCode.trim() && !normalizeTaxCode(taxCode)) {
+      alert(t.taxCodeInvalid);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -146,10 +205,15 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
         guestCount,
         nationality,
         isTestOrder,
-        vatRequested
+        vatRequested,
+        customerId: selectedCustomer?.id ?? null,
+        vatInvoice: vatRequested ? { taxCode, companyName, companyAddress, companyEmail, companyPhone } : null,
       });
       // Reset after success
       setCustomerName('');
+      setSelectedCustomer(null);
+      setVatRequested(false);
+      resetVatFields();
       setContactType('phone');
       setContactValue('');
       setServiceIds([]);
@@ -212,6 +276,7 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                     value={customerName}
                     onChange={(e) => {
                       setCustomerName(e.target.value);
+                      setSelectedCustomer(null);
                       setShowSuggestions(true);
                     }}
                     onFocus={() => {
@@ -256,6 +321,21 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                   </AnimatePresence>
                 </div>
               </div>
+
+              {selectedCustomer && (
+                <div className="shrink-0 -mt-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-xs">
+                  <UserCheck size={14} className="text-emerald-600 shrink-0" />
+                  <span className="font-bold text-emerald-700 truncate">{t.selectedCustomer(selectedCustomer.fullName)}</span>
+                  <span className="hidden sm:inline text-emerald-600/70 truncate">{t.selectedCustomerHint}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomer(null)}
+                    className="ml-auto shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                  >
+                    {t.clearSelectedCustomer}
+                  </button>
+                </div>
+              )}
 
               {/* Row 2: Language + Contact side by side */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
@@ -327,7 +407,7 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                     <input
                       type={contactType === 'phone' ? 'tel' : 'email'}
                       value={contactValue}
-                      onChange={(e) => setContactValue(e.target.value)}
+                      onChange={(e) => { setContactValue(e.target.value); setSelectedCustomer(null); }}
                       placeholder={contactType === 'phone' ? '+84 123 456 789' : 'abc@gmail.com'}
                       className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all outline-none font-bold text-gray-700 placeholder:text-gray-300 text-sm"
                     />
@@ -431,19 +511,68 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2">
-                    <label className="relative inline-flex items-center cursor-pointer group">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer"
-                        checked={vatRequested}
-                        onChange={(e) => setVatRequested(e.target.checked)}
-                      />
-                      <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 shadow-sm border border-gray-100 group-hover:shadow-md transition-all"></div>
-                    </label>
-                    <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                      Yêu cầu xuất Hóa đơn VAT
-                    </span>
+                  <div className="pt-2 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <label className="relative inline-flex items-center cursor-pointer group">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer"
+                          checked={vatRequested}
+                          onChange={(e) => { setVatRequested(e.target.checked); if (!e.target.checked) resetVatFields(); }}
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 shadow-sm border border-gray-100 group-hover:shadow-md transition-all"></div>
+                      </label>
+                      <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                        <Building2 size={14} className="text-amber-500" /> {t.vatToggle}
+                      </span>
+                    </div>
+
+                    {vatRequested && (
+                      <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-3 space-y-3">
+                        <p className="text-[11px] text-amber-700/80 leading-snug">{t.vatHint}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className={VAT_FIELD_LABEL}>{t.taxCode}</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={taxCode}
+                                onChange={(e) => { setTaxCode(e.target.value); if (taxLookup === 'error') setTaxLookup('idle'); }}
+                                placeholder={t.taxCodePlaceholder}
+                                className={VAT_FIELD_INPUT}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleTaxLookup}
+                                disabled={taxLookup === 'loading' || !taxCode.trim()}
+                                className="shrink-0 min-h-[44px] px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 transition-colors"
+                              >
+                                {taxLookup === 'loading' ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                                {taxLookup === 'loading' ? t.looking : t.lookup}
+                              </button>
+                            </div>
+                            {taxLookup === 'error' && <p className="text-[11px] font-semibold text-rose-600 ml-1">{taxLookupError}</p>}
+                          </div>
+                          <div className="space-y-1">
+                            <label className={VAT_FIELD_LABEL}>{t.companyName}</label>
+                            <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder={t.companyNamePlaceholder} className={VAT_FIELD_INPUT} />
+                          </div>
+                          <div className="space-y-1 sm:col-span-2">
+                            <label className={VAT_FIELD_LABEL}>{t.companyAddress}</label>
+                            <input type="text" value={companyAddress} onChange={(e) => setCompanyAddress(e.target.value)} placeholder={t.companyAddressPlaceholder} className={VAT_FIELD_INPUT} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className={VAT_FIELD_LABEL}>{t.companyEmail}</label>
+                            <input type="email" value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} placeholder={t.companyEmailPlaceholder} className={VAT_FIELD_INPUT} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className={VAT_FIELD_LABEL}>{t.companyPhone}</label>
+                            <input type="tel" value={companyPhone} onChange={(e) => setCompanyPhone(e.target.value)} placeholder={t.companyPhonePlaceholder} className={VAT_FIELD_INPUT} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

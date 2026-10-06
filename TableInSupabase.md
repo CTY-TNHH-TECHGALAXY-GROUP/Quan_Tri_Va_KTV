@@ -28,6 +28,7 @@
 | `focusAreaNote` | text | Ghi chú vùng cần tập trung (VD: "Đau vai") |
 | `notes` | text | Ghi chú đơn hàng chung |
 | `guestCount` | integer | Số lượng khách (1: Khách lẻ, >1: Khách nhóm) |
+| `vatRequested` | boolean | Đơn này cần xuất hoá đơn VAT (default false). Ghi bởi tạo đơn nhanh ở Dispatch; RPC tách đơn copy xuống đơn con. Nhãn VAT trên Kanban = cột này HOẶC khách có `taxCode` (`hasVatBadge` trong `CustomerVatService`) |
 | `customerGender` | text | Giới tính khách hàng (male / female) |
 | `technicianCode` | text | Mã KTV chính được phân công |
 | `reception_feedback` | text | Đánh giá/phản hồi chung của quầy Lễ tân cho đơn hàng này |
@@ -704,6 +705,13 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `birthday` | timestamp | Ngày sinh |
 | `notes` | text | Ghi chú (sở thích, dị ứng...) |
 | `avatar_url` | text | Ảnh đại diện của khách (lưu public url từ Supabase Storage bucket `avatars/customers`) |
+| `taxCode` | text | Mã số thuế công ty (có → khách "cần VAT") |
+| `companyName` | text | Tên công ty xuất hoá đơn |
+| `companyAddress` | text | Địa chỉ công ty |
+| `companyEmail` | text | Email nhận hoá đơn |
+| `companyPhone` | text | SĐT công ty |
+
+> ⚠️ **Không có cột `vatRequested` trên `Customers`.** Cờ "đơn này cần VAT" nằm ở `Bookings.vatRequested`; thông tin công ty ở 5 cột trên (WRB nội bộ và admin cùng ghi). Insert kèm cột không tồn tại sẽ bị PostgREST từ chối — đây là lỗi làm hồ sơ khách vãng lai không được tạo từ 22/08 đến 06/10/2026.
 | `lastVisited` | timestamp | Lần ghé thăm gần nhất |
 | `createdAt` | timestamp | Thời điểm tạo |
 | `updatedAt` | timestamp | Thời điểm cập nhật |

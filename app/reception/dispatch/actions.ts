@@ -20,6 +20,7 @@ import { ensureTurnQueueRowForSequentialB, renameMetadataKey } from '@/lib/dispa
 import { checkedInStaffIds } from '@/lib/attendance/checkedInToday';
 import { findKtvsNeedingCheckinConfirm } from '@/lib/attendance/dispatchCheckinGate';
 import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, isNameMatch } from '@/lib/customer.logic';
+import { hasVatBadge } from '@/lib/services/CustomerVatService';
 import { unstable_noStore as noStore } from 'next/cache';
 import { after } from 'next/server';
 
@@ -279,7 +280,7 @@ export async function getDispatchData(date: string, _timestamp?: number) {
         // 🔧 EGRESS FIX: Only select needed columns for Bookings
         const { data: bData, error: bError } = await supabase
             .from('Bookings')
-            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, rating_scale, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix')
+            .select('id, billCode, customerId, customerName, customerLang, customerPhone, customerEmail, timeBooking, bookingDate, createdAt, updatedAt, status, totalAmount, paymentMethod, technicianCode, bedId, roomName, notes, accessToken, rating, rating_scale, feedbackNote, focusAreaNote, timeStart, timeEnd, source, guestCount, nationality, customerGender, parent_booking_id, sub_suffix, vatRequested')
             .in('source', ['STANDARD_WALK_IN', 'VIP_WALK_IN', 'MIXED_WALK_IN'])
             .gte('bookingDate', startOfDay)
             .lte('bookingDate', endOfDay)
@@ -300,7 +301,8 @@ export async function getDispatchData(date: string, _timestamp?: number) {
 
         bookings = bookings.map(b => ({
             ...b,
-            hasVat: !!taxCodeMap[b.customerId]
+            // Nhãn VAT: khách có MST HOẶC quầy đánh dấu đơn cần hoá đơn — một công thức (CustomerVatService).
+            hasVat: hasVatBadge(taxCodeMap[b.customerId], b.vatRequested)
         }));
 
         // Fetch historical visits for returning customer tag (using shared library)
@@ -2439,7 +2441,7 @@ export async function updateBookingItemStatus(itemIds: string[], newStatus: stri
     }
 }
 
-export async function createQuickBooking(data: { customerName: string; customerPhone?: string; customerEmail?: string; serviceIds: string[]; bookingDate: string; customerLang?: string; guestCount?: number; nationality?: string; isTestOrder?: boolean; vatRequested?: boolean; }) {
+export async function createQuickBooking(data: Parameters<typeof BookingModificationService.createQuickBooking>[0]) {
     await requirePermission('dispatch_board');
     return await BookingModificationService.createQuickBooking(data);
 }

@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
 import { createNotification } from '@/lib/notification-helper';
 import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
+import { resolveQuickBookingCustomer } from '@/lib/services/QuickBookingCustomerService';
+import type { VatInvoiceInput } from '@/lib/services/CustomerVatService';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
 
 export class BookingModificationService {
@@ -19,7 +21,12 @@ export class BookingModificationService {
         nationality?: string;
         customerGender?: string;
         isTestOrder?: boolean;
+        /** Hồ sơ quầy đã chọn trong ô gợi ý — gắn thẳng, không tìm/tạo lại. */
+        customerId?: string | null;
+        /** Đơn này cần xuất hoá đơn (ghi `Bookings.vatRequested`). */
         vatRequested?: boolean;
+        /** Thông tin công ty để ghi 5 cột VAT trên `Customers` (giống WRB). */
+        vatInvoice?: VatInvoiceInput | null;
     }) {
         try {
             await requirePermission('dispatch_board');
@@ -63,89 +70,22 @@ export class BookingModificationService {
 
             const totalAmount = svcs.reduce((acc, svc) => acc + (svc.priceVND || 0), 0);
 
-            // 2.5 Auto-create Customer record for walk-in guests
-            // If phone/email are dummy values, create a unique Customer so they show up in CRM
-            let customerId: string | null = null;
-            let phone = data.customerPhone || '';
-            let email = data.customerEmail || '';
-
-            // BẮT BUỘC: Ép các email/phone ảo thành rỗng ngay tại đây
-            // (Đề phòng trường hợp Next.js HMR không cập nhật hàm isDummyEmail)
-            const cleanEmail = email.trim().toLowerCase();
-            if (cleanEmail === 'aa' || cleanEmail === 'a' || (email && !email.includes('@'))) {
-                email = '';
-            }
-            if (/^0+$/.test(phone.trim())) {
-                phone = '';
-            }
-
-            // Try to find existing Customer by real phone or email
-            let existingCustomer: any = null;
-
-            if (!isDummyPhone(phone) && !phone.startsWith('GUEST-')) {
-                const { data: existing } = await supabase.from('Customers').select('id, phone, email, nationality').eq('phone', phone).maybeSingle();
-                if (existing) existingCustomer = existing;
-            }
-
-            // Nếu không tìm thấy bằng SĐT nhưng có email thật, tìm tiếp bằng email
-            if (!existingCustomer && !isDummyEmail(email)) {
-                const { data: existing } = await supabase.from('Customers').select('id, phone, email, nationality').eq('email', email).maybeSingle();
-                if (existing) existingCustomer = existing;
-            }
-
-            if (existingCustomer) {
-                customerId = existingCustomer.id;
-                // Data Enrichment: Cập nhật thông tin còn thiếu (Lấp đầy thông tin)
-                const updates: any = {};
-                
-                const isExistingPhoneDummy = isDummyPhone(existingCustomer.phone) || (existingCustomer.phone || '').startsWith('GUEST-');
-                const isNewPhoneReal = !isDummyPhone(phone) && !phone.startsWith('GUEST-');
-                
-                // Cập nhật SĐT thật nếu DB đang lưu SĐT ảo
-                if (isExistingPhoneDummy && isNewPhoneReal) {
-                    updates.phone = phone;
-                }
-                
-                // Cập nhật Email thật nếu DB đang lưu email ảo
-                if (isDummyEmail(existingCustomer.email || '') && !isDummyEmail(email)) {
-                    updates.email = email;
-                }
-                
-                // Cập nhật quốc tịch nếu DB đang trống
-                if (!existingCustomer.nationality && data.nationality) {
-                    updates.nationality = data.nationality;
-                }
-
-                if (Object.keys(updates).length > 0) {
-                    updates.updatedAt = new Date().toISOString();
-                    await supabase.from('Customers').update(updates).eq('id', customerId);
-                }
-            }
-
-            // If no existing Customer found, create a new one
-            if (!customerId) {
-                const now = new Date().toISOString();
-                const ts = Date.now();
-                customerId = `CUS-${ts}-${Math.floor(Math.random() * 100)}`;
-                const guestCode = `GUEST-${ts}`;
-                const guestPhone = isDummyPhone(phone) ? guestCode : phone;
-                const guestEmail = isDummyEmail(email) ? `guest${ts}@guest.com` : email;
-
-                const { error: cusError } = await supabase.from('Customers').insert({
-                    id: customerId,
-                    fullName: data.customerName,
-                    phone: guestPhone,
-                    email: guestEmail,
-                    nationality: data.nationality || null,
-                    vatRequested: data.vatRequested || false,
-                    createdAt: now,
-                    updatedAt: now,
-                });
-                if (cusError) {
-                    console.error('⚠️ [Server] Auto-create Customer failed (non-blocking):', cusError.message);
-                    customerId = null; // Don't block booking creation
-                }
-            }
+            // 2.5 Hồ sơ khách: chọn sẵn → SĐT thật → SĐT GUEST- (exact) → email → tạo mới.
+            // Lỗi tạo hồ sơ KHÔNG chặn tạo đơn nhưng phải trả `warning` để quầy biết.
+            // Bài học 22/08–06/10/2026: INSERT kèm cột không tồn tại bị nuốt im lặng,
+            // 6 tuần không khách vãng lai mới nào có hồ sơ CRM mà không ai hay.
+            const customer = await resolveQuickBookingCustomer(supabase, {
+                customerId: data.customerId,
+                customerName: data.customerName,
+                customerPhone: data.customerPhone,
+                customerEmail: data.customerEmail,
+                nationality: data.nationality,
+                vatInvoice: data.vatInvoice,
+            });
+            const customerId = customer.customerId;
+            // Cờ VAT theo ĐƠN (cột có thật trên Bookings). `Customers` không có cột này —
+            // thông tin công ty nằm ở 5 cột taxCode/company* (xem CustomerVatService).
+            const vatRequested = data.vatRequested === true || customer.vat !== null;
 
             // 3. Tạo Booking
             const { data: booking, error: bError } = await supabase
@@ -165,6 +105,7 @@ export class BookingModificationService {
                     paymentMethod: 'Tiền mặt',
                     guestCount: data.guestCount || 1,
                     nationality: data.nationality || null,
+                    vatRequested,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 })
@@ -224,7 +165,7 @@ export class BookingModificationService {
                 message: msg,
             });
 
-            return { success: true, bookingId: booking.id };
+            return { success: true, bookingId: booking.id, customerId, warning: customer.warning };
         } catch (error: any) {
             console.error('❌ [Server] createQuickBooking error:', error);
             return { success: false, error: error.message };

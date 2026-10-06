@@ -28,4 +28,12 @@ export const t = {
     assignBServiceNameLabel: 'Nhập tên dịch vụ (nếu có thay đổi)',
     assignBSaved: (ktv: string) => `Đã gán lượt B cho ${ktv} và gửi thông báo cho nhân viên.`,
     assignBAlreadySaved: (ktv: string) => `Đã điều phối thành công — lượt B của ${ktv} đã được lưu ở lần bấm trước.`,
+
+    // Nút "Hồ sơ" (i) & tạo đơn nhanh — liên kết hồ sơ khách
+    customerNotLinked: 'Đơn chưa liên kết hồ sơ khách và không có SĐT/email để tìm.\nMở trang Khách Hàng để tạo hoặc gán hồ sơ cho đơn.',
+    customerProfileMissing: 'Hồ sơ khách gắn với đơn không còn tồn tại. Kiểm tra trong trang Khách Hàng.',
+    customerAmbiguous: 'Có nhiều hồ sơ trùng thông tin liên hệ. Vui lòng đối soát trong trang Khách Hàng.',
+    customerLoadFailed: 'Không tải được hồ sơ khách hàng',
+    customerNotCreated: 'Đã tạo đơn nhưng CHƯA tạo được hồ sơ khách.\nVào trang Khách Hàng tạo hồ sơ rồi gán lại cho đơn, nếu không lượt ghé và khuyến mãi của khách sẽ không được ghi nhận.',
+    customerSelectedMissing: 'Hồ sơ khách đã chọn không còn tồn tại. Hệ thống đã tìm/tạo hồ sơ theo SĐT/email của đơn.',
 };

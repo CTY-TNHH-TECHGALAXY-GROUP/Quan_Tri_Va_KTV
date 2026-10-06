@@ -16,6 +16,15 @@ export const RETURNING_THRESHOLD = 0;
 /** Check if a phone number is a dummy/placeholder value (rỗng hoặc toàn số 0) */
 export const isDummyPhone = (p: string): boolean => !p || /^0+$/.test(p.trim());
 
+/** Tiền tố SĐT giả do hệ thống (admin, WRB nội bộ, WebBooking) sinh cho khách không có SĐT thật. */
+export const GUEST_PHONE_PREFIX = 'GUEST-';
+
+/**
+ * SĐT giả `GUEST-…`: không phải số thật — KHÔNG đem đi chuẩn hoá hay lột số (phoneIdentity),
+ * chỉ so khớp exact theo chuỗi gốc. Lột số ra một dãy không tồn tại ở đâu → tìm hồ sơ luôn trượt.
+ */
+export const isGuestPlaceholderPhone = (p: string): boolean => (p || '').trim().toUpperCase().startsWith(GUEST_PHONE_PREFIX);
+
 /**
  * Domain của email ảo do hệ thống tự sinh cho khách vãng lai không có email thật.
  * Giữ ở một chỗ để hàm nhận diện và hàm sinh không bao giờ lệch nhau.

@@ -34,7 +34,8 @@ import { useAuth } from '@/lib/auth-context';
 import { apiClient, getActorHeaders } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { phoneIdentity } from '@/lib/customer-search';
-import { isDummyEmail } from '@/lib/customer.logic';
+import { isDummyEmail, isGuestPlaceholderPhone } from '@/lib/customer.logic';
+import { CUSTOMER_NOT_CREATED, CUSTOMER_NOT_FOUND } from '@/lib/services/QuickBookingCustomerService';
 import {
   ShieldAlert, Clock, CheckCircle2, Bell, BellOff,
   Plus, Calendar as CalendarIcon, Send, Phone, Globe, Mail, Check,
@@ -2312,7 +2313,7 @@ if (!hasPermission('dispatch_board')) {
     }
   };
 
-  const handleCreateQuickBooking = async (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; }) => {
+  const handleCreateQuickBooking = async (data: Omit<Parameters<typeof createQuickBooking>[0], 'bookingDate'>) => {
     try {
       const res = await createQuickBooking({
         ...data,
@@ -2321,6 +2322,10 @@ if (!hasPermission('dispatch_board')) {
       if (res.success) {
         fetchData();
         setShowAddOrderModal(false);
+        // Đơn đã tạo nhưng hồ sơ khách không tạo/không tìm được: quầy phải biết để gán lại.
+        const warning = 'warning' in res ? res.warning : undefined;
+        if (warning === CUSTOMER_NOT_CREATED) alert(tConfirm.customerNotCreated);
+        else if (warning === CUSTOMER_NOT_FOUND) alert(tConfirm.customerSelectedMissing);
       } else {
         alert('Lỗi khi tạo đơn: ' + res.error);
       }
@@ -3095,21 +3100,27 @@ if (!hasPermission('dispatch_board')) {
                                           setIsFetchingCustomer(true);
                                           try {
                                             const orderToUse = selectedOrder || selectedSubOrder?.originalOrder;
-                                            const phone = phoneIdentity(orderToUse?.phone || '');
+                                            const rawPhone = (orderToUse?.phone || '').trim();
+                                            // SĐT giả GUEST-… (hồ sơ WRB/WebBooking/khách vãng lai): so khớp exact, KHÔNG lột số.
+                                            // Hồ sơ chỉ có SĐT GUEST-, không có SĐT thật, vẫn chấp nhận và mở bình thường.
+                                            const guestPhone = isGuestPlaceholderPhone(rawPhone) ? rawPhone : '';
+                                            const phone = guestPhone ? '' : phoneIdentity(rawPhone);
                                             const email = (orderToUse?.email || '').trim().toLowerCase();
-                                            const contact = phone || (!isDummyEmail(email) ? email : '');
+                                            const contact = phone || guestPhone || (!isDummyEmail(email) ? email : '');
                                             if (!orderToUse?.customerId && !contact) {
-                                              throw new Error('Đơn chưa có mã khách hoặc thông tin liên hệ hợp lệ để tìm hồ sơ.');
+                                              throw new Error(tConfirm.customerNotLinked);
                                             }
                                             const params = new URLSearchParams(orderToUse?.customerId
                                               ? { id: orderToUse.customerId }
                                               : { q: contact });
                                             const data = (await apiClient.get(`${API.CUSTOMERS}?${params}`)) as any;
-                                            if (!data.success) throw new Error(data.error || 'Không tải được hồ sơ khách hàng');
+                                            if (!data.success) throw new Error(data.error || tConfirm.customerLoadFailed);
 
                                             let matches = data.data || [];
                                             if (orderToUse?.customerId) {
                                               matches = matches.filter((c: any) => c.id === orderToUse.customerId);
+                                            } else if (guestPhone) {
+                                              matches = matches.filter((c: any) => (c.phone || '').trim().toUpperCase() === guestPhone.toUpperCase());
                                             } else if (phone) {
                                               matches = matches.filter((c: any) => phoneIdentity(c.phone || '') === phone);
                                               if (matches.length > 1 && !isDummyEmail(email)) {
@@ -3119,14 +3130,15 @@ if (!hasPermission('dispatch_board')) {
                                               matches = matches.filter((c: any) => (c.email || '').trim().toLowerCase() === email);
                                             }
                                             if (matches.length > 1) {
-                                              throw new Error('Có nhiều hồ sơ trùng thông tin liên hệ. Vui lòng đối soát trong trang Khách Hàng.');
+                                              throw new Error(tConfirm.customerAmbiguous);
                                             }
                                             const found = matches[0];
                                             if (found) {
                                               setFullCustomerData(found);
                                               setShowCustomerInfo(true);
                                             } else {
-                                              alert('Không tìm thấy hồ sơ tương ứng với đơn. Vui lòng kiểm tra liên kết khách hàng hoặc tìm trong trang Khách Hàng.');
+                                              // Có customerId mà không ra → hồ sơ đã mất; không có → đơn chưa liên kết (không phải "không tìm thấy").
+                                              alert(orderToUse?.customerId ? tConfirm.customerProfileMissing : tConfirm.customerNotLinked);
                                             }
                                           } catch (e) {
                                             console.error('Lỗi tải dữ liệu khách:', e);
