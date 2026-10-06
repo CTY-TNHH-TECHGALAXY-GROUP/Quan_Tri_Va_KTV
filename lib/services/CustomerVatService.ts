@@ -1,10 +1,10 @@
 /**
  * CustomerVatService — một nguồn duy nhất cho thông tin hoá đơn VAT của khách.
  *
- * Hệ thống KHÔNG có cột `Customers.vatRequested`. "Khách cần VAT" được thể hiện bằng:
- *   - 5 cột công ty trên `Customers`: taxCode, companyName, companyAddress, companyEmail, companyPhone
- *     (WRB nội bộ ghi ở `src/lib/bookingCustomer.ts`; admin ghi qua tạo đơn nhanh).
- *   - Cờ theo đơn `Bookings.vatRequested`: quầy đánh dấu đơn này cần hoá đơn dù khách chưa đưa MST.
+ * Hệ thống KHÔNG có cột `vatRequested` ở `Customers` lẫn `Bookings` (DB thật, kiểm tra 06/10/2026).
+ * "Khách cần VAT" chỉ có MỘT nguồn: 5 cột công ty trên `Customers` — taxCode, companyName,
+ * companyAddress, companyEmail, companyPhone (WRB nội bộ ghi ở `src/lib/bookingCustomer.ts`;
+ * admin ghi qua tạo đơn nhanh). Bật VAT ở form thì bắt buộc có MST, không có cờ "cần VAT nhưng chưa MST".
  *
  * Nhãn "VAT" trên Kanban/CRM phải đi qua `hasVatBadge` để hai phía không lệch nhau.
  * WRB là repo khác nên không import được file này; khi đổi quy tắc ở đây phải đối chiếu
@@ -63,9 +63,9 @@ export function normalizeVatInvoice(input?: VatInvoiceInput | null): VatCustomer
 }
 
 /**
- * Nhãn "VAT" cho một đơn: khách đã có MST trong hồ sơ, HOẶC quầy đánh dấu đơn này cần hoá đơn.
+ * Nhãn "VAT" cho một đơn: khách đã có MST trong hồ sơ.
  * Dùng chung cho Kanban (`getDispatchData`) và mọi chỗ hiển thị sau này.
  */
-export function hasVatBadge(customerTaxCode?: string | null, bookingVatRequested?: boolean | null): boolean {
-    return !!(customerTaxCode && customerTaxCode.trim()) || bookingVatRequested === true;
+export function hasVatBadge(customerTaxCode?: string | null): boolean {
+    return !!(customerTaxCode && customerTaxCode.trim());
 }

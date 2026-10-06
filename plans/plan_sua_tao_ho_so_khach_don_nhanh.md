@@ -96,7 +96,7 @@ Chạy thêm dưới `TZ=UTC` (bookingDate dùng `Asia/Ho_Chi_Minh`, không đ�
 
 - **Sự cố**: `getDispatchData` select `Bookings.vatRequested` → `42703 column does not exist` → toàn bộ bảng điều phối không tải. Nguyên nhân: migration `20260821164210_add_vat_requested.sql` có trong repo nhưng **chưa từng apply** lên DB thật; tôi tin file migration thay vì kiểm tra DB (vi phạm rule mục 7 "không giả định cột tồn tại").
 - **Hotfix** `fec89390`: bỏ select và bỏ ghi `vatRequested`; nhãn VAT tạm chỉ theo `taxCode`. Phần hồ sơ khách, chọn khách cũ, khối VAT ghi vào `Customers`, nút "Hồ sơ" **vẫn hoạt động đầy đủ**.
-- **Còn thiếu để đủ tính năng "đánh dấu đơn cần VAT khi chưa có MST"** (Mức 2, chờ duyệt):
+- **User chốt 06/10: KHÔNG apply migration.** Làm giống WRB: bật VAT thì bắt buộc MST; "khách cần VAT" một nguồn = `Customers.taxCode`. Đã gỡ hết tham chiếu `vatRequested` khỏi code (`hasVatBadge` chỉ nhận `taxCode`). Các mục dưới đây **không làm nữa**, giữ để tra lại:
   1. Apply `ALTER TABLE "Bookings" ADD COLUMN IF NOT EXISTS "vatRequested" BOOLEAN DEFAULT false;` lên DB thật (`scripts/apply_migration_file.ts`, cần `DIRECT_URL`). Additive, không khoá bảng lâu, không ảnh hưởng dữ liệu cũ.
   2. Bật lại 2 dòng đã tắt ở `getDispatchData` (select) và `createQuickBooking` (insert).
   3. Kiểm tra RPC `split_booking_into_sub_bookings` đang chạy trên DB có copy `vatRequested` không (bản migration 20260821165237 có, nhưng bản deploy thực tế chưa rõ).

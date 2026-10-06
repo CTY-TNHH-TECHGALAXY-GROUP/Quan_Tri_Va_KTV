@@ -5,7 +5,8 @@ export const t = {
     selectedCustomerHint: 'Đơn sẽ gắn thẳng vào hồ sơ này. Sửa tên hoặc liên hệ sẽ bỏ chọn.',
 
     vatToggle: 'Xuất hoá đơn VAT công ty',
-    vatHint: 'Nhập mã số thuế rồi Tra cứu để tự điền tên và địa chỉ, hoặc gõ tay. Chưa có mã số thuế thì để trống, đơn vẫn được đánh dấu cần VAT.',
+    vatHint: 'Nhập mã số thuế rồi Tra cứu để tự điền tên và địa chỉ, hoặc gõ tay. Bắt buộc có mã số thuế; khách chưa đưa thì tắt mục này, sau nhập ở trang Khách Hàng.',
+    taxCodeRequired: 'Đã bật xuất hoá đơn VAT thì phải nhập mã số thuế. Khách chưa có thì tắt mục VAT, nhập sau ở trang Khách Hàng.',
     taxCode: 'Mã số thuế',
     taxCodePlaceholder: '0316794479 hoặc 0316794479-001',
     taxCodeInvalid: 'Mã số thuế gồm 10 số, hoặc 10 số + 3 số chi nhánh.',

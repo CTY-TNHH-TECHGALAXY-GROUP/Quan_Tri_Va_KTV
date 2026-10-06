@@ -10,7 +10,7 @@
  *   C3. Gõ tay SĐT GUEST- trùng hồ sơ có sẵn, không customerId → khớp exact, không tạo trùng.
  *   C4. INSERT lỗi (giả lập) → customerId null + warning CUSTOMER_NOT_CREATED, không ném lỗi.
  *   C5. VAT: khách mới kèm MST → 5 cột công ty vào hồ sơ; khách cũ kèm MST → UPDATE hồ sơ;
- *       nhãn VAT (hasVatBadge) = taxCode HOẶC Bookings.vatRequested.
+ *       nhãn VAT (hasVatBadge) chỉ theo taxCode — không có cờ theo đơn.
  *   C6. customerId gửi lên không tồn tại → warning CUSTOMER_NOT_FOUND, vẫn tìm/tạo theo SĐT.
  *   C7. Nút "Hồ sơ": SĐT GUEST- không được lột số; SĐT thật vẫn chuẩn hoá như cũ.
  *
@@ -110,7 +110,6 @@ async function main() {
         const r = await resolveQuickBookingCustomer(m.db, { customerName: 'Anh', customerPhone: '+84911222333', customerEmail: '', vatInvoice: vatInput });
         const row = m.inserts[0] || {};
         check(row.taxCode === '0316794479' && row.companyName === 'CÔNG TY TNHH ORIA' && row.companyEmail === 'ketoan@oria.vn', 'khách mới: 5 cột công ty ghi vào Customers (email thường hoá)', JSON.stringify({ taxCode: row.taxCode, companyEmail: row.companyEmail }));
-        check(r.vat !== null, 'service trả vat → Bookings.vatRequested = true');
 
         const m2 = mockDb([REAL_PHONE]);
         const r2 = await resolveQuickBookingCustomer(m2.db, { customerName: 'Kim', customerPhone: '+84987654321', customerEmail: '', vatInvoice: { taxCode: '0316794479-001', companyName: 'CN HCM' } });
@@ -118,7 +117,7 @@ async function main() {
 
         check(normalizeTaxCode(' 0316 794 479 ') === '0316794479' && normalizeTaxCode('0316794479001') === '0316794479-001' && normalizeTaxCode('12345') === null, 'chuẩn hoá MST 10 / 10-3, sai → null');
         check(normalizeVatInvoice({ taxCode: '', companyName: 'X' }) === null, 'không MST → không ghi gì vào Customers');
-        check(hasVatBadge(null, true) && hasVatBadge('0316794479', false) && !hasVatBadge('', false) && !hasVatBadge(null, null), 'hasVatBadge = taxCode HOẶC vatRequested');
+        check(hasVatBadge('0316794479') && !hasVatBadge('') && !hasVatBadge(null) && !hasVatBadge('  '), 'hasVatBadge chỉ theo taxCode');
     }
 
     console.log('\n=== C6. customerId gửi lên không tồn tại ===');

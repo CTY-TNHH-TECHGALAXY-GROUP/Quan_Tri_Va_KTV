@@ -28,7 +28,7 @@
 | `focusAreaNote` | text | Ghi chú vùng cần tập trung (VD: "Đau vai") |
 | `notes` | text | Ghi chú đơn hàng chung |
 | `guestCount` | integer | Số lượng khách (1: Khách lẻ, >1: Khách nhóm) |
-| `vatRequested` | boolean | ⚠️ **CHƯA CÓ trên DB thật** (kiểm tra 06/10/2026): migration `20260821164210_add_vat_requested.sql` nằm trong repo nhưng chưa được apply. Select/insert cột này sẽ lỗi 42703 (đã sập bảng điều phối 06/10, hotfix `fec89390`). Khi apply xong: đơn này cần xuất hoá đơn VAT; nhãn VAT Kanban = cột này HOẶC khách có `taxCode` (`hasVatBadge`) |
+| ~~`vatRequested`~~ | — | ⚠️ **KHÔNG TỒN TẠI trên DB thật** (kiểm tra 06/10/2026). Migration `20260821164210_add_vat_requested.sql` nằm trong repo nhưng chưa apply; user chốt 06/10 **không apply**. Không code nào được select/insert cột này (đã sập bảng điều phối 06/10, hotfix `fec89390`). "Khách cần VAT" = `Customers.taxCode` (`hasVatBadge`) |
 | `customerGender` | text | Giới tính khách hàng (male / female) |
 | `technicianCode` | text | Mã KTV chính được phân công |
 | `reception_feedback` | text | Đánh giá/phản hồi chung của quầy Lễ tân cho đơn hàng này |
@@ -711,7 +711,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `companyEmail` | text | Email nhận hoá đơn |
 | `companyPhone` | text | SĐT công ty |
 
-> ⚠️ **Không có cột `vatRequested` trên `Customers`.** Cờ "đơn này cần VAT" nằm ở `Bookings.vatRequested`; thông tin công ty ở 5 cột trên (WRB nội bộ và admin cùng ghi). Insert kèm cột không tồn tại sẽ bị PostgREST từ chối — đây là lỗi làm hồ sơ khách vãng lai không được tạo từ 22/08 đến 06/10/2026.
+> ⚠️ **Không có cột `vatRequested` ở `Customers` lẫn `Bookings`.** "Khách cần VAT" chỉ có một nguồn: `taxCode` + 4 cột công ty ở trên (WRB nội bộ và admin cùng ghi). Form Tạo đơn nhanh bật VAT thì bắt buộc nhập MST. Insert kèm cột không tồn tại sẽ bị PostgREST từ chối — đây là lỗi làm hồ sơ khách vãng lai không được tạo từ 22/08 đến 06/10/2026.
 | `lastVisited` | timestamp | Lần ghé thăm gần nhất |
 | `createdAt` | timestamp | Thời điểm tạo |
 | `updatedAt` | timestamp | Thời điểm cập nhật |

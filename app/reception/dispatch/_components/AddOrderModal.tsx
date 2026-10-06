@@ -27,7 +27,7 @@ interface AddOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   services: ServiceOption[];
-  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; vatRequested?: boolean; customerId?: string | null; vatInvoice?: VatInvoiceInput | null; }) => Promise<void>;
+  onConfirm: (data: { customerName: string; customerPhone: string; customerEmail: string; serviceIds: string[]; customerLang: string; guestCount?: number; nationality?: string; isTestOrder: boolean; customerId?: string | null; vatInvoice?: VatInvoiceInput | null; }) => Promise<void>;
   selectedDate: string;
 }
 
@@ -188,9 +188,9 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
       alert('Vui lòng nhập tên khách và chọn dịch vụ!');
       return;
     }
-    // MST gõ dở thì chặn ngay; để trống MST vẫn cho đi (đơn chỉ được đánh dấu cần VAT).
-    if (vatRequested && taxCode.trim() && !normalizeTaxCode(taxCode)) {
-      alert(t.taxCodeInvalid);
+    // Bật VAT thì BẮT BUỘC có MST hợp lệ (giống WRB): "khách cần VAT" chỉ có một nguồn là Customers.taxCode.
+    if (vatRequested && !normalizeTaxCode(taxCode)) {
+      alert(taxCode.trim() ? t.taxCodeInvalid : t.taxCodeRequired);
       return;
     }
 
@@ -205,7 +205,6 @@ export const AddOrderModal = ({ isOpen, onClose, services, onConfirm, selectedDa
         guestCount,
         nationality,
         isTestOrder,
-        vatRequested,
         customerId: selectedCustomer?.id ?? null,
         vatInvoice: vatRequested ? { taxCode, companyName, companyAddress, companyEmail, companyPhone } : null,
       });

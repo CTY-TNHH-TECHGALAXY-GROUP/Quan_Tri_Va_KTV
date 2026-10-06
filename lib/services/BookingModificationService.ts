@@ -23,8 +23,6 @@ export class BookingModificationService {
         isTestOrder?: boolean;
         /** Hồ sơ quầy đã chọn trong ô gợi ý — gắn thẳng, không tìm/tạo lại. */
         customerId?: string | null;
-        /** Đơn này cần xuất hoá đơn (ghi `Bookings.vatRequested`). */
-        vatRequested?: boolean;
         /** Thông tin công ty để ghi 5 cột VAT trên `Customers` (giống WRB). */
         vatInvoice?: VatInvoiceInput | null;
     }) {
@@ -83,10 +81,8 @@ export class BookingModificationService {
                 vatInvoice: data.vatInvoice,
             });
             const customerId = customer.customerId;
-            // Cờ VAT theo ĐƠN: `Bookings.vatRequested` CHƯA có trên DB thật (migration 20260821164210
-            // chưa apply, kiểm tra 06/10/2026) → tạm KHÔNG ghi, nếu không INSERT Bookings đổ.
-            // Thông tin công ty vẫn vào 5 cột taxCode/company* của Customers (CustomerVatService).
-            // Bật lại `vatRequested: data.vatRequested === true || customer.vat !== null` sau khi apply migration.
+            // "Khách cần VAT" chỉ có MỘT nguồn: Customers.taxCode + 4 cột company* (CustomerVatService).
+            // Không có cờ theo đơn — `Bookings.vatRequested` không tồn tại trên DB thật (user chốt 06/10: không migration).
 
             // 3. Tạo Booking
             const { data: booking, error: bError } = await supabase

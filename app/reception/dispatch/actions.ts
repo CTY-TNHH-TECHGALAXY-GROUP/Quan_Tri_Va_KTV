@@ -301,10 +301,8 @@ export async function getDispatchData(date: string, _timestamp?: number) {
 
         bookings = bookings.map(b => ({
             ...b,
-            // Nhãn VAT: khách có MST HOẶC quầy đánh dấu đơn cần hoá đơn — một công thức (CustomerVatService).
-            // ⚠️ `Bookings.vatRequested` CHƯA có trên DB thật (migration 20260821164210 chưa apply, 06/10/2026):
-            // không select cột này cho tới khi apply xong, nếu không toàn bộ bảng điều phối sập (42703).
-            hasVat: hasVatBadge(taxCodeMap[b.customerId], b.vatRequested ?? null)
+            // Nhãn VAT: khách có MST trong hồ sơ — một công thức dùng chung (CustomerVatService.hasVatBadge).
+            hasVat: hasVatBadge(taxCodeMap[b.customerId])
         }));
 
         // Fetch historical visits for returning customer tag (using shared library)
