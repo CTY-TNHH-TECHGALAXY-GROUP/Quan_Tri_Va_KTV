@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import PromotionsShell from '@/components/promotions/PromotionsShell';
 import CampaignForm from '@/components/promotions/CampaignForm';
+import CampaignWebBookingInstructionCard from '@/components/promotions/CampaignWebBookingInstructionCard';
 import { campaignToForm, toCampaignPayload, toLockedCampaignPatch } from '@/components/promotions/CampaignForm.logic';
 import { PromotionError, PromotionLoading } from '@/components/promotions/PromotionStates';
 import { usePromotionQuery } from '@/components/promotions/usePromotionQuery';
@@ -54,6 +55,7 @@ const EditCampaignPage = () => {
             submitLabel={t.actions.save}
             onSubmit={handleSubmit}
           />
+          <CampaignWebBookingInstructionCard campaignId={state.data.id} />
         </div>
       )}
     </PromotionsShell>

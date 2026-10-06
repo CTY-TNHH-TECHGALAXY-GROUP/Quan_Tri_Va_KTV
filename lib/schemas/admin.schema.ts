@@ -62,6 +62,11 @@ export const EmailSettingsSchema = z.object({
   email_bank_bin: z.string().regex(/^\d{6}$/, "Mã BIN ngân hàng phải gồm 6 chữ số").optional(),
   email_bank_account_no: z.string().regex(/^\d{6,20}$/, "Số tài khoản chỉ gồm 6-20 chữ số").optional(),
   email_bank_account_name: z.string().optional(),
+  voucher_webbooking_instruction_vi: z.string().optional(),
+  voucher_webbooking_instruction_en: z.string().optional(),
+  voucher_webbooking_instruction_cn: z.string().optional(),
+  voucher_webbooking_instruction_jp: z.string().optional(),
+  voucher_webbooking_instruction_kr: z.string().optional(),
 });
 
 // POST /api/admin/settings/email/test
