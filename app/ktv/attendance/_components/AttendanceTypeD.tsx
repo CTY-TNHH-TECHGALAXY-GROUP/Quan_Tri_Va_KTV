@@ -253,7 +253,9 @@ export default function AttendanceTypeD({
   // OFF day + has on-call permission: turn on-call FIRST, then "Oria Xin chào" appears.
   // Without on-call permission there is no "Bật Nhận Đơn" button, so hiding
   // "Oria Xin chào" too would leave no way to work extra — keep it for them.
-  const hideCheckInUntilOnCall = !!state?.isOffToday && canOnCall;
+  // Báo off đột xuất cũng là một ngày nghỉ: đổi ý muốn đi làm thì phải bật
+  // nhận đơn trước, giống ngày OFF (quyết định 07/10/2026).
+  const hideCheckInUntilOnCall = (!!state?.isOffToday || daBaoOff) && canOnCall;
 
   // Nút báo off: chỉ khi hôm nay đã đăng ký ĐI LÀM, chưa vào ca, chưa báo.
   // Server kiểm lại đủ các điều kiện này — đây chỉ để ẩn/hiện cho đúng.
@@ -368,7 +370,7 @@ export default function AttendanceTypeD({
           <CalendarX2 size={20} className="text-rose-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold text-rose-900">{t.suddenOffDoneTitle}</p>
-            <p className="text-xs text-rose-700 mt-0.5">{t.suddenOffDoneNote}</p>
+            <p className="text-xs text-rose-700 mt-0.5">{t.suddenOffDoneNote} {canOnCall ? t.suddenOffChangeMindOnCall : t.suddenOffChangeMindNoOnCall}</p>
           </div>
         </div>
       )}
