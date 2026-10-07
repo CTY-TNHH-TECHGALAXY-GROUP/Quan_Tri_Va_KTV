@@ -61,6 +61,17 @@ async function main() {
         check(t.khop === '✓', `CRM = thẻ điều phối: ${t.ca}`, `${t.crm} vs ${t.the_dieu_phoi}`);
     });
 
+    console.log('\n=== Ca đêm: đơn tạo 04:22 sáng 07/10 VN (ngày làm việc 06/10) — lỗi thấy khi test UI 07/10 ===');
+    {
+        // Đúng như createQuickBooking: bookingDate = ngày làm việc (06/10) + giờ đồng hồ; hồ sơ tạo cùng lúc (UTC 06/10 21:22).
+        const NIGHT = new Date('2026-10-06T21:22:00Z'); // = 07/10 04:22 VN
+        const rows = [row('NIGHT-1', 'NEW', '2026-10-06T04:22:00')];
+        const card = computeCustomerVisit(rows, { excludeBookingId: 'NIGHT-1', before: rows[0].bookingDate, profileCreatedAt: '2026-10-06T21:22:00' }).status;
+        const crm = computeProfileVisit(rows, '2026-10-06T21:22:00', NIGHT).status;
+        check(startOfTodayVN(NIGHT) === '2026-10-06T00:00:00', 'mốc CRM = đầu ngày làm việc 06/10 (không phải nửa đêm 07/10)', startOfTodayVN(NIGHT));
+        check(card === 'NEW' && crm === 'NEW', 'khách mới ca đêm: CRM = thẻ điều phối = Khách mới', `${crm} vs ${card}`);
+    }
+
     console.log('\n=== Không tính lượt đang xem; đơn con của lượt đang xem cũng bị loại ===');
     {
         const rows = [row('X', 'SPLIT', '2026-10-06T10:00:00'), row('X-A', 'DONE', '2026-10-06T10:00:00', 'STANDARD_WALK_IN', 'X'),

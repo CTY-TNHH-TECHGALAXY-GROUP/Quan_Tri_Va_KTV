@@ -18,6 +18,7 @@
  * Hàm thuần, không gọi DB — để mô phỏng được (scripts/qa/qa_21_customer_visit_status.ts).
  */
 import { COMPLETED_STATUSES } from '@/lib/customer.logic';
+import { toBusinessDate, DEFAULT_DAY_CUTOFF_HOURS } from '@/lib/business-date';
 
 export type VisitStatus = 'RETURNING' | 'VISITED' | 'NEW';
 
@@ -101,13 +102,14 @@ export function computeCustomerVisit(rows: VisitBookingRow[], opts: ComputeVisit
 }
 
 /**
- * Mốc "đầu ngày hôm nay" theo giờ Việt Nam, dạng `YYYY-MM-DDT00:00:00` (so chuỗi với bookingDate).
- * CRM và kiosk gắn nhãn theo trạng thái khách LÚC ĐẦU NGÀY: nhờ vậy nhãn CRM luôn bằng nhãn trên thẻ
- * điều phối của đơn đầu tiên trong ngày (thẻ tính "trước đơn này"). Không dùng getHours() — server chạy UTC.
+ * Mốc "đầu NGÀY LÀM VIỆC hiện tại", dạng `YYYY-MM-DDT00:00:00` (so chuỗi với bookingDate).
+ * Dùng ĐÚNG công thức ngày làm việc của bảng điều phối (`toBusinessDate`, cắt ngày lúc DEFAULT_DAY_CUTOFF_HOURS giờ VN):
+ * ca đêm 04:22 sáng 07/10 vẫn thuộc ngày làm việc 06/10, đơn của nó lưu bookingDate 06/10.
+ * Trước 07/10/2026 dùng nửa đêm lịch → đơn ca đêm bị CRM coi là "lượt hôm trước" (CRM "Đã từng tới",
+ * thẻ điều phối "Khách mới"). CRM và kiosk gắn nhãn theo mốc này để khớp thẻ điều phối.
  */
 export function startOfTodayVN(now: Date = new Date()): string {
-    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-    return `${day}T00:00:00`;
+    return `${toBusinessDate(now, DEFAULT_DAY_CUTOFF_HOURS)}T00:00:00`;
 }
 
 /**
