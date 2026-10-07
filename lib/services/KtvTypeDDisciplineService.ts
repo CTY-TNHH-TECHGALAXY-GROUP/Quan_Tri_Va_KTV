@@ -485,6 +485,37 @@ export class KtvTypeDDisciplineService {
      *   2. Ngày mới chưa có dòng đăng ký          → UNREGISTERED_NEXT_DAY
      *   3. Ngày vừa qua đăng ký làm mà không đến  → 3 luật báo vắng / báo trễ / im lặng
      */
+    /**
+     * Admin mở khoá cho KTV này trong NGÀY LỊCH VN hôm nay chưa.
+     *
+     * Ngày được mở khoá là ngày ngoại lệ (quyết định 07/10/2026): KTV đã liên hệ
+     * admin trực tiếp nên được phép không đăng ký và không đi làm; nếu đi làm thì
+     * được tạo lịch hôm nay để khai giờ về. Mốc là ngày LỊCH — đúng ngày mà cron
+     * 00:00 khoá vì chưa đăng ký, và cùng mốc cron dùng để miễn xử (`vuaMoKhoa`).
+     *
+     * Never throws: lỗi đọc nhật ký → false → mọi luồng giữ hành vi cũ.
+     */
+    static async duocMoKhoaHomNay(supabase: SupabaseClient, staffId: string): Promise<boolean> {
+        try {
+            const { vnToday } = await import('../vn-time');
+            const { data, error } = await supabase
+                .from('SecurityAuditLogs')
+                .select('id')
+                .eq('event_type', 'MANUAL_UNLOCK')
+                .eq('employee_id', staffId)
+                .gte('created_at', new Date(`${vnToday()}T00:00:00+07:00`).toISOString())
+                .limit(1);
+            if (error) {
+                console.error('[Type D] Không đọc được nhật ký mở khoá:', error);
+                return false;
+            }
+            return (data || []).length > 0;
+        } catch (e) {
+            console.error('[Type D] Lỗi kiểm tra mở khoá hôm nay:', e);
+            return false;
+        }
+    }
+
     static xetChotSoDem(input: {
         regNgayVuaQua: { status: string; absent_reported_at?: string | null; penalty_applied?: string | null } | null;
         coRegNgayMoi: boolean;

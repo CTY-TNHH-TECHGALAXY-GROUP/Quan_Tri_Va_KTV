@@ -46,6 +46,7 @@ export const useKTVAttendance = () => {
     const { addToast } = useToast();
     const [checkStatus, setCheckStatus] = useState<CheckStatus>('IDLE');
     const [todayRegistration, setTodayRegistration] = useState<any>(null);
+    const [unlockedToday, setUnlockedToday] = useState(false);
     // Ô rút tiền chỉ hiện ở lần điểm danh ĐẦU TIÊN trong ngày.
     const [canRequestWithdraw, setCanRequestWithdraw] = useState(true);
     // TUA wallet switched off (server truth). Only meaningful for KTVs who
@@ -111,6 +112,7 @@ export const useKTVAttendance = () => {
                     if (statusRes.roomDebt) setRoomDebt(statusRes.roomDebt);
                     if (statusRes.guestArrivalLock) setGuestArrivalLock(statusRes.guestArrivalLock);
                     setTodayRegistration(statusRes.todayRegistration ?? null);
+                    setUnlockedToday(!!statusRes.unlockedToday);
                     setCanRequestWithdraw(statusRes.canRequestWithdraw !== false);
                     setWithdrawWalletOff(statusRes.withdrawWalletOff === true);
                 }
@@ -441,6 +443,7 @@ export const useKTVAttendance = () => {
 
     return {
         todayRegistration,
+        unlockedToday,
         // Mốc cắt ngày làm việc — màn hình cần để so giờ ca qua nửa đêm.
         dayCutoffHours,
         canRequestWithdraw,
