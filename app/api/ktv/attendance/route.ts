@@ -221,6 +221,8 @@ export async function POST(request: Request) {
 
         let wasOffRegistered = false;
         let typeDRegistrationId: string | null = null;
+        /** Ngày làm việc cần TẠO lịch sau khi điểm danh (ngày vừa được mở khoá). */
+        let unlockRegisterDate: string | null = null;
 
         // ─── Step 0.55: "Báo off đột xuất" — TYPE_D (quyết định 07/10/2026) ───
         // Chỉ cho báo khi: đã qua 07:00, hôm nay đã đăng ký ĐI LÀM, chưa vào ca,
@@ -278,29 +280,33 @@ export async function POST(request: Request) {
                 return NextResponse.json({ success: false, error: 'Lỗi kiểm tra đăng ký ca Loại D' }, { status: 503 });
             }
 
+            // Bắt buộc giờ dự kiến về hợp lệ và sau giờ hiện tại. Trả lỗi hoặc null.
+            const loiGioVe = (): string | null => {
+                const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+                if (!estimatedEndTime || !timeRegex.test(estimatedEndTime)) {
+                    return 'Vui lòng chọn giờ dự kiến tan làm hợp lệ.';
+                }
+                const phutDen = phutTrongNgayLamViec(format(vnNow(), 'HH:mm'), cutoffHoursD) ?? 0;
+                const phutVe = phutTrongNgayLamViec(estimatedEndTime.slice(0, 5), cutoffHoursD) ?? 0;
+                return phutVe <= phutDen ? 'Giờ dự kiến về phải sau giờ hiện tại.' : null;
+            };
+
             if (registration) {
                 typeDRegistrationId = registration.id;
                 if (registration.status === 'OFF_REGISTERED') {
                     wasOffRegistered = true;
                     // Bắt buộc phải có estimatedEndTime khi KTV Type D OFF đi làm lại
-                    const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
-                    if (!estimatedEndTime || !timeRegex.test(estimatedEndTime)) {
-                        return NextResponse.json({
-                            success: false,
-                            error: 'Vui lòng chọn giờ dự kiến tan làm hợp lệ.'
-                        }, { status: 400 });
-                    }
-                    const now = vnNow();
-                    const nowStr = format(now, 'HH:mm');
-                    const phutDen = phutTrongNgayLamViec(nowStr, cutoffHoursD) ?? 0;
-                    const phutVe = phutTrongNgayLamViec(estimatedEndTime.slice(0, 5), cutoffHoursD) ?? 0;
-                    if (phutVe <= phutDen) {
-                        return NextResponse.json({
-                            success: false,
-                            error: 'Giờ dự kiến về phải sau giờ hiện tại.'
-                        }, { status: 400 });
-                    }
+                    const loi = loiGioVe();
+                    if (loi) return NextResponse.json({ success: false, error: loi }, { status: 400 });
                 }
+            } else if (await KtvTypeDDisciplineService.duocMoKhoaHomNay(supabase, staffCode)) {
+                // Ngày vừa được mở khoá, chưa có lịch (quên đăng ký → bị khoá →
+                // admin mở): bấm Oria Xin chào phải chọn giờ về; điểm danh xong tạo
+                // lịch hôm nay để quầy biết KTV làm đến mấy giờ (quyết định 07/10/2026).
+                // Query chỉ chạy khi KHÔNG có lịch; lỗi đọc → false → hành vi cũ.
+                const loi = loiGioVe();
+                if (loi) return NextResponse.json({ success: false, error: loi }, { status: 400 });
+                unlockRegisterDate = todayStr;
             }
 
             // Phạt trễ (§4.4 - đã chốt 2026-09-08):
@@ -668,6 +674,40 @@ export async function POST(request: Request) {
                             if (updateStaffErr) {
                                 console.error(`❌ [Attendance:${reqTraceId}] Failed to update Staff available_until:`, updateStaffErr);
                             }
+                        }
+                    } else if (unlockRegisterDate && estimatedEndTime) {
+                        // Ngày vừa được mở khoá: tạo lịch hôm nay từ lần điểm danh này.
+                        // Lỗi chỉ log — điểm danh đã thành công, không được hỏng theo.
+                        const { vnNow } = await import('@/lib/vn-time');
+                        const { format } = await import('date-fns');
+                        const gioDen = format(vnNow(), 'HH:mm');
+                        const gioVe = estimatedEndTime.slice(0, 5);
+                        const { error: insRegErr } = await supabase
+                            .from('KTVTypeDDailyRegistration')
+                            .upsert({
+                                staff_id: staffCode,
+                                work_date: unlockRegisterDate,
+                                status: 'REGISTERED',
+                                expected_time: gioDen,
+                                expected_end_time: gioVe,
+                                check_in_at: vnNow().toISOString(),
+                                registered_at: new Date().toISOString(),
+                            }, { onConflict: 'staff_id,work_date' });
+                        if (insRegErr) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Failed to create unlock-day registration:`, insRegErr);
+                        }
+                        const { error: updateStaffErr } = await supabase
+                            .from('Staff').update({ available_until: gioVe }).eq('id', staffCode);
+                        if (updateStaffErr) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Failed to update Staff available_until:`, updateStaffErr);
+                        }
+                        try {
+                            await createNotification({
+                                type: 'ATTENDANCE_REQUEST',
+                                message: `🔓 ${staffCode} vừa được mở khoá, vào làm hôm nay từ ${gioDen}, dự kiến về ${gioVe}.`,
+                            });
+                        } catch (e) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Unlock-day notify error:`, e);
                         }
                     }
                 } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
