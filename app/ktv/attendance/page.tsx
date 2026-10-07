@@ -518,6 +518,7 @@ const KTVAttendancePage = () => {
                                 shiftExtension={shiftExtension}
                                 onOpenShiftExtensionModal={() => setIsExtensionModalOpen(true)}
                                 showOvertimeFeature={showOvertimeFeature}
+                                onSuddenOff={(lyDo: string) => handleAttendance('SUDDEN_OFF', null, lyDo || null, null)}
                             />
                         </div>
                     ) : (

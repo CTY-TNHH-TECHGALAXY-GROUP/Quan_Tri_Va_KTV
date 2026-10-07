@@ -337,7 +337,9 @@ export const useKTVAttendance = () => {
                 addToast(result.withdrawIntentMessage, 'error');
             }
             if (result.status === 'CONFIRMED') {
-                setCheckStatus(checkType === 'CHECK_OUT' ? 'CHECKED_OUT' : 'CONFIRMED');
+                // SUDDEN_OFF = rời ca, giống CHECK_OUT. Server cũng suy như vậy cho
+                // Loại D (resolveAttendanceStatus); refresh bên dưới sẽ chốt lại.
+                setCheckStatus(checkType === 'CHECK_OUT' || (checkType === 'SUDDEN_OFF' && workType === 'TYPE_D') ? 'CHECKED_OUT' : 'CONFIRMED');
             } else {
                 setCheckStatus('PENDING');
             }
@@ -358,7 +360,7 @@ export const useKTVAttendance = () => {
                 setCheckStatus('CONFIRMED');
             }
         }
-    }, [user?.id, addToast, refreshAttendanceStatus, shiftExtension]);
+    }, [user?.id, addToast, refreshAttendanceStatus, shiftExtension, workType]);
 
     
     const handleAdjustmentSubmit = async () => {

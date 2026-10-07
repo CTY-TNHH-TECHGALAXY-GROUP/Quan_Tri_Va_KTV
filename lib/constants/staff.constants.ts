@@ -172,12 +172,18 @@ export type TypeDDisciplineCaseKey =
     | 'NO_REGISTRATION'
     | 'NO_SHOW_NO_NOTICE'
     | 'LATE_REPORTED_NO_SHOW'
-    | 'ABSENT_REPORTED_NO_SHOW';
+    | 'ABSENT_REPORTED_NO_SHOW'
+    | 'SUDDEN_OFF_REPORTED';
 
 export const TYPE_D_DISCIPLINE_CASES: Record<
     TypeDDisciplineCaseKey,
     {
         action: TypeDDisciplineAction; hours: number; label: string; moTa: string;
+        /**
+         * Never lock for this case, whatever the settings say. Only DEDUCT / NONE
+         * are honoured; LOCK / DEDUCT_OR_LOCK fall back to DEDUCT.
+         */
+        khongKhoa?: true;
         /** Ai quét, quét lúc nào — để đọc bảng là biết ngay, khỏi mò trong code. */
         quetBoi: string;
         quetLuc: string;
@@ -224,6 +230,18 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
         label: 'Báo vắng trước 07:00, không đến',
         moTa: 'Đã bấm Báo vắng đúng quy trình. Từ 07:00 trở đi hệ thống không cho báo vắng nữa, nên mọi phiếu báo vắng đều thuộc diện này.',
         quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
+    },
+    /**
+     * Quy chế mục 06: bỏ lịch đã đăng ký mà báo trễ → trừ 10 giờ. Quyết định
+     * 07/10/2026: KTV bấm "Báo off đột xuất" từ 07:00 thì CHỈ trừ giờ, KHÔNG BAO
+     * GIỜ khoá — kể cả quỹ giờ không đủ. Đã báo mà vẫn bị khoá như người không
+     * báo thì chẳng ai còn lý do để báo.
+     */
+    SUDDEN_OFF_REPORTED: {
+        action: 'DEDUCT', hours: 10, khongKhoa: true,
+        label: 'Báo off đột xuất (từ 07:00)',
+        moTa: 'Đã đăng ký đi làm, từ 07:00 bấm Báo off đột xuất trên app. Chỉ trừ giờ, không bao giờ khoá tài khoản.',
+        quetBoi: 'Lúc KTV bấm · cron dự phòng', quetLuc: 'Ngay khi bấm',
     },
 };
 

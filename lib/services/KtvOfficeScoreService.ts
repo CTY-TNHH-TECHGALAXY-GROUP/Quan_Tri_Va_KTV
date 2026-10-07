@@ -656,7 +656,9 @@ export class KtvOfficeScoreService {
 
 /** Dịch mã phạt giờ sang tiếng Việt để lễ tân/KTV đọc được. */
 export const HOURS_PENALTY_VI: Record<string, string> = {
-    ABSENT_NO_NOTICE: 'Nghỉ đột xuất không báo',
+    // Dùng chung cho: không báo không đến, báo off đột xuất, tan ca sớm.
+    // Chi tiết từng trường hợp nằm ở `note` của dòng sổ.
+    ABSENT_NO_NOTICE: 'Nghỉ đột xuất',
     ABSENT_EARLY_NOTICE: 'Báo vắng trước 07:00',
     LATE_NO_UPDATE: 'Đến muộn hơn giờ đã báo',
     ORDER_REJECT: 'Từ chối tua đã gán',
