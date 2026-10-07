@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     Mail, Save, Loader2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp,
-    Send, Eye, Building2, Landmark, Clock, ShieldCheck, ShieldAlert
+    Send, Eye, Building2, Landmark, Clock, ShieldCheck, ShieldAlert, Ticket, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -293,7 +293,7 @@ export function EmailSettingsBlock({ defaultExpanded = false }: { defaultExpande
                                             hint="Hiện ở dòng &quot;Địa chỉ&quot; trong bảng chi tiết lịch hẹn. Bỏ trống thì ẩn dòng này."
                                             value={config.email_branch_address}
                                             onChange={(v: string) => change('email_branch_address', v)}
-                                            placeholder="11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh"
+                                            placeholder="11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam"
                                         />
                                         <TextField
                                             label="Link logo"
@@ -330,6 +330,52 @@ export function EmailSettingsBlock({ defaultExpanded = false }: { defaultExpande
                                             onChange={(v: string) => change('email_manage_booking_url', v)}
                                             placeholder="(chưa có — để trống)"
                                         />
+                                    </div>
+                                </div>
+
+                                <hr className="border-gray-100" />
+
+                                {/* HƯỚNG DẪN E-VOUCHER WEB BOOKING */}
+                                <div>
+                                    <h3 className="text-xs font-black uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-2">
+                                        <Ticket size={14} className="text-amber-500" /> Câu hướng dẫn E-Voucher áp dụng cho Web Booking
+                                    </h3>
+                                    <p className="text-[11px] text-gray-500 mb-4 font-medium">
+                                        Hiển thị trên trang E-Voucher công khai (/voucher) khi voucher yêu cầu nguồn đơn Web Booking (thay thế câu &quot;Vui lòng liên hệ để áp dụng&quot;).
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <TextField
+                                            label="Tiếng Việt (VI)"
+                                            value={config.voucher_webbooking_instruction_vi}
+                                            onChange={(v: string) => change('voucher_webbooking_instruction_vi', v)}
+                                            placeholder="Vui lòng đặt lịch qua website để áp dụng voucher này."
+                                        />
+                                        <TextField
+                                            label="English (EN)"
+                                            value={config.voucher_webbooking_instruction_en}
+                                            onChange={(v: string) => change('voucher_webbooking_instruction_en', v)}
+                                            placeholder="Please book through our website to apply this voucher."
+                                        />
+                                        <TextField
+                                            label="中文 (CN)"
+                                            value={config.voucher_webbooking_instruction_cn}
+                                            onChange={(v: string) => change('voucher_webbooking_instruction_cn', v)}
+                                            placeholder="请通过我们的网站预约以使用此优惠券。"
+                                        />
+                                        <TextField
+                                            label="日本語 (JP)"
+                                            value={config.voucher_webbooking_instruction_jp}
+                                            onChange={(v: string) => change('voucher_webbooking_instruction_jp', v)}
+                                            placeholder="当クーポンをご利用の際は、ウェブサイトよりご予約ください。"
+                                        />
+                                        <div className="md:col-span-2">
+                                            <TextField
+                                                label="한국어 (KR)"
+                                                value={config.voucher_webbooking_instruction_kr}
+                                                onChange={(v: string) => change('voucher_webbooking_instruction_kr', v)}
+                                                placeholder="이 바우처를 사용하시려면 웹사이트를 통해 예약해 주세요."
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 

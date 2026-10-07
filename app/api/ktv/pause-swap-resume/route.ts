@@ -3,11 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 import { BookingItemPauseService } from '@/lib/services/BookingItemPauseService';
 import { syncTurnsForDate } from '@/lib/turn-sync';
 import { z } from 'zod';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
+import { parseKtvSegments, isLiveKtvSegment } from '@/lib/ktvUtils';
+import { performSequentialLifecycle } from '@/lib/services/SequentialLifecycleService';
+import { requirePermission } from '@/lib/auth-server';
 
 const pauseSwapSchema = z.object({
     action: z.enum(['PAUSE', 'RESUME', 'SWAP']),
     bookingItemId: z.string().min(1, 'Thiếu bookingItemId'),
     oldKtvId: z.string().optional(),
+    employeeId: z.string().optional(),
     newKtvId: z.string().optional(),
     extraTimeMins: z.number().nonnegative().optional().default(0),
     businessDate: z.string().optional(),
@@ -43,6 +48,17 @@ export async function POST(req: Request) {
         }
 
         const { action, bookingItemId, oldKtvId, newKtvId, extraTimeMins, businessDate, keepTurnForOldKtv, assignedMins, swapReason } = parsedData.data;
+        const { data: scopedItem, error: scopedError } = await supabase.from('BookingItems').select('id, options, segments').eq('id', bookingItemId).single();
+        if (scopedError) throw scopedError;
+        if (isTwoSlotSequential(scopedItem?.options)) {
+            if (action !== 'PAUSE') await requirePermission('dispatch_board');
+            const slot = action === 'SWAP' ? Number(parseKtvSegments(scopedItem.segments).find(seg => isLiveKtvSegment(seg, oldKtvId) && !seg.actualEndTime)?.sequenceSlot) : undefined;
+            const data = await performSequentialLifecycle(supabase, bookingItemId, {
+                action, employeeId: parsedData.data.employeeId, targetSlots: slot ? [slot] : undefined,
+                newKtvId, assignedMins, extraTimeMins, reason: swapReason,
+            });
+            return NextResponse.json({ success: true, data });
+        }
 
         let result;
         switch (action) {

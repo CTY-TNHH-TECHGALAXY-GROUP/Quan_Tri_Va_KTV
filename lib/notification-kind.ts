@@ -54,6 +54,7 @@ const BY_TYPE: Record<string, NotificationKind> = {
     REGISTRATION_REMINDER: 'penalty',
 
     REWARD: 'reward',
+    HOURS_GRANT: 'reward',   // admin/DEV cộng giờ tích luỹ
     REWARD_APPROVED: 'reward',
     BONUS: 'reward',
     EARN: 'reward',

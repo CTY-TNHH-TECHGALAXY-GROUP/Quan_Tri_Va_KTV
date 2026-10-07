@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { stripBodyAreaTags } from '@/lib/booking.logic';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle, ChevronDown, ChevronUp, Dumbbell, Target, Ban } from 'lucide-react';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
@@ -88,7 +89,8 @@ export function CollapsibleRequirements({ booking }: { booking: any }) {
         break; // Not a valid JSON string, leave as is
       }
     }
-    displayDispatcherNote = currentStr || null;
+    // Vùng tập trung/tránh đã hiện riêng bên dưới — ghi chú quầy chỉ giữ phần gõ tay.
+    displayDispatcherNote = stripBodyAreaTags(currentStr) || null;
   }
 
   const customerNote = item?.customerNote || booking?.customerNote;

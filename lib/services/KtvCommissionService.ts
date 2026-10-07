@@ -15,6 +15,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { ktvMatchesSeg } from '../ktvUtils';
 import { isVoidedSegment } from '../segment-time';
+import { normalizeScale, qualifiesForBonus, deductionRate, loadRatingConfig, type RatingScale, type RatingConfig } from './RatingScaleService';
 
 export interface CommissionConfig {
     milestones: Record<string, number>;
@@ -256,6 +257,60 @@ export class KtvCommissionService {
     }
 
     /**
+     * Sao dùng để TRỪ hoa hồng A/B/C của KTV này trên một dịch vụ, kèm thang lúc chấm:
+     * ktvRatings của KTV → itemRating. KHÔNG lùi về sao cấp bill: route phía KTV và phía
+     * báo cáo lấy dữ liệu khác nhau (có / không có `guest_id`), lùi về bill thì hai phía ra
+     * hai con số (CLAUDE.md 4.3). Chưa chấm ở dịch vụ = chưa đánh giá = không trừ.
+     * Không có `item` (nhánh dự phòng 60 phút) → sao cao nhất của KTV trong các dịch vụ của bill.
+     */
+    static ktvRatingOnItem(item: any | null, booking: any, techCode: string): { rating: number; scale: RatingScale } {
+        const own = (it: any): { rating: number; scale: RatingScale } => {
+            let map = it?.ktvRatings;
+            if (typeof map === 'string') { try { map = JSON.parse(map); } catch { map = {}; } }
+            const key = map && typeof map === 'object'
+                ? Object.keys(map).find((k: string) => k.toLowerCase() === String(techCode).toLowerCase()) : undefined;
+            const fromMap = key ? Number(map[key]) || 0 : 0;
+            if (fromMap > 0) return { rating: fromMap, scale: normalizeScale(it.rating_scale) };
+            const fromItem = Number(it?.itemRating) || 0;
+            if (fromItem > 0) return { rating: fromItem, scale: normalizeScale(it.rating_scale) };
+            return { rating: 0, scale: 4 };
+        };
+        if (item) return own(item);
+        let best: { rating: number; scale: RatingScale } = { rating: 0, scale: 4 };
+        for (const it of (booking?.BookingItems || [])) {
+            // Same "really worked on it" rule as the bonus: listed, not voided (swapped out), not cancelled.
+            const listed = Array.isArray(it?.technicianCodes)
+                && it.technicianCodes.some((tc: string) => String(tc).toLowerCase() === String(techCode).toLowerCase());
+            if (!listed || KtvCommissionService.isKtvVoidedOnItem(it, techCode)
+                || String(it?.status || '').toUpperCase() === 'CANCELLED') continue;
+            const r = own(it);
+            if (r.rating > best.rating) best = r;
+        }
+        return best;
+    }
+
+    /** Số tiền bị trừ theo sao cho A/B/C (VND, làm tròn đồng). Bảng mặc định 0% → 0. */
+    static abcRatingDeduction(amount: number, rating: number, scale: RatingScale, abcTables: RatingConfig['abc']): number {
+        return Math.round(amount * deductionRate(abcTables[scale], rating));
+    }
+
+    /**
+     * Hoa hồng A/B/C sau khi trừ theo sao — NGUỒN DUY NHẤT cho ví, lịch sử, báo cáo và sổ ngày
+     * (plans/plan_thang_danh_gia_4_5_sao_va_khau_tru_abc_20261002.md). `amount` = kết quả `calcCommission`.
+     */
+    static applyAbcRatingDeduction(amount: number, item: any | null, booking: any, techCode: string, abcTables: RatingConfig['abc'] | null | undefined, workType: string): number {
+        // Loại D có bảng trừ riêng (KtvDLedgerEngine) — không bao giờ áp bảng A/B/C lên Loại D.
+        if (!abcTables || !amount || workType === 'TYPE_D') return amount;
+        const { rating, scale } = KtvCommissionService.ktvRatingOnItem(item, booking, techCode);
+        return amount - KtvCommissionService.abcRatingDeduction(amount, rating, scale, abcTables);
+    }
+
+    /** Bảng trừ A/B/C theo thang, đọc từ SystemConfigs. */
+    static async getAbcRatingTables(supabase: SupabaseClient): Promise<RatingConfig['abc']> {
+        return (await loadRatingConfig(supabase)).abc;
+    }
+
+    /**
      * Parse segments to find the expected total duration for a specific KTV in a booking item
      * This prevents KTVs from exploiting actual working time (realMins) to get bonus.
      */
@@ -386,8 +441,9 @@ export class KtvCommissionService {
         
         let validUniqueKTVs = allKtvCodes.size;
 
-        // 1. Determine Max Rating for this KTV
+        // 1. Determine Max Rating for this KTV (and the scale it was given on)
         let maxKtvRating = 0;
+        let maxKtvRatingScale: RatingScale = 4;
         for (const item of (booking.BookingItems || [])) {
             let isTechInvolved = false;
             if (item.technicianCodes && Array.isArray(item.technicianCodes) && item.technicianCodes.length > 0) {
@@ -401,6 +457,7 @@ export class KtvCommissionService {
             if (daHuy(item)) continue;
 
             let ktvRating = 0;
+            let ktvRatingScale: RatingScale = normalizeScale(item.rating_scale);
             // Priority 1: ktvRatings map
             let parsedKtvRatings = item.ktvRatings;
             if (typeof parsedKtvRatings === 'string') {
@@ -418,13 +475,16 @@ export class KtvCommissionService {
             // nghĩa là CHƯA CHẤM. Lùi về `booking.rating` là mượn sao của khách
             // bên cạnh — một người chấm 4 sao thành cả bill được thưởng.
             // Cùng một luật với KtvDLedgerEngine.resolveRating().
-            if (ktvRating === 0 && !item.guest_id) ktvRating = Number(booking.rating) || 0;
+            if (ktvRating === 0 && !item.guest_id) {
+                ktvRating = Number(booking.rating) || 0;
+                ktvRatingScale = normalizeScale(booking.rating_scale);
+            }
             
-            if (ktvRating > maxKtvRating) maxKtvRating = ktvRating;
+            if (ktvRating > maxKtvRating) { maxKtvRating = ktvRating; maxKtvRatingScale = ktvRatingScale; }
         }
 
-        // Must be >= 4 to receive bonus
-        if (maxKtvRating < 4) return 0;
+        // Bonus only at the top of the rating's own scale (4/4 as before, 5/5 on the 5-star scale).
+        if (!qualifiesForBonus(maxKtvRating, maxKtvRatingScale)) return 0;
 
         // 2 & 3. Calculate points per item and sum them up
         let totalDurationForBonus = 0;

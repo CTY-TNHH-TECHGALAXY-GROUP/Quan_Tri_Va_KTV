@@ -1,9 +1,10 @@
+import { parseKtvOptions, parseKtvSegments, ktvMetadataValue } from '@/lib/ktvUtils';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { parseDbDate } from '@/lib/utils';
 import { getDispatchData } from './actions';
 import { StaffData, TurnQueueData, PendingOrder, DispatchStatus, WorkSegment } from './types';
-import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { formatBodyAreas, normalizeStrength, stripBodyAreaTags } from '@/lib/booking.logic';
 import { isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 
 // Helpers copied from page.tsx for internal hook usage
@@ -56,27 +57,6 @@ const calcEndTime = (start: string, duration: number): string => {
 };
 
 const genId = () => Math.random().toString(36).slice(2, 8);
-
-function parseBookingOptions(opts: unknown): Record<string, any> {
-  if (!opts) return {};
-
-  if (typeof opts === 'object' && !Array.isArray(opts)) {
-    return opts as Record<string, any>;
-  }
-
-  if (typeof opts === 'string') {
-    try {
-      const parsed = JSON.parse(opts);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? parsed
-        : {};
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
-}
 
 // 🔧 UI CONFIGURATION
 const NOW_REFRESH_INTERVAL_MS = 60_000; // Refresh "now" every 60 seconds
@@ -194,8 +174,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
         }
     }
 
-    async function fetchData() {
-        setLoading(true);
+    async function fetchData(background = false) {
+        if (!background) setLoading(true);
         console.log("📡 [Dispatch] Fetching data for date:", selectedDate);
         try {
             const res = await getDispatchData(selectedDate);
@@ -251,6 +231,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                     if (!calculatedRating) {
                         calculatedRating = (b.BookingItems || []).find((i: any) => i.itemRating != null)?.itemRating || null;
                     }
+                    // Same source order as the rating itself: bill → first rated guest → first rated item.
+                    const ratingScale = Number(b.rating ? b.rating_scale
+                        : guestListForRating.find((g: any) => g.rating != null)?.rating_scale
+                        ?? (b.BookingItems || []).find((i: any) => i.itemRating != null)?.rating_scale) === 5 ? 5 : 4;
 
                     return {
                         id: b.id,
@@ -273,6 +257,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         hasAssignedKtv,
                         accessToken: b.accessToken || null,
                         rating: calculatedRating,
+                        ratingScale,
                         feedbackNote: b.feedbackNote || null,
                         ktvReviewsOfReception: Array.isArray(b.ktvReviewsOfReception) ? b.ktvReviewsOfReception : [],
                         ktvReports: Array.isArray(b.ktvReports) ? b.ktvReports : [],
@@ -284,6 +269,10 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                         timeBooking: b.timeBooking,
                         isReturning: b.isReturning,
                         visitCount: b.visitCount,
+                        visitStatus: b.visitStatus,
+                        cancelledVisits: b.cancelledVisits,
+                        closedVisits: b.closedVisits,
+                        cancelRate: b.cancelRate,
                         guestCount: b.guestCount,
                         nationality: b.nationality,
                         customerGender: b.customerGender || 'male',
@@ -296,16 +285,16 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             const finalItemTurns = (itemTurns.length === 0 && (b.BookingItems || []).length === 1) ? assignedTurns : itemTurns;
 
                             let parsedSegments: any[] = [];
-                            try { parsedSegments = typeof bi.segments === 'string' ? JSON.parse(bi.segments) : (Array.isArray(bi.segments) ? bi.segments : []); } catch (e) { parsedSegments = []; }
+                            try { parsedSegments = parseKtvSegments(bi.segments); } catch (e) { parsedSegments = []; }
 
-                            const parsedOptions = parseBookingOptions(bi.options);
+                            const parsedOptions = parseKtvOptions(bi.options);
 
+                            // Chỉ lấy phần khách gõ tay — vùng tập trung/tránh đã có cột riêng (focus/avoid),
+                            // không để WRB ghép sẵn vào ghi chú rồi hiện trùng hai lần.
                             const freeCustomerNote = [
-                                parsedOptions.note,
-                                parsedOptions.customerNotes,
-                            ].find((value) =>
-                                typeof value === 'string' && value.trim()
-                            )?.trim() || '';
+                                stripBodyAreaTags(parsedOptions.note),
+                                stripBodyAreaTags(parsedOptions.customerNotes),
+                            ].find((value) => value)?.trim() || '';
 
                             const specialTags = Array.isArray(parsedOptions.tags)
                                 ? parsedOptions.tags
@@ -347,17 +336,19 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                             }
 
                             const forcedStartTime = parsedOptions?.timeSlot || parsedNotes?.timeSlot;
-                            const techCodes: string[] = (Array.isArray(bi.technicianCodes) ? bi.technicianCodes : (bi.technicianCodes ? [bi.technicianCodes] : [])).filter(Boolean);
+                            // Khử trùng: mỗi KTV một dòng dù technicianCodes bị ghi lặp (vd ["B","C","C"]).
+                            const techCodes: string[] = [...new Set<string>((Array.isArray(bi.technicianCodes) ? bi.technicianCodes : (bi.technicianCodes ? [bi.technicianCodes] : [])).filter(Boolean))];
                             let staffList: any[] = [];
 
                             if (techCodes.length > 0) {
                                 staffList = techCodes.map((tCode: string) => {
                                         const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === tCode);
                                         const turn = finalItemTurns.find((t: any) => t.employee_id === tCode);
-                                        let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
+                                        let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode).sort((a: any, b: any) => Number(a.voided === true || a.voided === 'true') - Number(b.voided === true || b.voided === 'true'));
 
                                         if (segments.length === 0) {
-                                            const st = formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
+                                            const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+                                            const st = saved ? '' : (formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime());
                                             const totalDur = parsedOptions?.vipDuration || bi.duration || 0;
                                             const dur = techCodes.length > 1 ? Math.ceil(totalDur / techCodes.length) : totalDur;
                                             segments = [{
@@ -366,7 +357,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                                 bedId: turn?.bed_id || bi.bedId || b.bedId,
                                                 startTime: st,
                                                 duration: dur,
-                                                endTime: formatTime(turn?.estimated_end_time) || calcEndTime(st, dur)
+                                                endTime: saved ? '' : (formatTime(turn?.estimated_end_time) || calcEndTime(st, dur))
                                             }];
                                         }
 
@@ -375,18 +366,19 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                             ktvId: tCode,
                                             ktvName: parsedOptions?.external_technician_name?.[tCode] || staff?.full_name || tCode,
                                             segments: segments,
-                                            noteForKtv: bi.options?.notesForKtvs?.[tCode] || bi.options?.noteForKtv || '',
-                                            serviceNameForKtv: bi.options?.serviceNamesForKtvs?.[tCode] || ''
+                                            noteForKtv: ktvMetadataValue(parsedOptions.notesForKtvs, tCode) ?? parsedOptions.noteForKtv ?? '',
+                                            serviceNameForKtv: ktvMetadataValue(parsedOptions.serviceNamesForKtvs, tCode) ?? ''
                                         };
                                 });
                             }
                             if (staffList.length === 0 && finalItemTurns.length > 0) {
                                 staffList = finalItemTurns.map((t: any) => {
                                     const staff = (sData as unknown as StaffData[])?.find((s: any) => s.id === t.employee_id);
-                                    let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id);
+                                    let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id).sort((a: any, b: any) => Number(a.voided === true || a.voided === 'true') - Number(b.voided === true || b.voided === 'true'));
 
                                     if (segments.length === 0) {
-                                        const st = formatTime(t.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
+                                        const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+                                        const st = saved ? '' : (formatTime(t.start_time) || forcedStartTime || b.timeBooking || getCurrentTime());
                                         const dur = parsedOptions?.vipDuration || bi.duration || 0;
                                         segments = [{
                                             id: `seg-${genId()}`,
@@ -394,7 +386,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                             bedId: t.bed_id || bi.bedId || b.bedId,
                                             startTime: st,
                                             duration: dur,
-                                            endTime: formatTime(t.estimated_end_time) || calcEndTime(st, dur)
+                                            endTime: saved ? '' : (formatTime(t.estimated_end_time) || calcEndTime(st, dur))
                                         }];
                                     }
 
@@ -403,14 +395,15 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         ktvId: t.employee_id,
                                         ktvName: parsedOptions?.external_technician_name?.[t.employee_id] || staff?.full_name || 'KTV',
                                         segments: segments,
-                                        noteForKtv: bi.options?.notesForKtvs?.[t.employee_id] || bi.options?.noteForKtv || '',
-                                        serviceNameForKtv: bi.options?.serviceNamesForKtvs?.[t.employee_id] || ''
+                                        noteForKtv: ktvMetadataValue(parsedOptions.notesForKtvs, t.employee_id) ?? parsedOptions.noteForKtv ?? '',
+                                        serviceNameForKtv: ktvMetadataValue(parsedOptions.serviceNamesForKtvs, t.employee_id) ?? ''
                                     };
                                 });
                             } else if (staffList.length === 0) {
                                 const dbSeg = parsedSegments.length > 0 ? parsedSegments[0] : null;
-                                const fallbackStart = dbSeg?.startTime || forcedStartTime || getCurrentTime();
-                                const fallbackDur = dbSeg?.duration || parsedOptions?.vipDuration || Number(bi.duration) || 0;
+                                const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
+                                const fallbackStart = dbSeg?.startTime ?? (saved ? '' : (forcedStartTime || getCurrentTime()));
+                                const fallbackDur = dbSeg?.duration ?? (saved ? 0 : (parsedOptions?.vipDuration || Number(bi.duration) || 0));
                                 staffList = [{
                                     id: `st-${bi.id}`,
                                     ktvId: '',
@@ -421,7 +414,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                         bedId: dbSeg?.bedId || null,
                                         startTime: fallbackStart,
                                         duration: fallbackDur,
-                                        endTime: dbSeg?.endTime || calcEndTime(fallbackStart, fallbackDur)
+                                        endTime: dbSeg?.endTime ?? (saved ? '' : calcEndTime(fallbackStart, fallbackDur))
                                     }],
                                     noteForKtv: '',
                                     serviceNameForKtv: ''
@@ -443,7 +436,15 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 // `dsKtvHienThi` ở KanbanBoard.tsx.
                                 segments: parsedSegments,
                                 adminNote: itemCustomerNote,
-                                genderReq: parsedOptions?.therapist || 'Ngẫu nhiên',
+                                // Đơn NHP/NHT (menu VIP / trị liệu): khách đã chọn ĐÍCH DANH KTV trên WRB, nên
+                                // không có khái niệm "yêu cầu therapist" nữa — không hiện tag nào, kể cả Nam/Nữ
+                                // hay "Ngẫu nhiên" (chốt 03/10/2026). Dịch vụ thường (NHS) giữ như cũ.
+                                genderReq: (() => {
+                                    const sidUp = String(bi.serviceId || '').toUpperCase();
+                                    const isVipOrTherapy = sidUp.startsWith('NHP') || sidUp.startsWith('NHT') || sidUp.startsWith('VIP_');
+                                    if (isVipOrTherapy) return '';
+                                    return String(parsedOptions?.therapist || '').trim() || 'Ngẫu nhiên';
+                                })(),
                                 strength: normalizeStrength(parsedOptions?.strength || ''),
                                 focus: formatBodyAreas(parsedOptions?.focus || ''),
                                 avoid: formatBodyAreas(parsedOptions?.avoid || ''),
@@ -484,6 +485,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                                 focusArea: g.focus_area,
                                 status: g.status,
                                 rating: g.rating,
+                                ratingScale: Number(g.rating_scale) === 5 ? 5 : 4,
                                 items: (b.BookingItems || []).filter((bi: any) => bi.guest_id === g.id)
                             };
                         })
@@ -522,7 +524,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
         } catch (e) {
             console.error("❌ [Dispatch] Unexpected error in fetchData:", e);
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
         }
     }
 
@@ -533,8 +535,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
         const debouncedFetchData = () => {
             clearTimeout(fetchTimeout);
             fetchTimeout = setTimeout(() => {
-                fetchData();
-            }, 1000);
+                fetchData(true);
+            }, 300);
         };
 
         const channel = supabase
@@ -568,7 +570,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
                 });
 
                 if (selectedOrderIdRef.current) {
-                    needsRefreshRef.current = true;
+                    debouncedFetchData();
                     return;
                 }
             })
@@ -603,61 +605,26 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'StaffNotifications' }, (payload) => {
                 if (selectedOrderIdRef.current) {
-                    needsRefreshRef.current = true;
+                    debouncedFetchData();
                     return;
                 }
                 debouncedFetchData();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingGuests' }, (payload) => {
                 if (selectedOrderIdRef.current) {
-                    needsRefreshRef.current = true;
+                    debouncedFetchData();
                     return;
                 }
                 debouncedFetchData();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, (payload) => {
-                const newItem = payload.new as any;
-                if (newItem?.bookingId && newItem?.status) {
-                    setOrders(prev => prev.map(o => {
-                        if (o.id === newItem.bookingId) {
-                            const updatedServices = o.services.map((svc: any) =>
-                                svc.id === newItem.id ? { 
-                                    ...svc, 
-                                    status: newItem.status,
-                                    itemRating: newItem.itemRating,
-                                    ktvRatings: newItem.ktvRatings,
-                                    // Phải chép cả `options`: dấu tích "KTV đã nhận đơn" đọc
-                                    // từ options.acceptedByStaff. Thiếu dòng này thì KTV bấm
-                                    // nhận xong quầy vẫn thấy "CHỜ NHẬN" cho tới khi F5.
-                                    options: newItem.options ?? svc.options,
-                                    handover_status: newItem.handover_status ?? svc.handover_status
-                                } : svc
-                            );
-                            return { ...o, services: updatedServices };
-                        }
-                        return o;
-                    }));
-                }
                 if (selectedOrderIdRef.current) {
-                    needsRefreshRef.current = true;
+                    // Keep the form's revision and values together. A stale save is
+                    // rejected by the locked RPC; closing the form refreshes it.
+                    debouncedFetchData();
                     return;
                 }
-
-                if (payload.eventType !== 'UPDATE') {
-                    debouncedFetchData();
-                } else {
-                    setOrders(prev => {
-                        const order = prev.find(o => o.id === newItem.bookingId);
-                        const svc = order?.services.find((s: any) => s.id === newItem.id);
-                        if (
-                            (newItem.status === 'IN_PROGRESS' && svc?.status !== 'IN_PROGRESS') ||
-                            (newItem.itemRating !== svc?.itemRating)
-                        ) {
-                            debouncedFetchData();
-                        }
-                        return prev;
-                    });
-                }
+                debouncedFetchData();
             })
             .on('broadcast', { event: 'KTV_STARTED' }, (payload: any) => {
                 const { bookingId, ktvId, startTime } = payload.payload;

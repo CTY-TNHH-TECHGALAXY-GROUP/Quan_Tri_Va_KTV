@@ -176,6 +176,11 @@ export interface Customer {
   // Aggregated fields
   totalSpent?: number;
   visitCount?: number;
+  /** Nhãn khách — CustomerVisitService (một công thức với bảng điều phối). */
+  visitStatus?: 'RETURNING' | 'VISITED' | 'NEW';
+  cancelledVisits?: number;
+  closedVisits?: number;
+  cancelRate?: number | null;
   vipMenuCount?: number;
   ktvReviews?: string[];
   // V9 Export Fields

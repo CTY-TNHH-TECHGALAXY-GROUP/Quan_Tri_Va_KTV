@@ -23,6 +23,8 @@ import { fmtHours } from '@/lib/hours-format';
 import { ratingLabel } from '@/lib/rating-label';
 import { t } from './KTVHistory.i18n';
 import { FeatureMaintenanceNotice } from '@/components/shared/FeatureMaintenanceNotice';
+import { useRatingConfig } from '@/lib/useRatingConfig';
+import { normalizeScale, ratingTone } from '@/lib/services/RatingScaleService';
 
 /** 'YYYY-MM' -> '09/2026'. */
 const fmtMonthLabel = (m: string) => {
@@ -35,12 +37,12 @@ const HINT_NUDGE_DURATION = 1.2;   // seconds per arrow nudge cycle
 const HINT_NUDGE_DISTANCE = 4;     // px the arrow travels toward the calendar button
 // Chỉ giữ MÀU ở đây; chữ lấy từ `lib/rating-label` để ví và Lịch Sử gọi tên
 // một mức sao giống hệt nhau.
-const RATING_COLOR: Record<number, { color: string; bg: string }> = {
-  1: { color: 'text-red-600',     bg: 'bg-red-50'     },
-  2: { color: 'text-yellow-600',  bg: 'bg-yellow-50'  },
-  3: { color: 'text-emerald-700', bg: 'bg-emerald-50' },
-  4: { color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
-  5: { color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
+// Màu theo vị trí trong thang của đánh giá (thang 4: 4 → top, 3 → good… như trước).
+const RATING_COLOR: Record<'top' | 'good' | 'mid' | 'low', { color: string; bg: string }> = {
+  low:  { color: 'text-red-600',     bg: 'bg-red-50'     },
+  mid:  { color: 'text-yellow-600',  bg: 'bg-yellow-50'  },
+  good: { color: 'text-emerald-700', bg: 'bg-emerald-50' },
+  top:  { color: 'text-indigo-700',  bg: 'bg-indigo-50'  },
 };
 
 // ─── Image Modal ──────────────────────────────────────────────────────────────
@@ -125,6 +127,7 @@ const OrderCard = ({ order, getStatusLabel }: {
   getStatusLabel: (s: string) => { label: string; color: string };
 }) => {
   const [expanded, setExpanded] = React.useState(false);
+  const ratingConfig = useRatingConfig();
 
   // Đơn bị tước quyền lợi: với KTV này đơn ĐÃ KẾT THÚC, bất kể người vào thay còn
   // đang làm. Ghi "Đang làm" là sai — họ không còn làm gì ở đơn đó nữa.
@@ -137,8 +140,9 @@ const OrderCard = ({ order, getStatusLabel }: {
         : { label: 'Huỷ', color: 'text-rose-600 bg-rose-50' })
     : getStatusLabel(order.status);
   const isDone = order.status === 'DONE' || order.status === 'COMPLETED';
-  const ratingText = ratingLabel(order.rating);
-  const ratingCfg = order.rating ? RATING_COLOR[order.rating] : null;
+  const ratingScale = normalizeScale(order.ratingScale);
+  const ratingText = ratingLabel(order.rating, ratingScale, ratingConfig.labels);
+  const ratingCfg = order.rating ? RATING_COLOR[ratingTone(order.rating, ratingScale)] : null;
 
   /**
    * Thẻ tiền đi kèm mức đánh giá.

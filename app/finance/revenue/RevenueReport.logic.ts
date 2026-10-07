@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear } from 'date-fns';
+import { 
+    format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear,
+    addDays, addWeeks, addMonths, addYears, parseISO 
+} from 'date-fns';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -29,6 +32,8 @@ export interface ReportSummary {
     avgPerOrder: number;
     totalTip: number;
     totalCommission: number;
+    grossProfit: number;
+    grossProfitMargin: number;
     // New KPIs
     totalServiceCount: number;
     totalServiceRevenue: number;
@@ -185,6 +190,7 @@ export interface ReportData {
 const EMPTY_SUMMARY: ReportSummary = {
     revenue: 0, orders: 0, newCustomers: 0, avgRating: 0,
     occupancy: 0, avgPerOrder: 0, totalTip: 0, totalCommission: 0,
+    grossProfit: 0, grossProfitMargin: 0,
     totalServiceCount: 0, totalServiceRevenue: 0,
     costPerService: 0, costRatio: 0,
     uniqueCustomers: 0, avgBillPerCustomer: 0,
@@ -240,8 +246,17 @@ export const useRevenueReport = () => {
             const res = await fetch(`/api/finance/reports?${params.toString()}`, { cache: 'no-store' });
             const json = await res.json();
             if (json.success) {
+                const rawSummary = json.summary || EMPTY_SUMMARY;
+                const calculatedGrossProfit = Math.max(0, (rawSummary.revenue || 0) - (rawSummary.totalCommission || 0));
+                const calculatedMargin = rawSummary.revenue > 0 ? Math.round((calculatedGrossProfit / rawSummary.revenue) * 100) : 0;
+                const enrichedSummary: ReportSummary = {
+                    ...rawSummary,
+                    grossProfit: calculatedGrossProfit,
+                    grossProfitMargin: calculatedMargin,
+                };
+
                 setData({
-                    summary: json.summary || EMPTY_SUMMARY,
+                    summary: enrichedSummary,
                     dailyRevenue: json.dailyRevenue || [],
                     hourlyRevenue: json.hourlyRevenue || [],
                     weeklyRevenue: json.weeklyRevenue || [],
@@ -334,6 +349,69 @@ export const useRevenueReport = () => {
     const applyLangFilter = (newLang: string) => {
         setFilterLang(newLang);
         if (dateFrom && dateTo) fetchReport(dateFrom, dateTo, undefined, undefined, undefined, newLang);
+    };
+
+    // Điều hướng lùi / tiến chu kỳ 1 chạm (< và >)
+    const stepPeriod = (direction: -1 | 1) => {
+        if (!dateFrom || !dateTo) return;
+        try {
+            const fromDate = parseISO(dateFrom);
+            let nextFrom = fromDate;
+            let nextTo = fromDate;
+
+            if (datePreset === 'today' || datePreset === 'yesterday') {
+                const shifted = addDays(fromDate, direction);
+                nextFrom = shifted;
+                nextTo = shifted;
+            } else if (datePreset === 'week') {
+                const shifted = addWeeks(fromDate, direction);
+                nextFrom = startOfWeek(shifted, { weekStartsOn: 1 });
+                nextTo = endOfWeek(shifted, { weekStartsOn: 1 });
+            } else if (datePreset === 'month') {
+                const shifted = addMonths(fromDate, direction);
+                nextFrom = startOfMonth(shifted);
+                nextTo = endOfMonth(shifted);
+            } else if (datePreset === 'quarter') {
+                const currentMonth = fromDate.getMonth();
+                const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+                const baseQuarterDate = new Date(fromDate.getFullYear(), quarterStartMonth, 1);
+                const shifted = addMonths(baseQuarterDate, direction * 3);
+                const newQuarterStart = Math.floor(shifted.getMonth() / 3) * 3;
+                nextFrom = new Date(shifted.getFullYear(), newQuarterStart, 1);
+                nextTo = new Date(shifted.getFullYear(), newQuarterStart + 3, 0);
+            } else if (datePreset === 'year') {
+                const shifted = addYears(fromDate, direction);
+                nextFrom = startOfYear(shifted);
+                nextTo = endOfYear(shifted);
+            } else {
+                // custom: dời theo khoảng ngày
+                const toDate = parseISO(dateTo);
+                const diffDays = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                nextFrom = addDays(fromDate, direction * diffDays);
+                nextTo = addDays(toDate, direction * diffDays);
+            }
+
+            const fromStr = format(nextFrom, 'yyyy-MM-dd');
+            const toStr = format(nextTo, 'yyyy-MM-dd');
+            setDateFrom(fromStr);
+            setDateTo(toStr);
+            setDatePreset('custom');
+            fetchReport(fromStr, toStr);
+        } catch (e) {
+            console.error('stepPeriod error', e);
+        }
+    };
+
+    // Chọn nhanh tháng & năm kết hợp
+    const applyMonthYear = (month: number, year: number) => {
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 0);
+        const fromStr = format(start, 'yyyy-MM-dd');
+        const toStr = format(end, 'yyyy-MM-dd');
+        setDateFrom(fromStr);
+        setDateTo(toStr);
+        setDatePreset('custom');
+        fetchReport(fromStr, toStr, 'day');
     };
 
     // Format helpers
@@ -458,6 +536,8 @@ export const useRevenueReport = () => {
         filterLang, applyLangFilter,
         revenueThreshold, setRevenueThreshold,
         applyCustomDate,
+        stepPeriod,
+        applyMonthYear,
         isLoading,
         data,
         formatVND,

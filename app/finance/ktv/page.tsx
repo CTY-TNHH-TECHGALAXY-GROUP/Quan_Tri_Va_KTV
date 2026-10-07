@@ -6,9 +6,11 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useFinanceKTV } from './FinanceKTV.logic';
 import { t, workTypeLabel } from './FinanceKTV.i18n';
 import { KTV_WORK_TYPES } from '@/lib/services/KtvRosterService';
-import { ShieldAlert, CheckCircle, Clock, XCircle, RefreshCcw, Banknote, Edit3, Star, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Clock, XCircle, RefreshCcw, Banknote, Edit3, Star, Zap, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { StaffLedgerBoard } from './StaffLedgerBoard';
+import { StaffWalletAuditModal } from './StaffWalletAuditModal';
 
 export default function FinanceKTVPage() {
     const { 
@@ -22,6 +24,13 @@ export default function FinanceKTVPage() {
     } = useFinanceKTV();
     
     const [isWalletDropdownOpen, setIsWalletDropdownOpen] = React.useState(false);
+    const [financeView, setFinanceView] = React.useState<'SUMMARY' | 'LEDGER'>('SUMMARY');
+    const [auditModalState, setAuditModalState] = React.useState<{
+        isOpen: boolean;
+        staffId: string | null;
+        staffName: string;
+        workType?: string;
+    }>({ isOpen: false, staffId: null, staffName: '' });
 
     if (!user || !canAccessPage) {
         return (
@@ -260,8 +269,45 @@ export default function FinanceKTVPage() {
                     </div>
                 </div>
 
-                {/* 🔵 TỔNG HỢP TÀI CHÍNH KTV (PHA 3) */}
+                {/* 🔵 NAVIGATION TABS: TỔNG HỢP SỐ DƯ vs SỔ ĐỐI SOÁT LỊCH SỬ TIỀN */}
                 <div className="pt-8">
+                    <div className="flex items-center gap-3 border-b border-slate-200 pb-3 mb-6 flex-wrap">
+                        <button
+                            onClick={() => setFinanceView('SUMMARY')}
+                            className={`px-4 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 transition-all cursor-pointer ${
+                                financeView === 'SUMMARY'
+                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                        >
+                            <Banknote size={17} />
+                            Bảng Tổng Hợp Số Dư
+                        </button>
+                        <button
+                            onClick={() => setFinanceView('LEDGER')}
+                            className={`px-4 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 transition-all cursor-pointer ${
+                                financeView === 'LEDGER'
+                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                        >
+                            <BookOpen size={17} />
+                            Sổ Đối Soát Lịch Sử Tiền
+                            <span className="px-1.5 py-0.5 text-[10px] font-black rounded-md bg-emerald-500 text-white">
+                                Mới
+                            </span>
+                        </button>
+                    </div>
+
+                    {financeView === 'LEDGER' ? (
+                        <StaffLedgerBoard
+                            staffList={staffList}
+                            onOpenStaffAudit={(staffId, staffName, workType) =>
+                                setAuditModalState({ isOpen: true, staffId, staffName, workType })
+                            }
+                        />
+                    ) : (
+                        <>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold text-indigo-600 flex items-center gap-2 uppercase tracking-widest text-sm">
                             <Banknote size={18} /> Bảng thống kê Ví điện tử KTV
@@ -435,12 +481,21 @@ export default function FinanceKTVPage() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
-                                                    <button 
-                                                        onClick={() => handleOpenAdjustment(ktv.id, ktv.name)}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors"
-                                                    >
-                                                        <Edit3 size={14} /> Thưởng / Phạt
-                                                    </button>
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <button 
+                                                            onClick={() => setAuditModalState({ isOpen: true, staffId: ktv.id, staffName: ktv.name, workType: ktv.work_type })}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                            title="Xem chi tiết sổ ví & đối soát dòng tiền"
+                                                        >
+                                                            <Clock size={13} /> Sổ ví
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleOpenAdjustment(ktv.id, ktv.name)}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                        >
+                                                            <Edit3 size={13} /> Thưởng / Phạt
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
@@ -532,7 +587,13 @@ export default function FinanceKTVPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="flex justify-end pt-1">
+                                            <div className="flex justify-end items-center gap-2 pt-1">
+                                                <button
+                                                    onClick={() => setAuditModalState({ isOpen: true, staffId: ktv.id, staffName: ktv.name, workType: ktv.work_type })}
+                                                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                                >
+                                                    <Clock size={13} /> Sổ ví
+                                                </button>
                                                 <button
                                                     onClick={() => handleOpenAdjustment(ktv.id, ktv.name)}
                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors cursor-pointer"
@@ -573,6 +634,8 @@ export default function FinanceKTVPage() {
                             )}
                         </div>
                     </div>
+                    </>
+                    )}
                 </div>
 
                 {/* MODAL THƯỞNG PHẠT */}
@@ -668,6 +731,17 @@ export default function FinanceKTVPage() {
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* MODAL ĐỐI SOÁT VÍ CHI TIẾT TỪNG KTV */}
+                {auditModalState.isOpen && (
+                    <StaffWalletAuditModal
+                        isOpen={auditModalState.isOpen}
+                        onClose={() => setAuditModalState(prev => ({ ...prev, isOpen: false }))}
+                        staffId={auditModalState.staffId}
+                        staffName={auditModalState.staffName}
+                        workType={auditModalState.workType}
+                    />
                 )}
 
             </div>

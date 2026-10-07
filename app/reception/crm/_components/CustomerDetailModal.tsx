@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { Customer } from '@/lib/types';
+import { VISIT_LABEL, VISIT_BADGE_CLASS, tVisit } from '@/lib/constants/customer-visit.i18n';
+import { formatCancelRate } from '@/lib/services/CustomerVisitService';
 import { X, Receipt, Star, Phone, Tag, Building2, MapPin, Mail, FileText, Check, Edit2 } from 'lucide-react';
 
 const MODAL_ANIMATION_MS = 200;
@@ -334,10 +336,11 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate, on
                     SL: {customer.maxGuestCount}
                   </span>
                 )}
-                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                  (customer.visitCount || 0) > 1 ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-green-50 text-green-600 border border-green-100'
-                }`}>
-                  {(customer.visitCount || 0) > 1 ? 'Khách cũ' : 'Khách mới'}
+                <span
+                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${VISIT_BADGE_CLASS[customer.visitStatus || 'NEW']}`}
+                  title={customer.visitStatus === 'VISITED' ? tVisit.visitedHint : tVisit.tooltip(customer.visitCount || 0, customer.cancelledVisits || 0)}
+                >
+                  {VISIT_LABEL[customer.visitStatus || 'NEW']}
                 </span>
               </div>
               <div className="text-sm text-gray-500 mt-1 flex items-center gap-3">
@@ -373,6 +376,12 @@ export const CustomerDetailModal = ({ customer, formatVND, onClose, onUpdate, on
             <div className="bg-gray-50 rounded-xl p-3 text-center">
               <div className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Số lần đến</div>
               <div className="text-base font-bold text-gray-900 mt-1">{customer.visitCount || 0}</div>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 text-center">
+              <div className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">{tVisit.cancelRate}</div>
+              <div className={`text-base font-bold mt-1 ${(customer.cancelRate ?? 0) >= 0.3 ? 'text-rose-600' : 'text-gray-900'}`}>
+                {formatCancelRate({ cancelledVisits: customer.cancelledVisits || 0, closedVisits: customer.closedVisits || 0, cancelRate: customer.cancelRate ?? null })}
+              </div>
             </div>
             <div className="bg-gray-50 rounded-xl p-3 text-center">
               <div className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Lần cuối</div>

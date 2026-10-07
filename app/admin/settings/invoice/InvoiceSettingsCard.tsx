@@ -9,7 +9,7 @@ export const InvoiceSettingsCard = () => {
     const [config, setConfig] = useState<InvoiceConfig>({
         spaName: 'ORIA SPA',
         slogan: 'Wellness • Beauty • Therapy',
-        address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
+        address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam',
         phone: '0964090277',
         email: 'cskhoria@techgalaxygroup.com',
         hotline: '0964090277',

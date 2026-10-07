@@ -118,7 +118,7 @@ function FeedbackGroupBlock({ group, onSelectChild }: { group: any, onSelectChil
                                                 </div>
                                                 {ktv.rating !== undefined && ktv.rating > 0 && (
                                                     <div className="flex items-center gap-1 shrink-0">
-                                                        {[...Array(4)].map((_, i) => (
+                                                        {[...Array(ktv.ratingScale === 5 ? 5 : 4)].map((_, i) => (
                                                             <Star 
                                                                 key={i} 
                                                                 size={12} 

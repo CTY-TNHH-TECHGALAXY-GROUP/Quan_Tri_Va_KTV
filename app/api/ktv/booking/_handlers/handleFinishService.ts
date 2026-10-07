@@ -1,10 +1,12 @@
+import { NextResponse } from 'next/server';
+import { isLiveKtvSegment, parseKtvOptions, parseKtvSegments } from '@/lib/ktvUtils';
 /**
  * ============================================================
  * ✅ HANDLER: CLEANING / FEEDBACK / DONE
  * ============================================================
- * 
+ *
  * Xử lý khi KTV hoàn thành dịch vụ (bấm "Xong").
- * 
+ *
  * 📋 LUỒNG:
  *   1. Gom TẤT CẢ segments của KTV này (cross-item nếu merged)
  *   2. Nếu isMerged: phân bổ thời gian theo duration ratio
@@ -13,33 +15,35 @@
  *   4. 🧠 SMART STATUS: Chỉ set item = CLEANING khi TẤT CẢ segments done
  *   5. 🧠 DUAL-CONDITION: Item = DONE chỉ khi allSegsDone + alreadyRated
  *   6. recomputeBookingStatus → set booking-level status
- * 
+ *
  * 🚫 KHÔNG ĐƯỢC:
  *   - Set actualEndTime cho segment của KTV KHÁC (each KTV finishes independently)
  *   - Bỏ qua Smart Status check (allSegsDone)
  *   - Force booking status thành DONE khi còn item chưa xong
  *   - Lùi item status đã DONE về CLEANING/FEEDBACK
- * 
+ *
  * ⚠️ EDGE CASES ĐÃ XỬ LÝ:
  *   - 2 KTV 1 DV: Ng 1 xong, item giữ IN_PROGRESS cho Ng 2
  *   - 1 KTV 2 DV (merged): Thời gian phân bổ theo duration ratio
  *   - Ca đêm: Cross-midnight time calculation
  *   - Khách rate trước KTV xong: alreadyRated check
- * 
- * 📊 DB OPERATIONS (tự xử lý):
- *   - UPDATE BookingItems.segments + status (per-item Smart Status)
- *   - SELECT BookingItems → recomputeBookingStatus
- * 
+ *
+ * 📊 DB OPERATIONS:
+ *   - Read immutable Booking/item/guest-rating snapshots and compute Smart Status
+ *   - ktv_finish_service_atomic locks/validates snapshots, then saves all items,
+ *     merged-child statuses and Bookings.status in one transaction
+ *
  * 📤 TRẢ VỀ:
- *   - bookingUpdatePayload: { status: bStatus }
- * 
+ *   - bookingPersisted: true, bookingData: committed booking row
+ *   - earlyResponse on read/RPC failure; no subsequent booking write/recompute
+ *
  * 🔗 PHỤ THUỘC: lib/dispatch-status.ts (recomputeBookingStatus)
  * ============================================================
  */
 
-import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
+import { HandlerContext, HandlerResult } from '../_shared/utils';
 import { isUtilityService } from '@/lib/booking.logic';
-import { segmentProgress } from '@/lib/dispatch-status';
+import { segmentProgress, sequentialSlotsComplete } from '@/lib/dispatch-status';
 
 export async function handleFinishService(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, bookingId, technicianCode, status, allItemIdsForThisKTV } = ctx;
@@ -48,12 +52,15 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     const nowISO = new Date().toISOString();
 
     // 🔍 Fetch bookings and guest ratings để check rating
-    const { data: bookingData } = await supabase
+    const { data: bookingData, error: bookingError } = await supabase
         .from('Bookings')
-        .select('rating, BookingGuests(id, rating)')
+        .select('id, status, rating, BookingGuests(id, rating)')
         .eq('id', bookingId)
         .single();
-    
+
+    if (bookingError || !bookingData) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa đọc được đơn hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
+
     const guestRatings: Record<string, number> = {};
     if (bookingData?.BookingGuests) {
         bookingData.BookingGuests.forEach((g: any) => {
@@ -61,24 +68,47 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         });
     }
 
-    // 🛠️ 1. GOM SEGMENTS CỦA KTV NÀY 🛠️
-    const { data: items } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id').in('id', allItemIdsForThisKTV);
-    
+    // One immutable baseline for all writes and merged-child status synchronization.
+    const { data: bookingItems, error: itemsError } = await supabase.from('BookingItems')
+        .select('id, segments, status, itemRating, guest_id, options, handover_status, handover_images, handover_skipped, handover_submitted_at, serviceId').eq('bookingId', bookingId);
+    const targetIds = new Set(allItemIdsForThisKTV);
+    const items = bookingItems?.filter((item: any) => targetIds.has(item.id));
+    if (itemsError || !items?.length || items.length !== targetIds.size) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa đọc được chặng hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
+    for (const row of bookingItems) parseKtvSegments(row.segments, true);
+    const itemSnapshots = structuredClone(bookingItems);
+    const { data: itemsWithServices, error: servicesError } = await supabase.from('BookingItems')
+        .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)').eq('bookingId', bookingId);
+    if (servicesError || !itemsWithServices?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa tổng hợp được trạng thái đơn. Tải lại để tiếp tục.' }, { status: 500 }) };
+    const updates: any[] = [];
+
     let allGlobalSegs: any[] = [];
     let originalItemsData: Record<string, any[]> = {};
     for (const item of items || []) {
-        let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+        let segs = parseKtvSegments(item.segments);
         originalItemsData[item.id] = [...segs];
         segs.forEach((seg: any, idx: number) => {
-            if (ktvMatchesSeg(seg.ktvId, technicianCode)) {
+            if (isLiveKtvSegment(seg, technicianCode)) {
                 allGlobalSegs.push({ item, idx, seg, _itemId: item.id });
             }
         });
     }
+    if (!allGlobalSegs.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Không còn chặng được gán cho nhân viên này. Tải lại đơn.' }, { status: 409 }) };
     allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
     const uniqueItemIds = new Set(allGlobalSegs.map((s: any) => s._itemId));
     const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
 
+    if (!allGlobalSegs.some((s: any) => s.seg.actualStartTime)) {
+        return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+            error: 'Chưa có chặng nào bắt đầu; không thể hoàn thành.' }, { status: 409 }) };
+    }
+    // Reject malformed mutation input rather than silently treating it as no work.
+    if (items.some((item: any) => !parseKtvSegments(item.segments).length)) {
+        return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+            error: 'Dữ liệu chặng không hợp lệ; tải lại đơn.' }, { status: 409 }) };
+    }
     // 📸 UPLOAD HANDOVER PHOTO (if provided)
     let handoverPhotoUrl: string | null = null;
     if (ctx.body?.photoBase64 && technicianCode) {
@@ -88,14 +118,14 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             const buffer = Buffer.from(base64Data, 'base64');
             const fileExt = base64Str.match(/^data:image\/(\w+);base64,/)?.[1] || 'jpg';
             const fileName = `handover_${bookingId}_${technicianCode}_${Date.now()}.${fileExt}`;
-            
+
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('attendance')
                 .upload(fileName, buffer, {
                     contentType: `image/${fileExt}`,
                     upsert: false
                 });
-            
+
             if (uploadError) {
                 console.error('❌ [KTV API] Handover photo upload error:', uploadError);
             } else if (uploadData?.path) {
@@ -107,7 +137,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             console.error('❌ [KTV API] Failed to upload handover photo:', err);
         }
     }
-    
+
     // Đồng bộ handoverPhotoUrl vào tất cả segment của KTV này trong đơn hàng này
     if (handoverPhotoUrl) {
         allGlobalSegs.forEach((itemSeg: any) => {
@@ -117,16 +147,18 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
             }
         });
     }
-    
+
     // Không gộp nếu đã có chặng kết thúc (tránh đè thời gian khi thêm dịch vụ sau khi chặng 1 đã xong)
-    const hasFinishedSegment = allGlobalSegs.some((s: any) => 
-        s.item.status === 'DONE' || 
-        (s.seg.actualEndTime && s.item.status !== 'IN_PROGRESS')
+    const hasFinishedSegment = allGlobalSegs.some((s: any) =>
+        s.item.status === 'DONE' ||
+        s.seg.actualEndTime
     );
 
     // 🧠 SMART MERGE: Nếu KTV có nhiều chặng trong cùng 1 Booking,
     // tự động gộp và phân bổ thời gian liên tục (kể cả DV gán thêm lúc đang làm).
-    const isMerged = allGlobalSegs.length > 1 
+    const isMerged = allGlobalSegs.length > 1
+        && allGlobalSegs.every((s: any) => s.seg.actualStartTime && s.seg.isMergedRun)
+        && new Set(allGlobalSegs.map((s: any) => s.seg.mergedRunId || s.seg.actualStartTime)).size === 1
         && uniqueItemIds.size === allGlobalSegs.length
         && uniqueRoomIds.size === 1
         && !hasFinishedSegment;
@@ -139,35 +171,35 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         if (actualTimeSpentMs < 0) actualTimeSpentMs = 0; // Guard against negative time
 
         let currentStartTimeMs = new Date(firstStartTime).getTime();
-        
+
         // ⚖️ PROPORTIONAL ALLOCATION (Chia thời gian theo tỉ lệ duration)
         const totalDurationMs = allGlobalSegs.reduce((sum: number, s: any) => sum + ((Number(s.seg.duration) || 60) * 60000), 0);
 
         for (let i = 0; i < allGlobalSegs.length; i++) {
             const target = allGlobalSegs[i];
             const segDurationMs = (Number(target.seg.duration) || 60) * 60000;
-            
+
             target.seg.actualStartTime = new Date(currentStartTimeMs).toISOString();
-            
+
             // Chia tỉ lệ: (Thời gian tiêu chuẩn của DV / Tổng thời gian tiêu chuẩn) * Tổng thời gian thực tế
             let allocatedMs = Math.floor((segDurationMs / (totalDurationMs || 1)) * actualTimeSpentMs);
-            
+
             // Chặng cuối ôm trọn số phút còn lại (tránh sai số làm tròn hoặc finish trễ)
             if (i === allGlobalSegs.length - 1) {
                 allocatedMs = new Date(nowISO).getTime() - currentStartTimeMs;
             }
-            
+
             currentStartTimeMs += allocatedMs;
-            
+
             target.seg.actualEndTime = new Date(currentStartTimeMs).toISOString();
             if (isFeedback) target.seg.feedbackTime = nowISO;
-            
+
             // Đánh dấu lại cờ isMergedRun để UI luôn biết đây là phiên gộp
             target.seg.isMergedRun = true;
-            
+
             originalItemsData[target.item.id][target.idx] = target.seg;
         }
-        
+
     } else {
         // Logic cũ (non-merged) — CHỈ hoàn tất segments đã có actualStartTime
         allGlobalSegs.forEach((target: any) => {
@@ -188,7 +220,8 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
     // ─── 3. 🧠 SMART STATUS PER-ITEM ───
     for (const item of items || []) {
         let segs = originalItemsData[item.id];
-        
+        if (!segs.some((seg: any) => isLiveKtvSegment(seg, technicianCode) && seg.actualStartTime)) continue;
+
         // (Removed Parallel Sync for actualEndTime so KTVs finish independently)
 
         // 🧠 SMART STATUS: Only set CLEANING when ALL segments in item have actualEndTime
@@ -198,7 +231,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
         // cancelled no credit) are ignored — see segmentProgress. Before 14/09/2026 a
         // never-started KTV left by "Kết thúc sớm" pulled the item back to IN_PROGRESS.
         const { allSegsDone, hasUnstartedSegs, allHandovered } = segmentProgress(segs);
-        const alreadyRated = 
+        const alreadyRated =
             ((item as any).itemRating !== null && (item as any).itemRating !== undefined) ||
             ((item as any).guest_id && guestRatings[(item as any).guest_id] != null) ||
             (bookingData?.rating != null);
@@ -235,14 +268,17 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                                               // đã huỷ thành "Chờ đánh giá" hoặc "Hoàn tất".
             : (item.status === 'DONE')
             ? 'DONE'                          // 🛡️ Đã DONE → không lùi
-            : hasUnstartedSegs
+            : segs.some((seg: any) => seg.voided !== true && seg.actualStartTime && !seg.actualEndTime
+                && (seg.pauses || []).some((pause: any) => pause.from && !pause.to))
+            ? 'PAUSED'
+            : (hasUnstartedSegs || !sequentialSlotsComplete(item.options, segs))
                 ? 'IN_PROGRESS'               // 🔒 Còn DV chưa bắt đầu → giữ IN_PROGRESS
                 : (alreadyRated && allSegsDone && allHandovered)
                     ? 'DONE'                  // 🧠 Khách đã rate + KTV xong + KTV đã bàn giao → hoàn tất
                     : allSegsDone
                         ? (isFeedback ? 'FEEDBACK' : 'CLEANING')
                         : 'IN_PROGRESS';
-        
+
         const updatePayload: any = { segments: JSON.stringify(segs), status: newItemStatus };
         if (Object.keys(newHandoverImages).length > 0) {
             updatePayload.handover_images = newHandoverImages;
@@ -262,56 +298,38 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
                 updatePayload.handover_submitted_at = new Date().toISOString();
             }
         }
-        
-        await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
-        console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated}, allHandovered=${allHandovered} → ${newItemStatus}`);
+
+        updates.push({ id: item.id, ...updatePayload });
+        item.status = newItemStatus;
     }
-    
-    // ─── 3.5 🔄 SYNC CHILD ITEMS ───
-    // Đảm bảo các dịch vụ con (merged) luôn đồng bộ trạng thái với dịch vụ cha
-    const { data: bookingItemsToSync } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
-    if (bookingItemsToSync) {
-        const updates = [];
-        for (const item of bookingItemsToSync) {
-            let opts: any = {};
-            try { opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {}); } catch {}
-            if (opts.mergedIntoId) {
-                const parent = bookingItemsToSync.find((p: any) => p.id === opts.mergedIntoId);
-                if (parent && parent.status && parent.status !== item.status) {
-                    updates.push({ id: item.id, status: parent.status });
-                    item.status = parent.status; // Update local state
-                }
-            }
-        }
-        if (updates.length > 0) {
-            for (const upd of updates) {
-                await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
+
+    // Build child changes from the same baseline, then persist the complete batch atomically.
+    for (const item of bookingItems) {
+        const opts = parseKtvOptions(item.options);
+        if (opts.mergedIntoId && !['CANCELLED', 'DONE'].includes(item.status)
+            && !parseKtvSegments(item.segments).some((seg: any) => seg.ktvId && seg.voided !== true && seg.voided !== 'true')) {
+            const parent = bookingItems.find((p: any) => p.id === opts.mergedIntoId);
+            if (parent?.status && parent.status !== item.status) {
+                const existing = updates.find(update => update.id === item.id);
+                if (existing) existing.status = parent.status;
+                else updates.push({ id: item.id, status: parent.status });
+                item.status = parent.status;
             }
         }
     }
-
-    // ─── 4. 🔄 RECOMPUTE BOOKING STATUS ───
-    // Dùng bookingItemsToSync thay vì fetch lại để giảm thiểu query và sử dụng state đã sync
-    const allItems = bookingItemsToSync;
-    if (allItems && allItems.length > 0) {
-        // Cần fetch lại Services info cho phần kiểm tra is_utility
-        const { data: itemsWithServices } = await supabase
-            .from('BookingItems')
-            .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
-            .eq('bookingId', bookingId);
-            
-        const validItems = allItems.filter((i: any) => {
-            const svcInfo = (itemsWithServices || []).find((is: any) => is.id === i.id);
-            const name = svcInfo?.Services?.nameVN || '';
-            return !isUtilityService(svcInfo);
-        });
-        const finalItems = validItems.length > 0 ? validItems : allItems;
-        const statuses = finalItems.map((i: any) => i.status);
-        const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
-        const bStatus = recomputeBookingStatus(statuses);
-        bookingUpdatePayload.status = bStatus;
-    }
-
-
-    return { bookingUpdatePayload };
+    const validItems = bookingItems.filter((item: any) => !isUtilityService(itemsWithServices.find((svc: any) => svc.id === item.id)));
+    const finalItems = validItems.length ? validItems : bookingItems;
+    const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+    const bStatus = recomputeBookingStatus(finalItems.map((item: any) => item.status));
+    const { data: saved, error: saveError } = await supabase.rpc('ktv_finish_service_atomic', {
+        p_booking_id: bookingId,
+        p_booking_snapshot: { id: bookingData.id, status: bookingData.status, rating: bookingData.rating },
+        p_item_snapshots: itemSnapshots,
+        p_guest_ratings: bookingData.BookingGuests || [],
+        p_updates: updates,
+        p_booking_status: bStatus,
+    });
+    if (saveError || !saved?.success || !saved.booking) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+        error: 'Chưa lưu được lượt hoàn thành. Dữ liệu đã thay đổi hoặc lưu thất bại; tải lại đơn và thử lại.' }, { status: 409 }) };
+    return { bookingUpdatePayload, bookingPersisted: true, bookingData: saved.booking };
 }

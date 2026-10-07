@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { animate, motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
-import { Globe, MapPin, Phone, QrCode, RotateCw, Sparkles } from 'lucide-react';
+import { Globe, MapPin, Phone, QrCode, RotateCw } from 'lucide-react';
 import type { SpaContact } from '@/lib/types/promotion-client';
 import { formatPromoDate } from '@/lib/promotion-format';
 import { t } from './promotion.i18n';
@@ -381,7 +381,7 @@ const VoucherCard3D = ({ data, labels = VOUCHER_CARD_LABELS.en, brandName = t.vo
 
       {showHint && (
         <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-gray-500">
-          {flipped ? <RotateCw size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
+          <RotateCw size={14} aria-hidden />
           {flipped ? L.hintBack : L.hintFront}
         </p>
       )}

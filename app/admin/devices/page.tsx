@@ -178,7 +178,7 @@ const DeviceManagementPage = () => {
         {/* Info Banner */}
         <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 mb-6">
           <p className="text-sm text-indigo-700 font-medium">
-            📱 Để đăng ký Tablet mới, mở <code className="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-bold">nganha.vercel.app/register-device</code> trên thiết bị cần đăng ký.
+            📱 Để đăng ký Tablet mới, mở <code className="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-bold">oriaspa.vercel.app/register-device</code> trên thiết bị cần đăng ký.
           </p>
           <p className="text-xs text-indigo-500 mt-1">Mã PIN: <strong>8899</strong></p>
         </div>

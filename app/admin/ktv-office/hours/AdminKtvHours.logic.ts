@@ -2,8 +2,15 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/apiClient';
 import { shiftMonth, currentMonthVn } from '@/lib/hours-format';
+import { vnToday } from '@/lib/vn-time';
+
+// 🔧 CONFIGURATION — phải khớp với /api/admin/ktv-office/hours-grant
+const GRANT_STEP = 0.25;
+const GRANT_MAX_HOURS = 50;
+const GRANT_MAX_BACKDATE_DAYS = 60;
 
 export interface HoursRow {
   id: string;
@@ -15,7 +22,9 @@ export interface HoursRow {
   earned: number;
   /** Giờ bị trừ do kỷ luật. */
   penalty: number;
-  /** earned − penalty: con số dùng để xếp hạng và quyết định thứ tự nhận tua. */
+  /** Giờ admin/DEV cộng thêm (bù giờ). */
+  granted: number;
+  /** earned − penalty + granted: con số dùng để xếp hạng và quyết định thứ tự nhận tua. */
   net: number;
   turns: number;
   days: number;
@@ -32,6 +41,9 @@ export { fmtHours, fmtShortDate } from '@/lib/hours-format';
 
 export const useAdminKtvHoursLogic = () => {
   const { addToast } = useToast();
+  const { role } = useAuth();
+  // Chỉ ADMIN / DEV được cộng giờ. Server (`requireRole`) vẫn chặn — đây chỉ để ẩn nút.
+  const canGrant = role?.id === 'admin' || role?.id === 'dev';
 
   const [month, setMonth] = useState<string>(currentMonthVn());
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,6 +56,13 @@ export const useAdminKtvHoursLogic = () => {
   const [detailOf, setDetailOf] = useState<HoursRow | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Form "Cộng giờ" trong modal chi tiết.
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [grantHours, setGrantHours] = useState('1');
+  const [grantDate, setGrantDate] = useState(vnToday());
+  const [grantReason, setGrantReason] = useState('');
+  const [grantSaving, setGrantSaving] = useState(false);
 
   const thisMonth = currentMonthVn();
 
@@ -111,6 +130,7 @@ export const useAdminKtvHoursLogic = () => {
   const totals = useMemo(() => {
     const earned = rawRows.reduce((a, r) => a + (Number(r.earned) || 0), 0);
     const penalty = rawRows.reduce((a, r) => a + (Number(r.penalty) || 0), 0);
+    const granted = rawRows.reduce((a, r) => a + (Number(r.granted) || 0), 0);
     const turns = rawRows.reduce((a, r) => a + (Number(r.turns) || 0), 0);
     // Trung bình chỉ tính trên người CÓ giờ: cộng cả người chưa làm buổi nào
     // sẽ kéo mức trung bình xuống và không nói lên điều gì.
@@ -118,11 +138,12 @@ export const useAdminKtvHoursLogic = () => {
     return {
       earned,
       penalty,
-      net: earned - penalty,
+      granted,
+      net: earned - penalty + granted,
       turns,
       staff: rawRows.length,
       active,
-      avg: active > 0 ? (earned - penalty) / active : 0,
+      avg: active > 0 ? (earned - penalty + granted) / active : 0,
     };
   }, [rawRows]);
 
@@ -151,7 +172,54 @@ export const useAdminKtvHoursLogic = () => {
   const closeDetail = () => {
     setDetailOf(null);
     setDetail(null);
+    setGrantOpen(false);
   };
+
+  const openGrant = () => {
+    setGrantHours('1');
+    setGrantDate(vnToday());
+    setGrantReason('');
+    setGrantOpen(true);
+  };
+
+  /** Kiểm tra phía client để báo lỗi ngay; server kiểm lại y hệt. */
+  const grantError = useMemo(() => {
+    const h = Number(grantHours);
+    if (!Number.isFinite(h) || h <= 0) return 'Số giờ phải lớn hơn 0.';
+    if (h > GRANT_MAX_HOURS) return `Tối đa ${GRANT_MAX_HOURS} giờ một lần.`;
+    if (Math.abs(h / GRANT_STEP - Math.round(h / GRANT_STEP)) > 1e-9) return `Số giờ theo bước ${GRANT_STEP} (0,25 = 15 phút).`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(grantDate)) return 'Chọn ngày áp dụng.';
+    const today = vnToday();
+    if (grantDate > today) return 'Không cộng giờ cho ngày chưa tới.';
+    const min = new Date(`${today}T00:00:00Z`); min.setUTCDate(min.getUTCDate() - GRANT_MAX_BACKDATE_DAYS);
+    if (grantDate < min.toISOString().slice(0, 10)) return `Chỉ lùi tối đa ${GRANT_MAX_BACKDATE_DAYS} ngày.`;
+    if (grantReason.trim().length < 5) return 'Ghi lý do (ít nhất 5 ký tự).';
+    return null;
+  }, [grantHours, grantDate, grantReason]);
+
+  const submitGrant = useCallback(async () => {
+    if (!detailOf || grantError) return;
+    setGrantSaving(true);
+    try {
+      const res = await apiClient.post<any>('/api/admin/ktv-office/hours-grant', {
+        staffId: detailOf.code,
+        hours: Number(grantHours),
+        workDate: grantDate,
+        reason: grantReason.trim(),
+      });
+      addToast(res?.message || `Đã cộng ${grantHours} giờ cho ${detailOf.name}.`, 'success');
+      setGrantOpen(false);
+      // Tải lại cả sổ chi tiết lẫn bảng xếp hạng — cộng giờ đổi thứ hạng ngay.
+      await Promise.all([openDetail(detailOf), fetchRanking()]);
+    } catch (error: any) {
+      const msg = error?.status === 403
+        ? 'Chỉ ADMIN / DEV được cộng giờ.'
+        : (error?.message || 'Không cộng được giờ.');
+      addToast(msg, 'error');
+    } finally {
+      setGrantSaving(false);
+    }
+  }, [detailOf, grantError, grantHours, grantDate, grantReason, addToast, openDetail, fetchRanking]);
 
   return {
     month, changeMonth, canGoNext,
@@ -160,5 +228,10 @@ export const useAdminKtvHoursLogic = () => {
     loading, loadError,
     refresh: fetchRanking,
     detailOf, detail, detailLoading, openDetail, closeDetail,
+    canGrant, grantOpen, openGrant, closeGrant: () => setGrantOpen(false),
+    grantHours, setGrantHours, grantDate, setGrantDate, grantReason, setGrantReason,
+    grantError, grantSaving, submitGrant,
+    grantDateMax: vnToday(),
+    GRANT_STEP, GRANT_MAX_HOURS,
   };
 };

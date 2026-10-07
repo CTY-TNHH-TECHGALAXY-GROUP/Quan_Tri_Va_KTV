@@ -9,6 +9,7 @@ import { MilestonesEditor } from './MilestonesEditor';
 import { KtvFeaturesTable } from './KtvFeaturesTable';
 import { WalletSwitchesBlock } from './WalletSwitchesBlock';
 import { KtvTypeDSettingsBlock } from './KtvTypeDSettingsBlock';
+import { RatingScaleSettingsBlock } from './RatingScaleSettingsBlock';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 
@@ -177,12 +178,14 @@ export default function SystemSettingsPage() {
 
                 {activeTab === 'TYPE_D' ? (
                     <div className="space-y-8">
+                        <RatingScaleSettingsBlock kind="typeD" />
                         <KtvTypeDSettingsBlock />
                         <WalletSwitchesBlock activeTab="TYPE_D" />
                         <KtvFeaturesTable activeTab="TYPE_D" />
                     </div>
                 ) : (
                     <>
+                    <RatingScaleSettingsBlock kind="abc" />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Card: Điểm Thưởng */}
                     <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">

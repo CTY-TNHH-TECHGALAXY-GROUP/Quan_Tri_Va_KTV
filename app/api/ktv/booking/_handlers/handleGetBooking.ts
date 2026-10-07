@@ -1,3 +1,4 @@
+import { isKtvDisplaySegment, parseKtvOptions, ktvServiceName, parseKtvSegments, ktvAssignedMinutes } from '@/lib/ktvUtils';
 import { isUtilityService } from '@/lib/booking.logic';
 /**
  * ============================================================
@@ -67,7 +68,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 .from('BookingItems')
                 .select('bookingId, status, id, segments')
                 .contains('technicianCodes', [technicianCode])
-                .in('status', ['IN_PROGRESS'])
+                .in('status', ['IN_PROGRESS', 'PAUSED'])
                 .order('timeStart', { ascending: false, nullsFirst: false });
 
             let validActiveItem = null;
@@ -75,11 +76,11 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 for (const item of activeItems) {
                     let segs: any[] = [];
                     try {
-                        segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
+                        segs = parseKtvSegments(item.segments);
                     } catch { segs = []; }
                     
-                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
-                    const isStillWorking = mySegs.length === 0 || mySegs.some((s: any) => !s.actualEndTime);
+                    const mySegs = segs.filter((s: any) => isKtvDisplaySegment(s, technicianCode));
+                    const isStillWorking = segs.length === 0 || mySegs.some((s: any) => !s.actualEndTime);
                     
                     if (isStillWorking) {
                         validActiveItem = item;
@@ -91,29 +92,47 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             if (validActiveItem) {
                 bookingId = validActiveItem.bookingId;
             } else {
-                // 1.b Nếu không có item IN_PROGRESS, lấy từ TurnQueue (đơn mới gán)
+                // The assignment owns the next job. TurnQueue can still point at a
+                // released booking when the next assignment was already ACTIVE.
                 const today = bizToday;
-                const { data: turn, error: tError } = await supabase
-                    .from('TurnQueue')
-                    .select('current_order_id, booking_item_id, booking_item_ids, status')
-                    .eq('employee_id', technicianCode)
-                    .eq('date', today)
-                    .maybeSingle();
-
-                if (tError) throw tError;
-                if (!turn || !turn.current_order_id) {
-                    const { data: nextAssigns } = await supabase.from('KtvAssignments').select('booking_id').eq('employee_id', technicianCode).eq('business_date', today).in('status', ['QUEUED', 'READY']).order('priority', { ascending: true }).order('planned_start_time', { ascending: true, nullsFirst: false }).limit(5);
-                    let nextAssign = null;
-                    if (nextAssigns && nextAssigns.length > 0) {
-                        const bIds = nextAssigns.map((a: any) => a.booking_id);
-                        const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED","SPLIT")');
-                        const validBIds = new Set(bData?.map((b: any) => b.id) || []);
-                        nextAssign = nextAssigns.find((a: any) => validBIds.has(a.booking_id));
-                    }
-                    if (nextAssign) return NextResponse.json({ success: true, data: { nextBookingId: nextAssign.booking_id } });
-                    return NextResponse.json({ success: true, data: null });
+                const { data: activeAssigns, error: activeError } = await supabase
+                    .from('KtvAssignments').select('booking_id')
+                    .eq('employee_id', technicianCode).eq('business_date', today)
+                    .eq('status', 'ACTIVE').order('planned_start_time', { ascending: true, nullsFirst: false }).limit(5);
+                if (activeError) throw activeError;
+                if (activeAssigns?.length) {
+                    const { data: liveBookings, error: liveError } = await supabase.from('Bookings')
+                        .select('id, status').in('id', activeAssigns.map(a => a.booking_id));
+                    if (liveError) throw liveError;
+                    const liveIds = new Set((liveBookings || [])
+                        .filter(b => !['DONE', 'COMPLETED', 'CANCELLED', 'SPLIT', 'FEEDBACK'].includes(b.status))
+                        .map(b => b.id));
+                    bookingId = activeAssigns.find(a => liveIds.has(a.booking_id))?.booking_id || null;
                 }
-                bookingId = turn.current_order_id;
+                if (!bookingId) {
+                    // 1.b No live ACTIVE assignment: fall back to TurnQueue / queued work.
+                    const { data: turn, error: tError } = await supabase
+                        .from('TurnQueue')
+                        .select('current_order_id, booking_item_id, booking_item_ids, status')
+                        .eq('employee_id', technicianCode)
+                        .eq('date', today)
+                        .maybeSingle();
+
+                    if (tError) throw tError;
+                    if (!turn || !turn.current_order_id) {
+                        const { data: nextAssigns } = await supabase.from('KtvAssignments').select('booking_id').eq('employee_id', technicianCode).eq('business_date', today).in('status', ['QUEUED', 'READY']).order('priority', { ascending: true }).order('planned_start_time', { ascending: true, nullsFirst: false }).limit(5);
+                        let nextAssign = null;
+                        if (nextAssigns && nextAssigns.length > 0) {
+                            const bIds = nextAssigns.map((a: any) => a.booking_id);
+                            const { data: bData } = await supabase.from('Bookings').select('id, status').in('id', bIds).not('status', 'in', '("COMPLETED","CANCELLED","SPLIT")');
+                            const validBIds = new Set(bData?.map((b: any) => b.id) || []);
+                            nextAssign = nextAssigns.find((a: any) => validBIds.has(a.booking_id));
+                        }
+                        if (nextAssign) return NextResponse.json({ success: true, data: { nextBookingId: nextAssign.booking_id } });
+                        return NextResponse.json({ success: true, data: null });
+                    }
+                    bookingId = turn.current_order_id;
+                }
             }
         }
 
@@ -132,9 +151,14 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .eq('employee_id', technicianCode)
                     .eq('booking_id', bookingId)
                     .eq('business_date', bizToday)
+                    .in('status', ['ACTIVE', 'QUEUED', 'READY'])
+                    .order('status', { ascending: true })
+                    .order('planned_start_time', { ascending: true, nullsFirst: false })
+                    .limit(1)
                     .maybeSingle()
                 : Promise.resolve({ data: null }),
         ]);
+        if ('error' in preAssignRes && preAssignRes.error) throw preAssignRes.error;
 
         // 🔥 LỚP 2: SPLIT GUARD - Tự động đá văng hoặc chuyển hướng đơn cha bị tách
         if (bookingId && technicianCode) {
@@ -206,12 +230,16 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .eq('employee_id', technicianCode)
                     .eq('booking_id', bookingId)
                     .eq('business_date', today)
+                    .in('status', ['ACTIVE', 'QUEUED', 'READY'])
+                    .order('status', { ascending: true })
+                    .order('planned_start_time', { ascending: true, nullsFirst: false })
+                    .limit(1)
                     .maybeSingle();
                 assign = reAssign;
             }
             
             if (assign && (assign.status === 'QUEUED' || assign.status === 'READY')) {
-                // 2a. Tự động giải phóng các active assignment khác bị kẹt của KTV này trong ngày
+                // A GET must never mark another ACTIVE job completed.
                 const { data: activeAssigns } = await supabase
                     .from('KtvAssignments')
                     .select('id, booking_id')
@@ -221,13 +249,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     .neq('booking_id', bookingId);
                 
                 if (activeAssigns && activeAssigns.length > 0) {
-                    const activeBookingIds = activeAssigns.map(a => a.booking_id);
-                    await supabase
-                        .from('KtvAssignments')
-                        .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
-                        .in('id', activeAssigns.map(a => a.id));
-                    
-                    console.log(`[KTV API] Auto-completed prior active assignments for KTV ${technicianCode} on bookings: ${activeBookingIds.join(', ')}`);
+                    return NextResponse.json({ success: false,
+                        error: 'Bạn còn phân công đang hiệu lực; tải lại hoặc nhờ quầy kiểm tra.' }, { status: 409 });
                 }
 
                 // 2b. Kích hoạt assignment của đơn mới thành ACTIVE
@@ -422,7 +445,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 const rawSId = String(i.serviceId || '').trim();
                 const sId = rawSId.toLowerCase();
                 const svc = svcMap.get(sId);
-                const opts = i.options || {};
+                const opts = parseKtvOptions(i.options);
                 let bCustomerNote = '';
                 if (booking?.notes && typeof booking.notes === 'string' && booking.notes.trim().startsWith('{')) {
                     try {
@@ -473,6 +496,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     finalDuration = Number(opts.duration);
                 }
 
+                if (technicianCode) finalDuration = ktvAssignedMinutes(i, technicianCode, finalDuration);
+
                 const getI18nStr = (val: any, fallback: string = '') => {
                     if (typeof val === 'object' && val !== null) return val.vn || val.en || String(val);
                     return val || fallback;
@@ -488,7 +513,9 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     guest_label: guest_label,
                     guest_index: guest_index,
                     guest_customer_name: guest_customer_name,
-                    service_name: (technicianCode && opts?.serviceNamesForKtvs?.[technicianCode]) || opts._generatedDisplayName || opts.displayName || getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
+                    options: opts,
+                    base_service_name: getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`),
+                    service_name: ktvServiceName({ ...i, options: opts, base_service_name: getI18nStr(svc?.nameVN || svc?.nameEN || svc?.name, `Dịch vụ ${rawSId}`) }, technicianCode),
                     service_description: svc?.service_description || getI18nStr(svc?.description, ''),
                     procedure: svc?.procedure || null,
                     focusConfig: svc?.focusConfig || null,
@@ -531,14 +558,16 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             return i.technicianCodes && 
                    Array.isArray(i.technicianCodes) && 
                    technicianCode && 
-                   i.technicianCodes.some((c: string) => c.trim().toUpperCase() === technicianCode.trim().toUpperCase());
+                   i.technicianCodes.some((c: string) => c.trim().toUpperCase() === technicianCode.trim().toUpperCase())
+                   && (parseKtvSegments(i.segments).length === 0
+                     || parseKtvSegments(i.segments).some((seg: any) => isKtvDisplaySegment(seg, technicianCode)));
         });
 
         if (ktvItems.length > 0) {
             for (const item of ktvItems) {
                 let segs: any[] = [];
-                try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
-                const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
+                try { segs = parseKtvSegments(item.segments); } catch { segs = []; }
+                const mySegs = segs.filter((s: any) => isKtvDisplaySegment(s, technicianCode));
                 const runningIdx = mySegs.findIndex((s: any) => s.actualStartTime && !s.actualEndTime);
                 if (runningIdx !== -1) {
                     activeItemId = item.id;
@@ -554,8 +583,8 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     activeItemId = inProgressItem.id;
                     statusSource = 'item_status';
                     let segs: any[] = [];
-                    try { segs = typeof inProgressItem.segments === 'string' ? JSON.parse(inProgressItem.segments) : (Array.isArray(inProgressItem.segments) ? inProgressItem.segments : []); } catch { segs = []; }
-                    const mySegs = segs.filter((s: any) => ktvMatchesSeg(s.ktvId, technicianCode));
+                    try { segs = parseKtvSegments(inProgressItem.segments); } catch { segs = []; }
+                    const mySegs = segs.filter((s: any) => isKtvDisplaySegment(s, technicianCode));
                     const nextIdx = mySegs.findIndex((s: any) => !s.actualEndTime);
                     activeSegmentIndex = nextIdx !== -1 ? nextIdx : 0;
                 }
@@ -617,13 +646,13 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             if (isUtilityService(item)) return;
             
             // 🔥 GUARD: Nếu dịch vụ này đã bị gộp (có mergedIntoId), KTV không cần quan tâm chặng ảo của nó
-            const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+            const opts = parseKtvOptions(item.options);
             if (opts.mergedIntoId) return;
 
             let segs: any[] = [];
-            try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []); } catch {}
+            try { segs = parseKtvSegments(item.segments); } catch {}
             segs.forEach((s: any) => {
-                if (ktvMatchesSeg(s.ktvId, technicianCode)) {
+                if (isKtvDisplaySegment(s, technicianCode)) {
                     mySegments.push({
                         origStart: s.startTime || item.timeStart || '',
                         duration: Number(s.duration) || Number(item.duration) || 60,
@@ -737,7 +766,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                                     if (s.code) svcMap.set(String(s.code).trim().toLowerCase(), s);
                                 });
                                 const names = nextItems.map((ni: any) => {
-                                    const displayName = ni.options?.displayName;
+                                    const displayName = parseKtvOptions(ni.options).displayName;
                                     if (displayName) return displayName;
                                     const svc = svcMap.get(String(ni.serviceId || '').trim().toLowerCase());
                                     const nameVN = svc?.nameVN;
@@ -819,7 +848,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
             const itemsToGroup = nonUtilityAllItems.length > 0 ? nonUtilityAllItems : itemsWithService;
             
             for (const item of itemsToGroup) {
-                const opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {});
+                const opts = parseKtvOptions(item.options);
                 const groupId = opts.mergedIntoId || item.id;
                 if (!allItemGroups.has(groupId)) allItemGroups.set(groupId, []);
                 allItemGroups.get(groupId)!.push(item);
@@ -831,7 +860,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 let myGroupId = null;
                 const activeItem = itemsWithService.find((i: any) => i.id === activeItemId) || ktvItems[0];
                 if (activeItem) {
-                    const opts = typeof activeItem.options === 'string' ? JSON.parse(activeItem.options) : (activeItem.options || {});
+                    const opts = parseKtvOptions(activeItem.options);
                     myGroupId = opts.mergedIntoId || activeItem.id;
                 }
                 
@@ -862,7 +891,7 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                 acceptedAt: (() => {
                     const it = itemsWithService.find((i: any) => i.id === activeItemId);
                     if (!it || !technicianCode) return null;
-                    const o = typeof it.options === 'string' ? JSON.parse(it.options || '{}') : (it.options || {});
+                    const o = parseKtvOptions(it.options);
                     const mine = o.acceptedByStaff?.[technicianCode.toUpperCase()];
                     if (mine) return mine;
 
@@ -874,9 +903,9 @@ export async function handleGetBooking(request: Request): Promise<NextResponse> 
                     // trong phòng, phòng đã mở".
                     let segsCuaToi: any[] = [];
                     try {
-                        const sg = typeof it.segments === 'string' ? JSON.parse(it.segments) : (it.segments || []);
+                        const sg = parseKtvSegments(it.segments);
                         segsCuaToi = (Array.isArray(sg) ? sg : []).filter((x: any) =>
-                            String(x?.ktvId || '').toLowerCase().includes(String(technicianCode).toLowerCase()));
+                            isKtvDisplaySegment(x, technicianCode));
                     } catch { }
                     const laNguoiVaoThay = segsCuaToi.some((x: any) => x?.note === 'TAKEOVER' && !x?.actualEndTime);
                     if (laNguoiVaoThay) return null;

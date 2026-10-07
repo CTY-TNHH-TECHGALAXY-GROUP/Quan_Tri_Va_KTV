@@ -1,9 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { AnimatePresence, motion } from 'motion/react';
 import { Plus, Send } from 'lucide-react';
 import { isUtilityService } from '@/lib/booking.logic';
+import { isLiveKtvSegment } from '@/lib/ktvUtils';
+import { dispatchFormMissingInfo } from '@/lib/dispatch-form-draft';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { getDisplayCustomerName } from '../dispatch-display';
 import { isNewExternalKtvToken } from '@/lib/constants/staff.constants';
@@ -12,10 +15,13 @@ import { isNewExternalKtvToken } from '@/lib/constants/staff.constants';
 const minKtvOf = (svc: any) =>
   typeof svc.min_ktv_required === 'number' ? svc.min_ktv_required : 1;
 
+const activeStaff = (svc: any) => (svc.staffList || []).filter((st: any) => st.ktvId
+  && (st.segments || []).some((seg: any) => isLiveKtvSegment({ ...seg, ktvId: seg.ktvId || st.ktvId }, st.ktvId)));
+
 /** Dịch vụ tiện ích (khăn, nước…) không cần gán KTV nên không tính là thiếu. */
 const isUnderstaffed = (svc: any) => {
   if (isUtilityService(svc)) return false;
-  const assigned = svc.staffList.filter((st: any) => st.ktvId).length;
+  const assigned = activeStaff(svc).length;
   return assigned < minKtvOf(svc);
 };
 
@@ -34,6 +40,7 @@ export function DispatchConfirmModal({
   beds,
   onConfirm,
   onClose,
+  pending = false,
 }: {
   open: boolean;
   /** Đơn gốc; có thể null khi quầy chọn thẳng một đơn con. */
@@ -41,13 +48,21 @@ export function DispatchConfirmModal({
   subOrder: any;
   rooms: any[];
   beds: any[];
-  onConfirm: (serviceIds: string[], orderId: string) => void;
+  onConfirm: (serviceIds: string[], orderId: string) => void | boolean | Promise<void | boolean>;
+  pending?: boolean;
   onClose: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState('');
+  const submittingRef = useRef(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const busy = pending || confirming;
+  const close = () => { if (!busy && !submittingRef.current) { setError(''); onClose(); } };
   const orderForModal = order || subOrder?.originalOrder;
   if (!open || !orderForModal || !subOrder) return <AnimatePresence />;
 
-  const missingKtv = subOrder.services.some(isUnderstaffed);
+  const missingInfo = dispatchFormMissingInfo(subOrder.services);
+  const invalid = missingInfo.length > 0;
 
   // Đơn con chỉ chứa một phần dịch vụ của đơn gốc → hiện thêm hậu tố (A, B…).
   const isPartial = subOrder.services.length < orderForModal.services.length;
@@ -72,37 +87,36 @@ export function DispatchConfirmModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/60 backdrop-blur-md"
-          onClick={onClose}
-        />
-        <motion.div
-          initial={{ y: '100%', opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: '100%', opacity: 0 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          className="relative bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
-        >
+      <Dialog.Root open={open} onOpenChange={value => { if (!value) close(); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay asChild>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-md" />
+          </Dialog.Overlay>
+          <Dialog.Content asChild
+            onOpenAutoFocus={() => { returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+            onCloseAutoFocus={event => { event.preventDefault(); returnFocusRef.current?.focus(); }}
+            onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}
+            onPointerDownOutside={event => { if (busy) event.preventDefault(); }}>
+            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+              aria-busy={busy}
+              className="fixed z-[61] bottom-0 sm:bottom-auto sm:top-1/2 left-1/2 -translate-x-1/2 sm:-translate-y-1/2 bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-indigo-50">
             <div>
-              <h3 className="font-black text-indigo-900 text-lg uppercase tracking-tight">Xác nhận thông tin</h3>
-              <p className="text-sm text-indigo-600 font-bold mt-1">
+              <Dialog.Title className="font-black text-indigo-900 text-lg uppercase tracking-tight">Xác nhận điều phối</Dialog.Title>
+              <Dialog.Description className="text-sm text-indigo-600 font-bold mt-1">
                 Đơn #{billLabel} - {getDisplayCustomerName(subOrder)}
-              </p>
+              </Dialog.Description>
             </div>
-            <button
-              onClick={onClose}
-              className="p-3 bg-white hover:bg-gray-100 rounded-2xl text-gray-400 transition-colors shadow-sm"
+            <button type="button" aria-label="Đóng xác nhận điều phối" disabled={busy}
+              onClick={close}
+              className="p-3 bg-white hover:bg-gray-100 rounded-2xl text-gray-400 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 shadow-sm"
             >
               <Plus className="rotate-45" size={24} />
             </button>
           </div>
 
-          <div className="p-6 overflow-y-auto no-scrollbar flex-1 space-y-4">
+          <div className="p-6 overflow-y-auto overscroll-contain no-scrollbar flex-1 space-y-4">
             <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex justify-between items-center">
               <span className="text-gray-500 font-bold">Tổng tiền thu:</span>
               <span className="text-xl font-black text-emerald-600">{total.toLocaleString()}đ</span>
@@ -119,12 +133,12 @@ export function DispatchConfirmModal({
                     {isUnderstaffed(svc) && (
                       <p className="text-xs text-rose-500 font-bold mt-1">
                         ⚠️ Dịch vụ yêu cầu tối thiểu {minKtvOf(svc)} KTV
-                        (Đang thiếu {minKtvOf(svc) - svc.staffList.filter((st: any) => st.ktvId).length})
+                        (Đang thiếu {minKtvOf(svc) - activeStaff(svc).length})
                       </p>
                     )}
                   </div>
                   <div className="space-y-3">
-                    {svc.staffList.map((st: any, stIdx: number) => (
+                    {activeStaff(svc).map((st: any, stIdx: number) => (
                       <div
                         key={st.ktvId ? `${svc.id}-${st.ktvId}` : `${svc.id}-st-${stIdx}`}
                         className="pl-2 border-l-2 border-indigo-200 flex flex-col gap-1.5"
@@ -136,7 +150,7 @@ export function DispatchConfirmModal({
                           </span>
                         </div>
                         <div className="text-xs text-gray-600 flex flex-col gap-1">
-                          {st.segments.map((seg: any, segIdx: number) => {
+                          {st.segments.filter((seg: any) => isLiveKtvSegment({ ...seg, ktvId: seg.ktvId || st.ktvId }, st.ktvId)).map((seg: any, segIdx: number) => {
                             const roomName = rooms.find(r => r.id === seg.roomId)?.name || seg.roomId || 'Chưa xếp phòng';
                             const bedName = beds.find(b => b.id === seg.bedId)?.name || seg.bedId || 'Chưa xếp giường';
                             return (
@@ -158,30 +172,40 @@ export function DispatchConfirmModal({
             </div>
           </div>
 
+          {invalid && <p role="status" className="px-6 py-2 text-sm font-semibold text-amber-700">{missingInfo.join(' · ')}</p>}
+          {error && <p role="alert" className="px-6 py-2 text-sm font-semibold text-rose-600">{error}</p>}
           <div className="p-6 border-t border-gray-100 bg-white grid grid-cols-2 gap-3 shrink-0">
-            <button
-              onClick={onClose}
-              className="w-full py-4 rounded-2xl font-black text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors uppercase text-sm"
+            <button type="button" disabled={busy}
+              onClick={close}
+              className="w-full py-4 rounded-2xl font-black text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 uppercase text-sm"
             >
               Quay lại sửa
             </button>
-            <button
-              disabled={missingKtv}
-              onClick={() => {
-                onClose();
-                onConfirm(subOrder.services.map((s: any) => s.id), subOrder.originalOrder.id);
+            <button type="button"
+              disabled={invalid || busy}
+              onClick={async () => {
+                if (busy || submittingRef.current) return;
+                submittingRef.current = true; setConfirming(true); setError('');
+                try {
+                  const result = await onConfirm(subOrder.services.map((s: any) => s.id), subOrder.originalOrder?.id || orderForModal.id);
+                  if (result !== false) onClose();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Không điều phối được. Vui lòng thử lại.');
+                } finally { submittingRef.current = false; setConfirming(false); }
               }}
-              className={`w-full py-4 rounded-2xl font-black text-white transition-colors uppercase text-sm flex items-center justify-center gap-2 shadow-lg ${
-                missingKtv
+              className={`w-full py-4 rounded-2xl font-black text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 uppercase text-sm flex items-center justify-center gap-2 shadow-lg ${
+                invalid || busy
                   ? 'bg-gray-400 cursor-not-allowed shadow-none'
                   : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
               }`}
             >
-              <Send size={18} strokeWidth={3} /> XÁC NHẬN GỬI KTV
+              <Send size={18} strokeWidth={3} /> {busy ? 'Đang điều phối…' : 'Lưu và điều phối'}
             </button>
           </div>
-        </motion.div>
-      </div>
+            </motion.div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </AnimatePresence>
   );
 }

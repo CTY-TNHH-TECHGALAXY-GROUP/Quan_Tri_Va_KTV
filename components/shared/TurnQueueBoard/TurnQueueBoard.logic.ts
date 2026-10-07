@@ -2,9 +2,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { StaffData, TurnQueueData } from './TurnQueueBoard.types';
 import { STAFF_STATUS } from '@/lib/constants/staffStatus';
+import { saveTurnQueueEdits } from './actions';
 import { isPlaceholderStaffId, isTypeCWorkType } from '@/lib/constants/staff.constants';
 
-export const useTurnQueueBoard = (staffs: StaffData[]) => {
+export const useTurnQueueBoard = (staffs: StaffData[], draftCacheKey?: string) => {
     // Luôn sử dụng múi giờ Việt Nam (UTC+7) làm mặc định
     const getVietnamDateString = () => {
         const d = new Date();
@@ -28,6 +29,41 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
     const [isSavingOrder, setIsSavingOrder] = useState(false);
     const [editingKtvId, setEditingKtvId] = useState<string | null>(null);
     const hasChangesRef = useRef(false);
+    const savingRef = useRef(false);
+    const manualPendingRef = useRef(new Set<string>());
+    const [manualPendingIds, setManualPendingIds] = useState<Set<string>>(new Set());
+    const [saveMessage, setSaveMessage] = useState('');
+    type OrderEdit = { id: string; expectedOrder: number; expectedPosition: number; order: number };
+    const editsRef = useRef<Record<string, OrderEdit>>({});
+    const dateRef = useRef(selectedDate);
+    dateRef.current = selectedDate;
+    const cacheKey = draftCacheKey ? `turn-queue-draft:${draftCacheKey}:${selectedDate}` : null;
+    const persistEdits = useCallback(() => {
+        if (!cacheKey) return;
+        try {
+            if (Object.keys(editsRef.current).length) sessionStorage.setItem(cacheKey, JSON.stringify(editsRef.current));
+            else sessionStorage.removeItem(cacheKey);
+        } catch { /* A full/disabled browser cache must not prevent editing. */ }
+    }, [cacheKey]);
+    useEffect(() => {
+        let cached: Record<string, OrderEdit> = {};
+        try { cached = cacheKey ? JSON.parse(sessionStorage.getItem(cacheKey) || '{}') : {}; } catch { /* Ignore invalid cache. */ }
+        editsRef.current = cached && typeof cached === 'object' && !Array.isArray(cached) ? cached : {};
+        hasChangesRef.current = Object.keys(editsRef.current).length > 0;
+        setHasChanges(hasChangesRef.current);
+        setLocalOrder([]);
+        setTurns([]);
+        setExternalTurns([]);
+        setSaveMessage('');
+    }, [cacheKey, selectedDate]);
+    useEffect(() => {
+        const warn = (event: BeforeUnloadEvent) => {
+            if (!hasChangesRef.current && !savingRef.current && !manualPendingRef.current.size) return;
+            event.preventDefault(); event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+    }, []);
 
     const fetchExtras = useCallback(async () => {
         const today = selectedDate;
@@ -53,6 +89,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             // từng nhận được dòng tua của C (trạng thái, số tua, tag điểm danh). Tách C ở dưới.
             const res = await fetch(`/api/turns?date=${selectedDate}&includeTypeC=1`);
             const json = await res.json();
+            if (dateRef.current !== selectedDate) return;
             if (json.success && json.data) {
                 const merged = json.data.map((t: TurnQueueData) => ({
                     ...t,
@@ -81,7 +118,7 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             fetchTurns();
             fetchExtras();
         }
-    }, [staffs, selectedDate, fetchTurns, fetchExtras]);
+    }, [staffs, selectedDate, fetchTurns, fetchExtras, cacheKey]);
 
     // 🔄 REALTIME: Lắng nghe các bảng quan trọng liên quan đến điều phối
     // ✅ Bước 4: Gộp 2 đường dữ liệu — TẤT CẢ đều gọi fetchTurns() (qua API)
@@ -92,27 +129,27 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
             // Bảng BookingItems: Gán KTV, đổi KTV, thêm dịch vụ add-on
             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, () => {
                 console.log('🔄 [Realtime] BookingItems changed → syncing turns...');
-                if (!hasChangesRef.current) fetchTurns();
+                fetchTurns();
             })
             // Bảng Bookings: Cập nhật trạng thái đơn (DONE, CANCELLED, NEW...)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'Bookings' }, () => {
                 console.log('🔄 [Realtime] Bookings changed → syncing turns...');
-                if (!hasChangesRef.current) fetchTurns();
+                fetchTurns();
             })
             // Bảng TurnQueue: Thay đổi tua trực tiếp (swap vị trí, reset, tan ca...)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'TurnQueue' }, () => {
                 console.log('🔄 [Realtime] TurnQueue changed → refreshing...');
-                if (!hasChangesRef.current) fetchTurns();
+                fetchTurns();
             })
             // Bảng DailyAttendance: Điểm danh, đổi trạng thái (on_duty, off_duty, absent...)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'DailyAttendance' }, () => {
                 console.log('🔄 [Realtime] DailyAttendance changed → syncing turns...');
-                if (!hasChangesRef.current) fetchTurns();
+                fetchTurns();
             })
             // Bảng KTVAttendance: KTV bấm điểm danh / tan ca trên app
             .on('postgres_changes', { event: '*', schema: 'public', table: 'KTVAttendance' }, () => {
                 console.log('🔄 [Realtime] KTVAttendance changed → syncing turns...');
-                if (!hasChangesRef.current) fetchTurns();
+                fetchTurns();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'KTVLeaveRequests' }, () => {
                 fetchExtras();
@@ -140,73 +177,79 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         });
     }, [suddenOffs]);
 
-    // Sync localOrder khi turns thay đổi VÀ không có thay đổi chưa lưu
+    // Operational status always refreshes; only the edited ordering overlays server data.
     useEffect(() => {
-        if (!hasChanges) {
-            setLocalOrder(buildSorted(turns));
-        }
+        setLocalOrder(buildSorted(turns).map(turn => ({ ...turn,
+            check_in_order: editsRef.current[turn.id || '']?.order ?? turn.check_in_order })));
     }, [turns, buildSorted, hasChanges]);
 
-    // ─── BATCH SAVE: Ghi check_in_order + queue_position vào DB ───
-    const saveOrder = async () => {
+    const applyOrder = async (action: 'ORDER' | 'RESET', payload: OrderEdit[]) => {
+        if (savingRef.current || !payload.length) return;
+        savingRef.current = true;
         setIsSavingOrder(true);
+        setSaveMessage('');
         try {
-            const updates = localOrder.map((turn) => {
-                return supabase.from('TurnQueue')
-                    .update({ check_in_order: turn.check_in_order, queue_position: turn.check_in_order })
-                    .eq('id', turn.id!);
-            });
-            await Promise.all(updates);
-            setHasChanges(false);
+            const result = await saveTurnQueueEdits(selectedDate, action, payload);
+            if (!result.success) throw new Error(result.error);
+            editsRef.current = {};
             hasChangesRef.current = false;
-            fetchTurns();
-        } catch (err) {
-            console.error('Save order error:', err);
-            alert('❌ Lỗi khi lưu thứ tự!');
+            persistEdits();
+            setHasChanges(false);
+            setSaveMessage(action === 'ORDER' ? 'Đã lưu thứ tự.' : 'Đã đặt lại theo chấm công.');
+            await fetchTurns();
+        } catch (error: any) {
+            setSaveMessage(error.message || 'Không lưu được. Bản nháp vẫn được giữ.');
+        } finally {
+            savingRef.current = false;
+            setIsSavingOrder(false);
         }
-        setIsSavingOrder(false);
     };
+    const saveOrder = () => applyOrder('ORDER', Object.values(editsRef.current));
 
-    // ─── CANCEL: Huỷ thay đổi ───
-    const cancelOrder = () => {
+    const cancelOrder = useCallback(() => {
+        if (savingRef.current) return;
+        editsRef.current = {};
+        persistEdits();
         setLocalOrder(buildSorted(turns));
         setHasChanges(false);
         hasChangesRef.current = false;
         setEditingKtvId(null);
-    };
+        setSaveMessage('');
+    }, [persistEdits, buildSorted, turns]);
 
-    // ─── INLINE EDIT: Thay đổi check_in_order trực tiếp ───
     const handleOrderChange = (ktvId: string, newOrder: number) => {
-        if (isNaN(newOrder) || newOrder < 1) return;
+        if (savingRef.current) return;
+        if (!Number.isInteger(newOrder) || newOrder < 1 || newOrder > 100000) {
+            setSaveMessage('Thứ tự phải là số nguyên từ 1 đến 100000.'); return;
+        }
         const next = localOrder.map(t => ({ ...t }));
         const target = next.find(t => t.employee_id === ktvId);
         if (!target) return;
         const oldOrder = target.check_in_order;
-        // Nếu trùng → swap: KTV cũ nhận số cũ của target
         const conflict = next.find(t => t.check_in_order === newOrder && t.employee_id !== ktvId);
-        if (conflict) {
-            conflict.check_in_order = oldOrder;
-        }
+        if (conflict) conflict.check_in_order = oldOrder;
         target.check_in_order = newOrder;
+        for (const row of next) {
+            if (!row.id) continue;
+            const original = editsRef.current[row.id] || {
+                id: row.id, expectedOrder: turns.find(t => t.id === row.id)?.check_in_order ?? row.check_in_order,
+                expectedPosition: turns.find(t => t.id === row.id)?.queue_position ?? row.queue_position,
+                order: row.check_in_order
+            };
+            if (row.check_in_order === original.expectedOrder) delete editsRef.current[row.id];
+            else editsRef.current[row.id] = { ...original, order: row.check_in_order };
+        }
+        hasChangesRef.current = Object.keys(editsRef.current).length > 0;
+        persistEdits();
         setLocalOrder(next);
-        setHasChanges(true);
-        hasChangesRef.current = true;
+        setHasChanges(hasChangesRef.current);
+        setSaveMessage('');
         setEditingKtvId(null);
     };
 
-    const resetTurns = async () => {
-        const next = [...turns].sort((a, b) => a.check_in_order - b.check_in_order);
-        const updates = next.map((turn, i) => {
-            const pos = i + 1;
-            return supabase.from('TurnQueue')
-                .update({ queue_position: pos })
-                .eq('id', turn.id!);
-        });
-        await Promise.all(updates);
-        setHasChanges(false);
-        hasChangesRef.current = false;
-        fetchTurns();
-    };
+    const resetTurns = () => applyOrder('RESET', [...turns].sort((a,b) => a.check_in_order-b.check_in_order).map((turn,i) => ({
+        id: turn.id!, expectedOrder: turn.check_in_order, expectedPosition: turn.queue_position, order: i+1
+    })));
 
     const toggleExternalStaff = async (staffId: string, currentTurn?: TurnQueueData) => {
         try {
@@ -311,23 +354,21 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         }
     };
 
-    const updateManualAdjustment = async (employeeId: string, delta: number, currentManualAdj: number = 0) => {
+    const updateManualAdjustment = async (employeeId: string, delta: number, _currentManualAdj: number = 0) => {
+        if (manualPendingRef.current.has(employeeId)) return;
+        manualPendingRef.current.add(employeeId);
+        setManualPendingIds(new Set(manualPendingRef.current));
+        setSaveMessage('');
         try {
-            const newManualAdj = currentManualAdj + delta;
-            
-            const { error } = await supabase
-                .from('TurnQueue')
-                .update({ manual_adjustment: newManualAdj })
-                .eq('employee_id', employeeId)
-                .eq('date', selectedDate);
-                
-            if (error) throw error;
-            
-            // Re-fetch after adjusting so syncTurnsForDate runs and updates turns_completed
-            fetchTurns();
-        } catch (err) {
-            console.error('Lỗi cập nhật số tua:', err);
-            alert('Có lỗi xảy ra khi điều chỉnh số tua!');
+            const result = await saveTurnQueueEdits(selectedDate, 'DELTA', { employeeId, delta });
+            if (!result.success) throw new Error(result.error);
+            await fetchTurns();
+            setSaveMessage('Đã cập nhật số tua.');
+        } catch (error: any) {
+            setSaveMessage(error.message || 'Không cập nhật được số tua.');
+        } finally {
+            manualPendingRef.current.delete(employeeId);
+            setManualPendingIds(new Set(manualPendingRef.current));
         }
     };
 
@@ -356,6 +397,8 @@ export const useTurnQueueBoard = (staffs: StaffData[]) => {
         loading,
         hasChanges,
         isSavingOrder,
+        manualPendingIds,
+        saveMessage,
         editingKtvId,
         setEditingKtvId,
         saveOrder,

@@ -43,7 +43,8 @@ function resolveRoleId(role?: string | null) {
     if (rawRole === 'ADMIN') return 'admin';
     if (rawRole === 'DEV') return 'dev';
     if (rawRole === 'MANAGER') return 'branch_manager';
-    if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST') return 'reception';
+    // 'RECEPTION' là giá trị enum cũ còn trong DB (ORIA000 tạo 03/10) — vẫn là lễ tân.
+    if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST' || rawRole === 'RECEPTION') return 'reception';
     if (rawRole === 'TECHNICIAN' || rawRole === 'KTV') return 'ktv';
 
     return 'ktv';
@@ -362,9 +363,10 @@ export async function requirePermission(permissionId: string) {
         ? bUser.permissions
         : getFallbackPermissions(roleId);
 
-    // Auto-inject quyền Office mới cho admin, dev, reception (tránh lỗi cache DB cũ)
+    // Admin/dev luôn có Office; lễ tân theo bảng Phân quyền (bỏ cấp cứng 03/10/2026,
+    // khớp hasPermission phía client — hai bên phải cùng một luật).
     if (permissionId === 'ktv_office_scoring' || permissionId === 'ktv_office_hours') {
-        if (roleId === 'admin' || roleId === 'dev' || roleId === 'reception') {
+        if (roleId === 'admin' || roleId === 'dev') {
             return true;
         }
     }

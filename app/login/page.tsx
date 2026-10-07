@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
-import { Lock, User, Eye, EyeOff, LogIn, Sparkles } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, LogIn, Shield } from 'lucide-react';
 
 export default function LoginPage() {
   const { login, getLoginError } = useAuth();
@@ -71,7 +71,7 @@ export default function LoginPage() {
           <div className="bg-indigo-600 p-8 text-white text-center relative overflow-hidden">
             <div className="relative z-10">
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-                <Sparkles size={32} />
+                <Shield size={32} />
               </div>
               <h1 className="text-2xl font-bold tracking-tight">Oria Spa</h1>
               <p className="text-indigo-100 text-sm mt-1">Hệ thống quản trị trung tâm</p>

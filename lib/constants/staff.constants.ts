@@ -1,5 +1,6 @@
 import type { EmployeeSkills } from '@/lib/types';
 import { FeatureFlagsTypeA, FeatureFlagsTypeB, FeatureFlagsTypeD } from '../types/staff.types';
+import { DEFAULT_TYPE_D_DEDUCTION } from '@/lib/services/RatingScaleService';
 
 export const DEFAULT_KPI_TARGET_HOURS = 80;
 export const DEFAULT_TRAVEL_MINUTES = 15;
@@ -171,12 +172,18 @@ export type TypeDDisciplineCaseKey =
     | 'NO_REGISTRATION'
     | 'NO_SHOW_NO_NOTICE'
     | 'LATE_REPORTED_NO_SHOW'
-    | 'ABSENT_REPORTED_NO_SHOW';
+    | 'ABSENT_REPORTED_NO_SHOW'
+    | 'SUDDEN_OFF_REPORTED';
 
 export const TYPE_D_DISCIPLINE_CASES: Record<
     TypeDDisciplineCaseKey,
     {
         action: TypeDDisciplineAction; hours: number; label: string; moTa: string;
+        /**
+         * Never lock for this case, whatever the settings say. Only DEDUCT / NONE
+         * are honoured; LOCK / DEDUCT_OR_LOCK fall back to DEDUCT.
+         */
+        khongKhoa?: true;
         /** Ai quét, quét lúc nào — để đọc bảng là biết ngay, khỏi mò trong code. */
         quetBoi: string;
         quetLuc: string;
@@ -224,15 +231,22 @@ export const TYPE_D_DISCIPLINE_CASES: Record<
         moTa: 'Đã bấm Báo vắng đúng quy trình. Từ 07:00 trở đi hệ thống không cho báo vắng nữa, nên mọi phiếu báo vắng đều thuộc diện này.',
         quetBoi: 'Cron chốt sổ', quetLuc: '00:00 mỗi đêm',
     },
+    /**
+     * Quy chế mục 06: bỏ lịch đã đăng ký mà báo trễ → trừ 10 giờ. Quyết định
+     * 07/10/2026: KTV bấm "Báo off đột xuất" từ 07:00 thì CHỈ trừ giờ, KHÔNG BAO
+     * GIỜ khoá — kể cả quỹ giờ không đủ. Đã báo mà vẫn bị khoá như người không
+     * báo thì chẳng ai còn lý do để báo.
+     */
+    SUDDEN_OFF_REPORTED: {
+        action: 'DEDUCT', hours: 10, khongKhoa: true,
+        label: 'Báo off đột xuất (từ 07:00)',
+        moTa: 'Đã đăng ký đi làm, từ 07:00 bấm Báo off đột xuất trên app. Chỉ trừ giờ, không bao giờ khoá tài khoản.',
+        quetBoi: 'Lúc KTV bấm · cron dự phòng', quetLuc: 'Ngay khi bấm',
+    },
 };
 
-export const TYPE_D_RATING_DEDUCTION = {
-    4: 0,
-    3: 0.25,
-    2: 0.50,
-    1: 0.75,
-    0: 0
-} as const;
+/** @deprecated Dùng `DEFAULT_TYPE_D_DEDUCTION` / `loadRatingConfig` trong RatingScaleService (theo thang 4/5). */
+export const TYPE_D_RATING_DEDUCTION = DEFAULT_TYPE_D_DEDUCTION[4];
 
 export const TYPE_D_BONUS = {
     BASE_POINTS: 20

@@ -21,6 +21,7 @@ export const ACTION_LABEL: Record<string, string> = {
     SWAP_SEND: 'Gửi người mới',
     KTV_EARLY_EXIT: 'Khách về sớm',
     KTV_EMERGENCY: 'Khẩn cấp',
+    UNMERGE_RUNNING: 'Hủy gộp khi đang làm',
 };
 
 export const UNKNOWN_ACTOR_LABEL = 'không ghi được người bấm';

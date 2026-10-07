@@ -17,6 +17,8 @@ export interface PromotionVoucherPageStrings {
     address: string;
     applicableMenus: string;
     allMenus: string;
+    bookOnline: string;
+    webBookingInstruction: string;
 }
 
 export const PROMOTION_VOUCHER_PAGE_I18N: Record<PromotionEmailLang, PromotionVoucherPageStrings> = {
@@ -27,6 +29,8 @@ export const PROMOTION_VOUCHER_PAGE_I18N: Record<PromotionEmailLang, PromotionVo
         invalidBody: b => `Mã voucher không tồn tại hoặc đã bị huỷ. Vui lòng liên hệ ${b} để được hỗ trợ.`,
         status: { ACTIVE: 'Còn hiệu lực', NOT_STARTED: 'Chưa đến ngày áp dụng', INACTIVE: 'Tạm ngưng', EXPIRED: 'Đã hết hạn', USED_UP: 'Đã dùng hết lượt', SUSPENDED: 'Tạm khoá', CANCELLED: 'Đã huỷ' },
         validUntil: 'Hạn dùng', hotline: 'Hotline', address: 'Địa chỉ', applicableMenus: 'Áp dụng cho', allMenus: 'Tất cả menu',
+        bookOnline: 'Đặt lịch ngay (Web Booking)',
+        webBookingInstruction: 'Vui lòng đặt lịch qua website để áp dụng voucher này.',
     },
     en: {
         title: 'Your E-Voucher',
@@ -35,6 +39,8 @@ export const PROMOTION_VOUCHER_PAGE_I18N: Record<PromotionEmailLang, PromotionVo
         invalidBody: b => `This voucher does not exist or has been cancelled. Please contact ${b} for help.`,
         status: { ACTIVE: 'Valid', NOT_STARTED: 'Not yet valid', INACTIVE: 'Paused', EXPIRED: 'Expired', USED_UP: 'Fully used', SUSPENDED: 'Suspended', CANCELLED: 'Cancelled' },
         validUntil: 'Valid until', hotline: 'Hotline', address: 'Address', applicableMenus: 'Applies to', allMenus: 'All menus',
+        bookOnline: 'Book Online (Web Booking)',
+        webBookingInstruction: 'Please book through our website to apply this voucher.',
     },
     cn: {
         title: '您的电子优惠券',
@@ -43,6 +49,8 @@ export const PROMOTION_VOUCHER_PAGE_I18N: Record<PromotionEmailLang, PromotionVo
         invalidBody: b => `该优惠券不存在或已被取消，请联系 ${b} 获取帮助。`,
         status: { ACTIVE: '有效', NOT_STARTED: '尚未生效', INACTIVE: '已暂停', EXPIRED: '已过期', USED_UP: '次数已用完', SUSPENDED: '已冻结', CANCELLED: '已取消' },
         validUntil: '有效期至', hotline: '热线', address: '地址', applicableMenus: '适用于', allMenus: '全部菜单',
+        bookOnline: '立即在线预约 (Web Booking)',
+        webBookingInstruction: '请通过我们的网站预约以使用此优惠券。',
     },
     jp: {
         title: 'あなたのEクーポン',
@@ -51,6 +59,8 @@ export const PROMOTION_VOUCHER_PAGE_I18N: Record<PromotionEmailLang, PromotionVo
         invalidBody: b => `このクーポンは存在しないか、取り消されています。${b} までお問い合わせください。`,
         status: { ACTIVE: '有効', NOT_STARTED: '利用開始前', INACTIVE: '一時停止中', EXPIRED: '期限切れ', USED_UP: '利用回数上限', SUSPENDED: '利用停止', CANCELLED: '取消済み' },
         validUntil: '有効期限', hotline: 'ホットライン', address: '住所', applicableMenus: '対象', allMenus: 'すべてのメニュー',
+        bookOnline: '今すぐWeb予約する (Web Booking)',
+        webBookingInstruction: '当クーポンをご利用の際は、ウェブサイトよりご予約ください。',
     },
     kr: {
         title: '나의 E-바우처',
@@ -59,6 +69,8 @@ export const PROMOTION_VOUCHER_PAGE_I18N: Record<PromotionEmailLang, PromotionVo
         invalidBody: b => `존재하지 않거나 취소된 바우처입니다. ${b}에 문의해 주세요.`,
         status: { ACTIVE: '사용 가능', NOT_STARTED: '사용 시작 전', INACTIVE: '일시 중지', EXPIRED: '만료됨', USED_UP: '사용 횟수 소진', SUSPENDED: '사용 정지', CANCELLED: '취소됨' },
         validUntil: '유효 기간', hotline: '핫라인', address: '주소', applicableMenus: '적용 대상', allMenus: '전체 메뉴',
+        bookOnline: '온라인 바로 예약 (Web Booking)',
+        webBookingInstruction: '이 바우처를 사용하시려면 웹사이트를 통해 예약해 주세요.',
     },
 };
 

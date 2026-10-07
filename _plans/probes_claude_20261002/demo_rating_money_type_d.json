@@ -1,0 +1,61 @@
+{
+  "prefix": "DEMOSAO-2LMSF",
+  "ktv": "DEMOSAO-2LMSF-KTVD",
+  "rows": [
+    {
+      "booking_item_id": "DEMOSAO-2LMSF-B1-I1",
+      "rating_used": 1,
+      "rating_scale": 5,
+      "deduction_rate": "0.75",
+      "commission_gross": "100000",
+      "commission_net": "25000",
+      "bonus_amount": "0"
+    },
+    {
+      "booking_item_id": "DEMOSAO-2LMSF-B2-I1",
+      "rating_used": 2,
+      "rating_scale": 5,
+      "deduction_rate": "0.5",
+      "commission_gross": "100000",
+      "commission_net": "50000",
+      "bonus_amount": "0"
+    },
+    {
+      "booking_item_id": "DEMOSAO-2LMSF-B3-I1",
+      "rating_used": 3,
+      "rating_scale": 5,
+      "deduction_rate": "0.25",
+      "commission_gross": "100000",
+      "commission_net": "75000",
+      "bonus_amount": "0"
+    },
+    {
+      "booking_item_id": "DEMOSAO-2LMSF-B4-I1",
+      "rating_used": 4,
+      "rating_scale": 5,
+      "deduction_rate": "0",
+      "commission_gross": "100000",
+      "commission_net": "100000",
+      "bonus_amount": "0"
+    },
+    {
+      "booking_item_id": "DEMOSAO-2LMSF-B5-I1",
+      "rating_used": 5,
+      "rating_scale": 5,
+      "deduction_rate": "0",
+      "commission_gross": "100000",
+      "commission_net": "100000",
+      "bonus_amount": "20000"
+    }
+  ],
+  "notes": [
+    {
+      "type": "COMPLAINT",
+      "message": "Bạn nhận được đánh giá TỆ từ đơn hàng #DEMOSAO-2LMSF-B1. "
+    },
+    {
+      "type": "REWARD",
+      "message": "Bạn vừa nhận được đánh giá XUẤT SẮC từ đơn hàng #DEMOSAO-2LMSF-B5"
+    }
+  ]
+}

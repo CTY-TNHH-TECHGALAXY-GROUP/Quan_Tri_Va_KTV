@@ -25,7 +25,20 @@ const TYPE_LABELS: Record<string, string> = {
 
 type TabKey = typeof TAB_CONFIG[number]['key'];
 
-export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSelectedDate, onDateChange, allowEditTurns = false }: { staffs: StaffData[], ktvDisplayNames?: Record<string, string>, selectedDate?: string, onDateChange?: (date: string) => void, allowEditTurns?: boolean }) => {
+type TurnQueueBoardProps = {
+    staffs: StaffData[];
+    ktvDisplayNames?: Record<string, string>;
+    selectedDate?: string;
+    onDateChange?: (date: string) => void;
+    allowEditTurns?: boolean;
+    draftCacheKey?: string;
+    onDirtyChange?: (dirty: boolean, discard: () => void) => void;
+    onBeforeDateChange?: (date: string) => boolean;
+    onSavingChange?: (saving: boolean) => void;
+};
+
+export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSelectedDate, onDateChange,
+    allowEditTurns = false, draftCacheKey, onDirtyChange, onBeforeDateChange, onSavingChange }: TurnQueueBoardProps) => {
     const {
         selectedDate,
         setSelectedDate,
@@ -35,6 +48,8 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
         loading,
         hasChanges,
         isSavingOrder,
+        manualPendingIds,
+        saveMessage,
         editingKtvId,
         setEditingKtvId,
         saveOrder,
@@ -53,13 +68,17 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
         updateKtvStatus,
         updateManualAdjustment,
         updateTurnsCompleted
-    } = useTurnQueueBoard(staffs);
+    } = useTurnQueueBoard(staffs, draftCacheKey);
 
     useEffect(() => {
         if (propSelectedDate && propSelectedDate !== selectedDate) {
             setSelectedDate(propSelectedDate);
         }
     }, [propSelectedDate]);
+
+    useEffect(() => { onDirtyChange?.(hasChanges || isSavingOrder, cancelOrder); }, [hasChanges, isSavingOrder, cancelOrder, onDirtyChange]);
+    useEffect(() => { onSavingChange?.(isSavingOrder || manualPendingIds.size > 0); }, [isSavingOrder, manualPendingIds, onSavingChange]);
+    useEffect(() => () => { onDirtyChange?.(false, () => {}); onSavingChange?.(false); }, [onDirtyChange, onSavingChange]);
 
     const [activeTab, setActiveTab] = useState<TabKey>('all');
     const [isTabExpanded, setIsTabExpanded] = useState(false);
@@ -130,25 +149,33 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                     <input
                         type="number"
                         min={1}
+                        max={100000}
+                        disabled={isSavingOrder}
+                        aria-label={`Thứ tự tua ${turn.employee_id}`}
+                        name={`queue-order-${turn.employee_id}`}
+                        autoComplete="off"
                         defaultValue={turn.check_in_order}
                         autoFocus
                         className="w-8 h-8 rounded-xl text-center text-sm font-black shrink-0 shadow-sm border-2 border-indigo-500 bg-indigo-50 text-indigo-700 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        onBlur={(e) => handleOrderChange(turn.employee_id, parseInt(e.target.value))}
+                        onBlur={(e) => handleOrderChange(turn.employee_id, Number(e.target.value))}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleOrderChange(turn.employee_id, parseInt((e.target as HTMLInputElement).value));
-                            if (e.key === 'Escape') setEditingKtvId(null);
+                            if (e.key === 'Enter') e.currentTarget.blur();
+                            if (e.key === 'Escape') { e.currentTarget.value = String(turn.check_in_order); setEditingKtvId(null); }
                         }}
                     />
                 ) : (
-                    <div
+                    <button
+                        type="button"
+                        disabled={isSavingOrder}
+                        aria-label={`Sửa thứ tự tua ${turn.employee_id}`}
                         onClick={(e) => { e.stopPropagation(); setEditingKtvId(turn.employee_id); }}
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-indigo-300 transition-all ${suddenOffs.has(turn.employee_id) ? 'bg-red-100 text-red-500 border border-red-200' : turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-indigo-300 focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors disabled:opacity-50 ${suddenOffs.has(turn.employee_id) ? 'bg-red-100 text-red-500 border border-red-200' : turn.status === 'waiting' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
                             turn.status === 'working' ? ((turn.estimated_end_time && turn.estimated_end_time < currentTime) ? 'bg-orange-100 text-orange-600 border border-orange-300 animate-pulse' : 'bg-rose-100 text-rose-600 border border-rose-200') :
                             turn.status === 'assigned' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' :
                                 'bg-gray-100 text-gray-500 border border-gray-200'
                         }`}>
                         {turn.check_in_order}
-                    </div>
+                    </button>
                 )}
 
                 {/* Name */}
@@ -168,18 +195,24 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                                 editingTurnKtvId === turn.employee_id && allowEditTurns ? (
                                     <div className="flex items-center gap-1 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-200" onClick={(e) => e.stopPropagation()}>
                                         <button 
-                                            onClick={() => updateManualAdjustment(turn.employee_id, -1, turn.manual_adjustment)}
-                                            className="w-5 h-5 flex items-center justify-center rounded-sm bg-white text-indigo-600 shadow-sm border border-indigo-100 hover:bg-indigo-100 transition-colors font-black"
+                                            disabled={manualPendingIds.has(turn.employee_id)}
+                                            aria-label={`Giảm một tua ${turn.employee_id}`}
+                                            title="Giảm một tua và lưu ngay"
+                                            onClick={() => updateManualAdjustment(turn.employee_id, -1)}
+                                            className="w-8 h-8 flex items-center justify-center rounded-sm bg-white text-indigo-600 shadow-sm border border-indigo-100 hover:bg-indigo-100 transition-colors font-black disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-indigo-500"
                                         >-</button>
-                                        <span className="text-[10px] font-bold text-indigo-700 min-w-[30px] text-center">{turn.turns_completed} tua</span>
+                                        <span className="text-[10px] font-bold text-indigo-700 min-w-[30px] text-center">{manualPendingIds.has(turn.employee_id) ? 'Đang lưu…' : `${turn.turns_completed} tua`}</span>
                                         <button 
-                                            onClick={() => updateManualAdjustment(turn.employee_id, 1, turn.manual_adjustment)}
-                                            className="w-5 h-5 flex items-center justify-center rounded-sm bg-white text-indigo-600 shadow-sm border border-indigo-100 hover:bg-indigo-100 transition-colors font-black"
+                                            disabled={manualPendingIds.has(turn.employee_id)}
+                                            aria-label={`Tăng một tua ${turn.employee_id}`}
+                                            title="Tăng một tua và lưu ngay"
+                                            onClick={() => updateManualAdjustment(turn.employee_id, 1)}
+                                            className="w-8 h-8 flex items-center justify-center rounded-sm bg-white text-indigo-600 shadow-sm border border-indigo-100 hover:bg-indigo-100 transition-colors font-black disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-indigo-500"
                                         >+</button>
                                         <button 
                                             onClick={() => setEditingTurnKtvId(null)}
-                                            className="w-5 h-5 flex items-center justify-center rounded-sm text-gray-400 hover:text-gray-600 transition-colors ml-1"
-                                        ><X size={12} /></button>
+                                            className="w-8 h-8 flex items-center justify-center rounded-sm text-gray-400 hover:text-gray-600 transition-colors ml-1 focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                        aria-label="Đóng điều chỉnh số tua"><X size={12} /></button>
                                     </div>
                                 ) : (
                                     <button 
@@ -365,10 +398,21 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                         <h3 className="font-bold text-gray-900 text-sm">Sổ hàng đợi tua</h3>
                         <input
                             type="date"
+                            aria-label="Ngày xem lượt KTV"
+                            name="turn-queue-date"
+                            disabled={isSavingOrder || manualPendingIds.size > 0}
                             value={selectedDate}
                             onChange={(e) => {
-                                setSelectedDate(e.target.value);
-                                if (onDateChange) onDateChange(e.target.value);
+                                const date = e.target.value;
+                                if (!date || date === selectedDate) return;
+                                if (onBeforeDateChange) {
+                                    if (!onBeforeDateChange(date)) return;
+                                } else if (hasChanges) {
+                                    if (!window.confirm('Thứ tự tua chưa được lưu. Bỏ thay đổi và chuyển ngày?')) return;
+                                    cancelOrder();
+                                }
+                                setSelectedDate(date);
+                                onDateChange?.(date);
                             }}
                             className="text-xs font-medium border border-gray-200 rounded-md px-2 py-1 outline-none focus:border-indigo-500 text-gray-700 bg-gray-50"
                         />
@@ -385,21 +429,25 @@ export const TurnQueueBoard = ({ staffs, ktvDisplayNames, selectedDate: propSele
                             <button
                                 onClick={saveOrder}
                                 disabled={isSavingOrder}
-                                className="flex items-center gap-1 text-xs text-white font-bold transition-colors px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 shadow-sm disabled:opacity-50"
+                                className="flex items-center gap-1 text-xs text-white font-bold transition-colors px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 shadow-sm disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-indigo-500"
                             >
-                                {isSavingOrder ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu thứ tự
+                                {isSavingOrder ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {isSavingOrder ? 'Đang lưu…' : 'Lưu thứ tự'}
                             </button>
                         </div>
                     ) : (
                         <button
                             onClick={resetTurns}
+                            disabled={isSavingOrder || loading}
                             className="flex items-center gap-1 text-xs text-gray-500 hover:text-indigo-600 font-semibold transition-colors"
                         >
-                            <RotateCcw size={12} /> Đặt lại theo chấm công
+                            {isSavingOrder ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} {isSavingOrder ? 'Đang lưu…' : 'Đặt lại theo chấm công'}
                         </button>
                     )}
                 </div>
 
+                {(hasChanges || saveMessage) && <p role="status" aria-live="polite" className="px-4 py-2 text-xs text-gray-700 bg-gray-50">
+                    {saveMessage || 'Bản nháp trên máy — bấm Lưu thứ tự để cập nhật hàng đợi.'}
+                </p>}
                 <div className="divide-y divide-gray-50 min-h-[100px]">
                     {visibleGroups.length === 0 ? (
                         <div className="p-8 text-center text-gray-400 text-sm">

@@ -1,11 +1,12 @@
 'use client';
+import { isKtvDisplaySegment, ktvServiceName, parseKtvSegments, ktvAssignedMinutes } from '@/lib/ktvUtils';
 
 import React, { useState, Suspense } from 'react';
 import { API } from '@/lib/api-endpoints';
 import { roomLabel } from '@/lib/room-label';
 import { coWorkersOf } from '@/lib/co-workers';
 import { ActionGridButton, ChecklistItem, RatingCard, CollapsibleRequirements } from '../_shared/components';
-import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Info, LogOut, Play, PlusSquare, RefreshCw, ShieldAlert, RotateCcw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BellRing, BookOpen, Camera, CheckCircle, Clock, Coffee, HelpCircle, Image as ImageIcon, Info, LogOut, Play, PlusSquare, RefreshCw, RotateCcw, ShieldAlert, Users } from 'lucide-react';
 import { THEME, ANIMATION, DEFAULT_BOOKING_URL, formatMultiServiceNames, WebBookingQR, ServiceTypeLabel } from '../_shared/ui';
 import { apiClient } from '@/lib/apiClient';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
@@ -13,52 +14,35 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '@/components/ui/Toast';
 import { ShiftExtensionModal } from '@/app/ktv/_components/ShiftExtensionModal';
 
-export function WorkingTimeline({ segments, activeIndex, actualStartTime, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, actualStartTime?: string | null, shouldMerge?: boolean, totalAssignedMins?: number }) {
-  if (!segments || segments.length === 0) return null;
-
-  let displaySegments = segments;
-  if (shouldMerge && segments.length > 0) {
-    const totalDuration = totalAssignedMins || segments.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0);
-    displaySegments = [{
-      ...segments[0],
-      id: 'merged-' + segments[0].id,
-      duration: totalDuration
-    }];
-  }
-
-  // Helper để tính giờ tịnh tiến
-  const getShiftedTime = (offsetMins: number) => {
-    if (!actualStartTime) return null;
-    let tStart = actualStartTime;
-    // Xử lý chuỗi HH:mm hoặc HH:mm:ss
-    if (typeof tStart === 'string' && /^\d{1,2}:\d{2}/.test(tStart)) {
-        const [h, m] = tStart.split(':').map(Number);
-        const d = new Date();
-        d.setHours(h, m + offsetMins, 0, 0);
-        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+export function WorkingTimeline({ segments, activeIndex, shouldMerge, totalAssignedMins }: { segments: any[], activeIndex?: number, shouldMerge?: boolean, totalAssignedMins?: number }) {
+  if (!Array.isArray(segments) || segments.length === 0) return null;
+  const clock = (value: any, offset = 0): string => {
+    if (!value) return '—';
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(String(value))) {
+      const [h, m] = String(value).split(':').map(Number);
+      const minutes = ((h * 60 + m + offset) % 1440 + 1440) % 1440;
+      return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
     }
-
-    if (typeof tStart === 'string' && !tStart.includes('Z') && !tStart.includes('+')) {
-        tStart = tStart.replace(' ', 'T') + 'Z';
-    }
-    const date = new Date(new Date(tStart).getTime() + (offsetMins * 60 * 1000));
-    if (isNaN(date.getTime())) return actualStartTime; // Fallback
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const date = new Date(value);
+    return Number.isFinite(date.getTime())
+      ? new Date(date.getTime() + offset * 60000).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : '—';
   };
-
-  const segmentsWithTimes = displaySegments.reduce<{
-    list: Array<{ seg: (typeof displaySegments)[number]; displayStartTime: string; displayEndTime: string }>;
-    runningMins: number;
-  }>((acc, seg) => {
-    const startMins = acc.runningMins;
-    const endMins = startMins + seg.duration;
-    acc.list.push({
-      seg,
-      displayStartTime: actualStartTime ? getShiftedTime(startMins) : seg.startTime,
-      displayEndTime: actualStartTime ? getShiftedTime(endMins) : seg.endTime,
-    });
-    return { list: acc.list, runningMins: endMins };
-  }, { list: [], runningMins: 0 }).list;
+  // shouldMerge alone is a suggestion until START has persisted the run membership.
+  const merged = shouldMerge && segments.length > 1 && segments.every(seg => seg.isMergedRun && seg.actualStartTime)
+    && new Set(segments.map(seg => seg.mergedRunId || seg.actualStartTime)).size === 1;
+  const displaySegments = merged ? [{ ...segments[0],
+    duration: totalAssignedMins || segments.reduce((sum, seg) => sum + (Number(seg.duration) || 0), 0),
+    actualEndTime: segments.every(seg => seg.actualEndTime) ? segments[segments.length - 1].actualEndTime : undefined,
+    plannedEndAt: segments[segments.length - 1].plannedEndAt,
+    endTime: segments[segments.length - 1].endTime,
+  }] : segments;
+  const segmentsWithTimes = displaySegments.map(seg => ({
+    seg,
+    displayStartTime: clock(seg.plannedStartAt || seg.startTime),
+    displayEndTime: clock(seg.plannedEndAt || seg.endTime),
+    actualText: seg.actualStartTime ? `Thực tế ${clock(seg.actualStartTime)} → ${seg.actualEndTime
+      ? clock(seg.actualEndTime) : `${clock(seg.actualStartTime, Number(seg.duration) || 0)} (dự kiến kết thúc)`}` : '',
+  }));
 
   return (
     <div className="space-y-3">
@@ -67,9 +51,9 @@ export function WorkingTimeline({ segments, activeIndex, actualStartTime, should
         {activeIndex !== undefined && <span className="text-emerald-600">Chặng {activeIndex + 1}</span>}
       </h3>
       <div className="space-y-2">
-        {segmentsWithTimes.map(({ seg, displayStartTime, displayEndTime }, idx) => {
-          const isActive = shouldMerge ? activeIndex !== undefined : idx === activeIndex;
-          const isPast = shouldMerge ? false : (activeIndex !== undefined && idx < activeIndex);
+        {segmentsWithTimes.map(({ seg, displayStartTime, displayEndTime, actualText }, idx) => {
+          const isActive = merged ? activeIndex !== undefined : idx === activeIndex;
+          const isPast = merged ? false : (activeIndex !== undefined && idx < activeIndex);
 
           return (
             <motion.div 
@@ -92,10 +76,12 @@ export function WorkingTimeline({ segments, activeIndex, actualStartTime, should
               <div className="flex-1">
                 <p className={`text-xs font-black ${isActive ? 'text-emerald-900' : 'text-slate-800'}`}>
                   Phòng {roomLabel(seg.roomId)}
+                  <span className="ml-2 text-[9px] font-normal">Giờ phân công</span>
                   {isActive && <span className="ml-2 text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md animate-pulse">ĐANG LÀM</span>}
                 </p>
                 <p className={`text-[10px] font-bold uppercase tracking-tighter ${isActive ? 'text-emerald-600/70' : 'text-slate-400'}`}>
-                  Giường {seg.bedId?.split('-').pop()} • {seg.duration} phút {shouldMerge && '(Gộp)'}
+                  {actualText && <span className="block normal-case">{actualText}</span>}
+                  Giường {seg.bedId?.split('-').pop()} • {seg.duration} phút {merged && '(Gộp)'}
                 </p>
               </div>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-colors ${
@@ -203,25 +189,20 @@ export function ScreenTimer({ logic }: { logic: any }) {
     : allTimerItemsRaw;
   const item = allTimerItems[0] || {};
   // Tên: lấy danh sách tên từ TẤT CẢ các item (kể cả item con đã gộp) để UI Timer biết có bao nhiêu dịch vụ
-  const allTimerServiceNames = allTimerItemsRaw.map((i: any) => i.service_name).filter(Boolean);
+  const allTimerServiceNames = allTimerItemsRaw.map((i: any) => ktvServiceName(i, logic.ktvId)).filter(Boolean);
   
   // Segments: dùng allTimerItemsRaw để tính tổng duration chính xác
   const allTimerKtvSegments = allTimerItemsRaw.flatMap((i: any) => {
     let segs = [];
     if (typeof i?.segments === 'string') {
-        try { segs = JSON.parse(i.segments); } catch (e) { segs = []; }
+        try { segs = parseKtvSegments(i.segments); } catch (e) { segs = []; }
     } else if (Array.isArray(i?.segments)) {
-        segs = i.segments;
+        segs = parseKtvSegments(i.segments);
     }
     return segs
-      .filter((s: any) => s.ktvId?.toLowerCase() === logic.ktvId?.toLowerCase())
+      .filter((s: any) => isKtvDisplaySegment(s, logic.ktvId))
       .map((s: any) => {
-        let customName = undefined;
-        try {
-            const opts = typeof i.options === 'string' ? JSON.parse(i.options) : (i.options || {});
-            customName = opts?.serviceNamesForKtvs?.[s.ktvId || logic.ktvId];
-        } catch(e) {}
-        return { ...s, _itemId: i.id, _serviceName: customName || i.service_name };
+        return { ...s, _itemId: i.id, _serviceName: ktvServiceName(i, logic.ktvId) };
       });
   }).sort((a: any, b: any) => {
       const timeA = a.startTime || '23:59';
@@ -234,18 +215,18 @@ export function ScreenTimer({ logic }: { logic: any }) {
     : allTimerKtvSegments;
   
   const uniqueItemIds = new Set(ktvSegments.map((s: any) => s._itemId));
-  const uniqueRoomIds = new Set(ktvSegments.map((s: any) => s.roomId || 'unknown'));
+  const uniqueRoomIds = new Set(ktvSegments.map((s: any) => s.roomId || `no-room:${s.id}`));
   const hasFinishedSegment = ktvSegments.some((s: any) => s.actualEndTime);
   const allFinished = ktvSegments.length > 0 && ktvSegments.every((s: any) => s.actualEndTime);
   const isFinishedMerge = allFinished && ktvSegments[0].actualEndTime === ktvSegments[ktvSegments.length - 1].actualEndTime;
   const shouldMerge = hasTimerMergedChildren || (ktvSegments.length > 1 && uniqueItemIds.size === ktvSegments.length && uniqueRoomIds.size === 1 && !hasFinishedSegment);
 
-  const totalAssignedMins = allTimerKtvSegments.reduce((sum: number, seg: any) => sum + (Number(seg.duration) || 0), 0);
+  const totalAssignedMins = allTimerItemsRaw.reduce((sum: number, i: any) => sum + ktvAssignedMinutes(i, logic.ktvId), 0);
   const currentSeg = ktvSegments.length > 0 ? ktvSegments[activeSegmentIndex || 0] : null;
   const nextSeg = ktvSegments.length > (activeSegmentIndex + 1) && !shouldMerge ? ktvSegments[activeSegmentIndex + 1] : null;
 
   // 🕒 CHỈ HIỂN THỊ THỜI GIAN CỦA CHẶNG HIỆN TẠI (trừ phi được gộp)
-  const displayDuration = shouldMerge ? totalAssignedMins : (currentSeg ? (Number(currentSeg.duration) || 60) : ((item.duration != null && item.duration !== '' ? Number(item.duration) : 60)));
+  const displayDuration = shouldMerge ? totalAssignedMins : (currentSeg ? Math.max(0, Number(currentSeg.duration) || 0) : ktvAssignedMinutes(item, logic.ktvId));
 
   const parsedSetup = Number(logic.settings?.ktv_setup_duration_minutes);
   const setupMins = !isNaN(parsedSetup) ? parsedSetup : 0;
@@ -258,7 +239,9 @@ export function ScreenTimer({ logic }: { logic: any }) {
   const progress = totalDuration > 0 ? (currentSecs / totalDuration) * 100 : 0;
 
   // Xử lý hiển thị giờ bắt đầu / kết thúc
-  const startTimeRaw = currentSeg?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null;
+  const startTimeRaw = currentSeg
+    ? currentSeg.actualStartTime || currentSeg.plannedStartAt || currentSeg.startTime || null
+    : booking?.dispatchStartTime || booking?.timeStart || null;
   const getFormattedTime = (dateString: string | null) => {
     if (!dateString) return '--:--';
     if (typeof dateString === 'string' && /^\d{1,2}:\d{2}/.test(dateString)) return dateString.substring(0, 5);
@@ -289,68 +272,97 @@ export function ScreenTimer({ logic }: { logic: any }) {
   return (
     <div className="p-4 md:p-8 h-full flex flex-col pt-8 md:pt-12 md:max-w-4xl md:mx-auto w-full">
       {/* Header Info */}
-      <div className="flex justify-between items-start mb-6 px-2">
-        <div className="flex flex-col gap-1 min-w-0 flex-1">
-          <h1 className="text-2xl sm:text-3xl font-black text-emerald-700 leading-tight tracking-tight flex items-center gap-2 flex-wrap break-words">
-            {item.guest_label && (
-               <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
-                 👨 {item.guest_label}
-               </span>
-            )}
-            <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : item.service_name}</span>
-          </h1>
-          <div className="flex flex-wrap items-center gap-3 gap-y-1">
-            <div className="flex items-center gap-1.5 text-slate-800 font-black shrink-0">
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest">
-                {ktvSegments.length > 1 && !shouldMerge ? `Chặng ${activeSegmentIndex + 1}` : 'Phòng'}
+      <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-5 sm:p-6 mb-6">
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                {ktvSegments.length > 1 && !shouldMerge ? `Chặng ${activeSegmentIndex + 1}/${ktvSegments.length}` : 'Dịch vụ'}
               </span>
-              <span className="text-lg">
-                {roomLabel(currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName)}
-                {(currentSeg?.bedId || booking?.assignedBedId) && ` (G: ${(currentSeg?.bedId || booking.assignedBedId).split('-').pop()})`}
-              </span>
-            </div>
-            <div className="w-px h-3 bg-slate-200 hidden sm:block" />
-            <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs shrink-0">
-              <Clock size={14} />
-              <span>{displayDuration} phút</span>
-            </div>
-            <div className="shrink-0">
               <ServiceTypeLabel serviceId={item.serviceId} />
+              {booking?.billCode && (
+                <span className="text-xs font-black text-slate-400">#{booking.billCode}</span>
+              )}
+            </div>
+
+            <h1 className="text-xl sm:text-2xl font-black text-slate-800 leading-tight tracking-tight flex items-center gap-2 flex-wrap break-words">
+              {item.guest_label && (
+                 <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl text-base sm:text-lg flex items-center gap-1 shrink-0 border border-emerald-200">
+                   👨 {item.guest_label}
+                 </span>
+              )}
+              <span className="min-w-0 break-words">{allTimerServiceNames.length > 1 ? formatMultiServiceNames(ktvSegments) : ktvServiceName(item, logic.ktvId)}</span>
+            </h1>
+
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold mt-1 flex-wrap">
+              <span className="text-slate-700 font-bold bg-slate-100 px-2 py-0.5 rounded-md">⏱️ {displayDuration} phút</span>
+              <span>•</span>
+              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">🕒 {displayStartTime} - {displayEndTime}</span>
             </div>
           </div>
-          {/* CoWorkers display in Timer - chỉ khi cùng 1 dịch vụ */}
-          {(() => {
-            const timerAssignedItem = booking?.assignedItemId
-              ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
-              : null;
-            const timerCoWorkers = coWorkersOf(timerAssignedItem, logic.ktvId);
-            return timerCoWorkers.length > 0 ? (
-              <p className="mt-1 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Cùng làm với {timerCoWorkers.join(', ')}</p>
-            ) : null;
-          })()}
-        </div>
-        <div className="flex gap-2 shrink-0">
-          {isTimerRunning && (
+
+          <div className="flex gap-2 shrink-0">
+            {isTimerRunning && (
+              <button 
+                onClick={() => logic.forceRefresh?.()}
+                className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 active:scale-90 transition-all shrink-0 cursor-pointer"
+                title="Tải lại"
+              >
+                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-sm">
+                  <RefreshCw size={18} />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-tighter">Tải lại</span>
+              </button>
+            )}
             <button 
-              onClick={() => logic.forceRefresh?.()}
-              className="flex flex-col items-center gap-1 text-slate-400 active:scale-90 transition-all shrink-0"
+              onClick={() => logic.setShowProcedure(true)}
+              className="flex flex-col items-center gap-1 text-emerald-600 hover:text-emerald-700 active:scale-90 transition-all shrink-0 cursor-pointer"
+              title="Quy trình"
             >
-              <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-sm">
-                <RefreshCw size={22} />
+              <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-100 shadow-sm">
+                <BookOpen size={18} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-tighter">Tải lại</span>
+              <span className="text-[9px] font-black uppercase tracking-tighter">Quy trình</span>
             </button>
-          )}
-          <button 
-            onClick={() => logic.setShowProcedure(true)}
-            className="flex flex-col items-center gap-1 text-emerald-600 active:scale-90 transition-all shrink-0"
-          >
-            <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-100 shadow-sm">
-              <BookOpen size={22} />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-tighter">Quy trình</span>
-          </button>
+          </div>
         </div>
+
+        {/* Khối Thông Số Cốt Lõi: Thanh Phòng & Giường chìm xuống khối xám nhẹ đồng bộ */}
+        <div className="bg-slate-100/90 border border-slate-200/60 rounded-2xl p-3.5 grid grid-cols-2 gap-3 text-sm mt-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Phòng</p>
+            <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+              {(() => {
+                const val = roomLabel(currentSeg?.roomId || booking?.assignedRoomId || item.roomName || booking?.roomName) || '—';
+                return val.startsWith('Phòng') || val === '—' ? val : `Phòng ${val}`;
+              })()}
+            </p>
+          </div>
+          <div className="border-l border-slate-200 pl-4">
+            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Giường</p>
+            <p className="font-black text-slate-800 text-base sm:text-lg mt-0.5 truncate">
+              {(() => {
+                const raw = (currentSeg?.bedId || booking?.assignedBedId);
+                const val = raw ? String(raw).split('-').pop() : '—';
+                return !val || val === '—' || val.startsWith('Giường') ? (val || '—') : `Giường ${val}`;
+              })()}
+            </p>
+          </div>
+        </div>
+
+        {/* CoWorkers display in Timer */}
+        {(() => {
+          const timerAssignedItem = booking?.assignedItemId
+            ? booking.BookingItems?.find((bi: any) => bi.id === booking.assignedItemId)
+            : null;
+          const timerCoWorkers = coWorkersOf(timerAssignedItem, logic.ktvId);
+          return timerCoWorkers.length > 0 ? (
+            <div className="mt-2.5 text-xs font-medium text-slate-600 flex items-center justify-center gap-2">
+              <Users size={14} className="text-indigo-600 shrink-0" />
+              <span>Cùng làm với: <strong className="font-black text-indigo-700">{timerCoWorkers.join(', ')}</strong></span>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Rejected Handover Alert */}
@@ -415,7 +427,6 @@ export function ScreenTimer({ logic }: { logic: any }) {
           <WorkingTimeline 
             segments={ktvSegments} 
             activeIndex={activeSegmentIndex} 
-            actualStartTime={ktvSegments[0]?.actualStartTime || booking?.dispatchStartTime || booking?.timeStart || null}
             shouldMerge={shouldMerge}
             totalAssignedMins={totalAssignedMins}
           />
@@ -477,34 +488,51 @@ export function ScreenTimer({ logic }: { logic: any }) {
 
       {/* Primary Action Button */}
       {((!isTimerRunning && !isPaused) || isPrepping) ? (
-        <div className="px-6 mb-10">
-          <div className="space-y-4">
-            {[
-              {
-                label: 'Ảnh dép khách',
-                value: logic.guestSlipperPhotoBase64,
-                setter: logic.setGuestSlipperPhotoBase64,
-                onChange: handleSlipperFileUpload
-              },
-              {
-                label: 'Ảnh bắt đầu dịch vụ',
-                value: logic.startPhotoBase64,
-                setter: logic.setStartPhotoBase64,
-                onChange: handleFileUpload
-              }
-            ].map((photo, index) => (
-              <div key={photo.label} className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+        <div className="px-4 sm:px-6 mb-10">
+          {activeSegmentIndex > 0 ? (
+            /* Chặng tiếp theo (Chặng 2+): Miễn chụp dép, nhưng VẪN BẮT BUỘC chụp ảnh bắt đầu dịch vụ */
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                  Chụp ảnh bắt đầu phục vụ Chặng {activeSegmentIndex + 1}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Khách đang trong phòng: <b>Miễn chụp lại dép</b>, nhưng KTV <b>vẫn phải chụp ảnh bắt đầu</b> chặng mới.
+                </p>
+              </div>
+
+              {/* Dép khách đã lưu từ chặng 1 - Hiển thị badge xác nhận */}
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-emerald-300 bg-white shrink-0">
+                    <img 
+                      src={logic.resolvedGuestSlipperPhoto || logic.guestSlipperPhotoBase64 || ''} 
+                      alt="Dép khách" 
+                      className="w-full h-full object-cover" 
+                    />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                      ✓ Đã có ảnh dép từ Chặng 1
+                    </span>
+                    <p className="text-xs font-black text-slate-800 mt-1">Dép khách chụp lúc bắt đầu đơn</p>
+                    <p className="text-[11px] text-emerald-600 font-medium">Được miễn chụp lại dép ở Chặng {activeSegmentIndex + 1}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ô: Ảnh bắt đầu dịch vụ chặng mới (BẮT BUỘC) */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    {index + 1}. {photo.label}
-                    {photo.value && <CheckCircle size={14} className="text-emerald-500 fill-emerald-100" />}
+                    Ảnh bắt đầu DV Chặng {activeSegmentIndex + 1} (Bắt buộc)
+                    {logic.startPhotoBase64 && <CheckCircle size={14} className="text-emerald-500 fill-emerald-100" />}
                   </span>
-
-                  {photo.value && (
+                  {logic.startPhotoBase64 && (
                     <button
                       type="button"
-                      onClick={() => photo.setter(null)}
-                      className="text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-1"
+                      onClick={() => logic.setStartPhotoBase64(null)}
+                      className="text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <RotateCcw size={12} />
                       Chụp lại
@@ -512,72 +540,155 @@ export function ScreenTimer({ logic }: { logic: any }) {
                   )}
                 </div>
 
-                {photo.value ? (
+                {logic.startPhotoBase64 ? (
                   <img
-                    src={photo.value}
-                    alt={photo.label}
-                    className="w-20 h-20 rounded-xl object-cover border-2 border-emerald-500"
+                    src={logic.startPhotoBase64}
+                    alt="Ảnh bắt đầu dịch vụ"
+                    className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
                   />
                 ) : (
-                  <div className="flex gap-2">
-                    <label className={`relative flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                  <label className={`w-full py-3.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm text-center ${
+                    logic.canStart
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50'
+                      : 'bg-slate-200 text-slate-400'
+                  }`}>
+                    <Camera size={16} />
+                    <span>Chụp / Tải ảnh bắt đầu Chặng {activeSegmentIndex + 1}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={logic.isLoading || !logic.canStart}
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* Nút Bắt đầu phục vụ Chặng 2 (Chỉ mở khoá khi đã có ảnh bắt đầu) */}
+              {logic.startPhotoBase64 ? (
+                <button
+                  onClick={handleStartTimer}
+                  disabled={logic.isLoading || !logic.canStart}
+                  className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  <Play fill="white" size={24} />
+                  {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : `BẮT ĐẦU PHỤC VỤ CHẶNG ${activeSegmentIndex + 1}`}
+                </button>
+              ) : (
+                <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
+                  <Camera size={18} /> Chụp ảnh bắt đầu để tiếp tục Chặng {activeSegmentIndex + 1}
+                </button>
+              )}
+              {!logic.canStart && logic.allowedStartTime && (
+                <p className="text-center text-amber-700 font-black text-[11px] bg-amber-50 py-2 rounded-xl border border-amber-100 flex items-center justify-center gap-1.5">
+                  <Clock size={12} strokeWidth={3} />
+                  Chặng {activeSegmentIndex + 1} bắt đầu lúc {logic.allowedStartTime.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
+            </div>
+          ) : (
+            /* Chặng 1: ảnh dép (dùng lại nếu đơn đã có — lượt B / người vào thay) + ảnh bắt đầu */
+            <div className="space-y-4">
+              {logic.inheritedSlipperUrl && (
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-emerald-300 bg-white shrink-0">
+                    <img src={logic.inheritedSlipperUrl} alt="Dép khách" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                      ✓ Đã có ảnh dép của khách
+                    </span>
+                    <p className="text-[11px] text-emerald-600 font-medium mt-1">Không cần chụp lại dép — chỉ chụp ảnh bắt đầu của bạn.</p>
+                  </div>
+                </div>
+              )}
+              {[
+                ...(logic.inheritedSlipperUrl ? [] : [{
+                  label: 'Ảnh dép khách',
+                  value: logic.guestSlipperPhotoBase64,
+                  setter: logic.setGuestSlipperPhotoBase64,
+                  onChange: handleSlipperFileUpload
+                }]),
+                {
+                  label: 'Ảnh bắt đầu dịch vụ',
+                  value: logic.startPhotoBase64,
+                  setter: logic.setStartPhotoBase64,
+                  onChange: handleFileUpload
+                }
+              ].map((photo, index) => (
+                <div key={photo.label} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      {index + 1}. {photo.label}
+                      {photo.value && <CheckCircle size={14} className="text-emerald-500 fill-emerald-100" />}
+                    </span>
+
+                    {photo.value && (
+                      <button
+                        type="button"
+                        onClick={() => photo.setter(null)}
+                        className="text-[10px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw size={12} />
+                        Chụp lại
+                      </button>
+                    )}
+                  </div>
+
+                  {photo.value ? (
+                    <img
+                      src={photo.value}
+                      alt={photo.label}
+                      className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
+                    />
+                  ) : (
+                    <label className={`w-full py-3.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm text-center ${
                       logic.canStart
-                        ? 'bg-indigo-600 text-white'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50'
                         : 'bg-slate-200 text-slate-400'
                     }`}>
                       <Camera size={16} />
-                      Chụp ảnh
+                      <span>Chụp / Tải ảnh</span>
                       <input
-                        type="file"
+                        type="file" aria-label={`Chụp ${photo.label.toLowerCase()}`}
                         accept="image/*"
-                        capture="environment"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        className="hidden"
                         onChange={photo.onChange}
                         disabled={logic.isLoading || !logic.canStart}
                       />
                     </label>
+                  )}
+                </div>
+              ))}
 
-                    <label className="relative px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">
-                      Tải ảnh
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={photo.onChange}
-                        disabled={logic.isLoading || !logic.canStart}
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-            ))}
+              {(logic.guestSlipperPhotoBase64 || logic.inheritedSlipperUrl) && logic.startPhotoBase64 ? (
+                <button
+                  onClick={handleStartTimer}
+                  disabled={logic.isLoading || !logic.canStart}
+                  className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  <Play fill="white" size={24} />
+                  {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : 'BẮT ĐẦU PHỤC VỤ'}
+                </button>
+              ) : (
+                <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
+                  <Camera size={18} /> {logic.inheritedSlipperUrl ? 'Chụp ảnh bắt đầu để bắt đầu' : 'Chụp đủ 2 ảnh để bắt đầu'}
+                </button>
+              )}
 
-            {logic.guestSlipperPhotoBase64 && logic.startPhotoBase64 ? (
-              <button
-                onClick={handleStartTimer}
-                disabled={logic.isLoading || !logic.canStart}
-                className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-lg shadow-xl shadow-emerald-200/50 rounded-[32px] flex items-center justify-center gap-3 transition-all disabled:opacity-40"
-              >
-                <Play fill="white" size={24} />
-                {logic.isLoading ? 'ĐANG BẮT ĐẦU...' : 'BẮT ĐẦU PHỤC VỤ'}
-              </button>
-            ) : (
-              <button type="button" disabled className="w-full h-14 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2">
-                <Camera size={18} /> Chụp đủ 2 ảnh để bắt đầu
-              </button>
-            )}
-
-            {!logic.canStart && logic.allowedStartTime && (
-              <motion.p 
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center text-rose-600 font-black text-[11px] bg-rose-50 py-2 rounded-xl border border-rose-100 flex items-center justify-center gap-1.5"
-              >
-                <Clock size={12} strokeWidth={3} />
-                Bạn có thể bắt đầu lúc {logic.allowedStartTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-              </motion.p>
-            )}
-          </div>
+              {!logic.canStart && logic.allowedStartTime && (
+                <motion.p 
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-center text-rose-600 font-black text-[11px] bg-rose-50 py-2 rounded-xl border border-rose-100 flex items-center justify-center gap-1.5"
+                >
+                  <Clock size={12} strokeWidth={3} />
+                  Bạn có thể bắt đầu lúc {logic.allowedStartTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </motion.p>
+              )}
+            </div>
+          )}
         </div>
       ) : logic.booking?.nextBookingId ? (
         <div className="px-6 mb-6">

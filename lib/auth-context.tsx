@@ -269,7 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (rawRole === 'ADMIN') roleId = 'admin';
         else if (rawRole === 'DEV') roleId = 'dev';
         else if (rawRole === 'MANAGER') roleId = 'branch_manager';
-        else if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST') roleId = 'reception';
+        else if (rawRole === 'RECEPTIONIST' || rawRole === 'LEAD_RECEPTIONIST' || rawRole === 'RECEPTION') roleId = 'reception';
         else if (rawRole === 'TECHNICIAN' || rawRole === 'KTV') roleId = 'ktv';
         else if (rawRole === 'SUPPORT') roleId = 'support';
 
@@ -304,7 +304,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (roleId === 'admin' || roleId === 'dev') {
             permissions = MODULES.map(m => m.id);
           } else if (roleId === 'reception') {
-            permissions = ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings', 'ktv_office_scoring', 'ktv_office_hours'];
+            // Không kèm Office (ktv_office_*): admin cấp qua bảng Phân quyền nếu muốn.
+            permissions = ['dashboard', 'dispatch_board', 'order_management', 'customer_management', 'ktv_hub', 'room_management', 'leave_management', 'turn_tracking', 'service_handbook', 'staff_notifications', 'settings'];
           } else if (roleId === 'ktv') {
             // Phải khớp mẫu vai trò 'ktv' trong app/admin/roles/Roles.logic.ts.
             // ⚠️ Trước đây danh sách này THIẾU `ktv_wallet`, lệch với mẫu đó —
@@ -389,9 +390,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback((moduleId: ModuleId) => {
     if (!role) return false;
     
-    // Auto-grant quyền mới cho admin, dev, và lễ tân (tránh lỗi cache session cũ)
+    // Admin/dev luôn có Office. Lễ tân thì THEO bảng Phân quyền — trước đây cấp cứng
+    // cả cho reception nên admin bỏ tick Office cho Lễ tân mà menu vẫn hiện (03/10/2026).
     if (moduleId === 'ktv_office_scoring' || moduleId === 'ktv_office_hours') {
-      if (role.id === 'admin' || role.id === 'dev' || role.id === 'reception') return true;
+      if (role.id === 'admin' || role.id === 'dev') return true;
     }
 
     // Bảng xếp hạng giờ chỉ có nghĩa với KTV Loại D — sổ giờ chỉ ghi cho nhóm này,

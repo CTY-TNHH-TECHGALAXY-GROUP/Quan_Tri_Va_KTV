@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, Suspense } from 'react';
-import { AlertCircle, AlertTriangle, BellRing, CheckCircle2, Heart, MicOff, Users } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BellRing, CheckCircle2, Heart, MicOff, Users, Eye, X } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 export function ScreenReview({ logic }: { logic: any }) {
   const { addToast } = useToast();
   const { booking, handleSubmitReview } = logic;
   const [selectedTraits, setSelectedTraits] = useState<string[]>([]);
+  const [selectedImgModal, setSelectedImgModal] = useState<string | null>(null);
+  const slipperPhoto = logic.resolvedGuestSlipperPhoto || logic.guestSlipperPhotoBase64;
 
   // 🔧 UI CONFIGURATION — Personality categories matching mockup
   const PERSONALITY_CATEGORIES = [
@@ -80,6 +82,37 @@ export function ScreenReview({ logic }: { logic: any }) {
         </p>
       </div>
 
+      {/* Xem lại Ảnh Dép Khách (Bỏ khung bao quanh) */}
+      {slipperPhoto && (
+        <div className="flex items-center justify-between gap-3 py-1 px-1">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedImgModal(slipperPhoto)}
+              className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-slate-100 active:scale-95 transition-transform cursor-pointer border border-slate-200"
+              title="Bấm để phóng to ảnh dép"
+            >
+              <img src={slipperPhoto} alt="Ảnh dép khách" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                <Eye size={16} className="text-white" />
+              </div>
+            </button>
+            <div className="text-left">
+              <p className="text-xs font-bold text-slate-800">Ảnh dép khách đã chụp</p>
+              <p className="text-[11px] text-slate-400">Xem để lấy đúng dép trả khách</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedImgModal(slipperPhoto)}
+            className="px-3 py-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <Eye size={14} />
+            <span>Xem ảnh</span>
+          </button>
+        </div>
+      )}
+
       {logic.booking?.nextBookingId && (
         <div className="bg-amber-50 border-2 border-amber-200 p-4 rounded-2xl flex items-center gap-3 shadow-md shadow-amber-100/50">
           <div className="w-10 h-10 bg-amber-200 rounded-full flex items-center justify-center shrink-0">
@@ -140,6 +173,31 @@ export function ScreenReview({ logic }: { logic: any }) {
               : 'Đánh giá hoặc bỏ qua'}
         </button>
       </div>
+
+      {/* Modal Phóng To Ảnh Dép */}
+      {selectedImgModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setSelectedImgModal(null)}
+        >
+          <div className="relative max-w-sm w-full bg-slate-900 rounded-3xl p-4 flex flex-col items-center gap-3 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="w-full flex items-center justify-between text-white border-b border-slate-800 pb-2">
+              <span className="font-black text-xs uppercase tracking-wider text-indigo-300">👟 Ảnh dép khách đã chụp</span>
+              <button
+                type="button"
+                onClick={() => setSelectedImgModal(null)}
+                className="p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="w-full h-80 rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-slate-800">
+              <img src={selectedImgModal} alt="Phóng to ảnh dép" className="w-full h-full object-contain" />
+            </div>
+            <p className="text-[11px] text-slate-400">Bấm bên ngoài hoặc nút X để đóng</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

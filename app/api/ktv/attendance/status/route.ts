@@ -127,6 +127,7 @@ export async function GET(request: Request) {
 
         // ─── Fetch Today Registration (Only for TYPE_D) ───
         let todayRegistration = null;
+        let unlockedToday = false;
         if (workType === 'TYPE_D' && userRow?.code) {
             // Dòng đăng ký của CA hiện tại: theo ngày làm việc, không phải ngày lịch.
             const todayStr = businessDateStr;
@@ -143,6 +144,11 @@ export async function GET(request: Request) {
 
             if (regData) {
                 todayRegistration = regData;
+            } else {
+                // Chưa có lịch hôm nay: có phải ngày vừa được mở khoá không? Nếu có,
+                // màn KTV hiện ô khai giờ về. Query riêng, lỗi → false.
+                const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');
+                unlockedToday = await KtvTypeDDisciplineService.duocMoKhoaHomNay(supabase, userRow.code);
             }
         }
 
@@ -292,11 +298,11 @@ export async function GET(request: Request) {
                     }
                 }
             }
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, unlockedToday, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
         }
 
         const { checkStatus, record } = resolveAttendanceStatus(records, workType);
-        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, unlockedToday, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

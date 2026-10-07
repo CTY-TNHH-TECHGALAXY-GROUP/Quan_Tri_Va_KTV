@@ -8,6 +8,8 @@ import { coWorkersOfItems } from '@/lib/co-workers';
 import { resolveStaffFlag } from '@/lib/featureFlags';
 import { featureMaintenanceBody } from '@/lib/featureMaintenance';
 import { getDayCutoffHours, toBusinessDate, shiftBusinessDate } from '@/lib/business-date';
+import { DEFAULT_TYPE_D_DEDUCTION } from '@/lib/services/RatingScaleService';
+import { normalizeScale } from '@/lib/services/RatingScaleService';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -72,6 +74,8 @@ export async function GET(request: Request) {
         }
 
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase as any);
+        // A/B/C per-star deduction tables (0% by default → commission unchanged).
+        const abcTables = await KtvCommissionService.getAbcRatingTables(supabase as any);
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase as any, workType as any);
 
         // ─── Cấu hình quy đổi điểm & thuế TNCN ────────────────────────────
@@ -93,7 +97,7 @@ export async function GET(request: Request) {
 
         // Cấu hình riêng của Loại D: đơn giá VIP/PT và tỉ lệ trừ theo sao.
         let rateVIP_D = 180000, ratePT_D = 100000;
-        let ratingDeductions_D: Record<string, number> = { '0': 0, '1': 0.75, '2': 0.5, '3': 0.25, '4': 0 };
+        let ratingDeductions_D: Record<string, number> = { ...DEFAULT_TYPE_D_DEDUCTION[4] };
         if (workType === 'TYPE_D') {
             const { data: dRows } = await supabase
                 .from('SystemConfigs')
@@ -200,7 +204,7 @@ export async function GET(request: Request) {
         // ─── Fetch Bookings ──────────────────────────────────────────────
         const { data: rawBookings, error: bErr } = await supabase
             .from('Bookings')
-            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, tip, notes, technicianCode, guestCount, BookingItems!fk_bookingitems_booking(technicianCodes)')
+            .select('id, billCode, createdAt, bookingDate, timeStart, status, rating, rating_scale, tip, notes, technicianCode, guestCount, BookingItems!fk_bookingitems_booking(technicianCodes)')
             .gte('bookingDate', bookingFromFilter)
             .lte('bookingDate', bookingToFilter)
             // 'CANCELLED' phải có trong danh sách: thiếu nó thì đơn quầy đã huỷ
@@ -259,7 +263,7 @@ export async function GET(request: Request) {
         console.log('🔍 [DEBUG] bookingIds:', JSON.stringify(bookingIds));
         const { data: items, error: iErr } = await supabase
             .from('BookingItems')
-            .select('id, bookingId, guest_id, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, options, handover_status, handover_comment, handover_submitted_at, status, violations, timeEnd')
+            .select('id, bookingId, guest_id, serviceId, technicianCodes, tip, segments, itemRating, ktvRatings, rating_scale, options, handover_status, handover_comment, handover_submitted_at, status, violations, timeEnd')
             .in('bookingId', bookingIds);
         console.log('🔍 [DEBUG] BookingItems error:', iErr, 'count:', items?.length);
 
@@ -501,14 +505,16 @@ export async function GET(request: Request) {
                     if (isPassed) {
                         passedCount++;
                         if (!biTuoc) {
-                            commission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                            commission += KtvCommissionService.applyAbcRatingDeduction(
+                                KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId), item, b, techCode, abcTables, workType);
                         }
                     }
                 }
                 // Lớp dự phòng thứ hai — cũng phải chừa đơn bị tước ra, nếu không
                 // nó trả lại đúng 60 phút vừa chặn ở trên.
                 if (commission === 0 && passedCount > 0 && coItemConQuyenLoi) {
-                    commission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                    commission = KtvCommissionService.applyAbcRatingDeduction(
+                        KtvCommissionService.calcCommission(60, commConfigs, workType, ''), null, { ...b, BookingItems: groupItems }, techCode, abcTables, workType);
                 }
 
                 const serviceNames = groupItems
@@ -534,6 +540,7 @@ export async function GET(request: Request) {
                 let commissionBeforeDeduction = commission;
                 let ratingDeductionRate = 0;
                 let ledgerRating: number | null = null;
+                let ledgerRatingScale: number | null = null;
                 let ledgerBonus: number | null = null;
                 let ledgerTax: number | null = null;
                 let ledgerActualDuration: number | null = null;
@@ -550,6 +557,7 @@ export async function GET(request: Request) {
                         commissionBeforeDeduction = Math.round(led.commission_gross);
                         ratingDeductionRate = led.deduction_rate;
                         ledgerRating = led.rating;
+                        ledgerRatingScale = led.rating_scale;
                         // Thưởng 4★ đã nằm trong `commission`, nhưng màn Lịch Sử
                         // cần chỉ mặt được nó: KTV nhìn "tiền tua 168.333đ" mà
                         // "tổng thu nhập 188.333đ" thì không biết 20.000đ ở đâu ra.
@@ -699,6 +707,10 @@ export async function GET(request: Request) {
                     business_date: businessDateOf(ledgerWorkDate, b),
                     status: itemBasedStatus,
                     rating: workType === 'TYPE_D' ? (ledgerRating ?? itemRating) : itemRating,
+                    // Thang của đúng số sao ở trên (sổ Loại D, hoặc dịch vụ có sao cao nhất).
+                    ratingScale: workType === 'TYPE_D' && ledgerRating != null
+                        ? ledgerRatingScale
+                        : normalizeScale(groupItems.reduce((best: any, i: any) => (Number(i.itemRating) || 0) > (Number(best?.itemRating) || 0) ? i : best, null)?.rating_scale),
                     tip: isFeedbackDone ? ktvTip : 0,
                     commission: isFeedbackDone ? commission : null,
                     serviceName,

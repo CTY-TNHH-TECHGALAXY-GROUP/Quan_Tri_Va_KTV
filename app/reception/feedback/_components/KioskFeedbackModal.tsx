@@ -3,9 +3,14 @@
 import React, { useState } from 'react';
 import { ChildBookingForFeedback } from '../FeedbackDashboard.logic';
 import { useKioskFeedback } from './KioskFeedback.logic';
-import { Star, AlertTriangle, UserCircle2, X } from 'lucide-react';
+import { AlertTriangle, UserCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { KioskStarRow } from './KioskStarRow';
 import { isTypeCWorkType, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
+
+// 🔧 UI CONFIGURATION
+const GRID_COLS: Record<number, string> = { 3: 'grid-cols-3', 4: 'grid-cols-4', 5: 'grid-cols-5' };
+const LOADING_TILE_COUNT = 5;
 
 export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: any, initialBooking: ChildBookingForFeedback, onClose: () => void }) {
     const [currentBooking, setCurrentBooking] = useState(initialBooking);
@@ -16,7 +21,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
         mergedKtvGroups,
         globalRating, handleRatingChange,
         globalComment, handleCommentChange,
-        reminders, violations, getReminderText, toggleViolation, maxRating,
+        reminders, violations, getReminderText, toggleViolation, maxRating, ratingScale, ratingLevels, ratingConfigLoaded,
         isSubmitting, handleSubmit,
         t, isSuccess
     } = useKioskFeedback(currentBooking, onClose);
@@ -269,38 +274,23 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                         </div>
                                     </div>
 
-                                    <div className={`grid gap-2 sm:gap-4 mb-8 ${maxRating >= 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
-                                        {[
-                                            { score: 1, emoji: '😡', label: t.rateBad || 'Tệ' },
-                                            { score: 2, emoji: '😐', label: t.rateOk || 'Bình thường' },
-                                            { score: 3, emoji: '🙂', label: t.rateGood || 'Tốt' },
-                                            { score: 4, emoji: '🤩', label: t.rateExcellent || 'Tuyệt vời' }
-                                        // Đã tích lỗi thì bỏ hẳn mức cao nhất — không thể vừa phàn nàn vừa "tuyệt vời".
-                                        ].filter((r) => r.score <= maxRating).map((r) => {
-                                            const isSelected = globalRating === r.score;
-                                            return (
-                                                <button
-                                                    key={r.score}
-                                                    onClick={() => handleRatingChange(r.score)}
-                                                    className={`p-3 sm:p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all ${
-                                                        isSelected 
-                                                            ? 'bg-amber-100 border-2 border-amber-400 scale-105 shadow-sm' 
-                                                            : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    <span className="text-3xl sm:text-5xl">{r.emoji}</span>
-                                                    <span className={`text-xs sm:text-sm font-bold text-center mt-1 ${isSelected ? 'text-amber-700' : 'text-gray-500'}`}>
-                                                        {r.label}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
+                                    {!ratingConfigLoaded ? (
+                                        <div className={`grid gap-2 sm:gap-4 mb-8 ${GRID_COLS[LOADING_TILE_COUNT]}`} aria-busy="true">
+                                            {Array.from({ length: LOADING_TILE_COUNT }, (_, i) => (
+                                                <div key={i} className="h-[88px] rounded-2xl bg-gray-100 animate-pulse" />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                    <div className="mb-8">
+                                        <KioskStarRow scale={ratingScale} levels={ratingLevels} selected={globalRating}
+                                            maxRating={maxRating} onSelect={handleRatingChange} />
                                     </div>
+                                    )}
 
-                                    {maxRating < 4 && (
+                                    {ratingConfigLoaded && maxRating < ratingScale && (
                                         <div className="-mt-6 mb-6 text-center">
                                             <span className="inline-block text-xs sm:text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
-                                                {t.cappedByViolation || 'Bạn đã chọn góp ý ở trên nên mức "Tuyệt vời" tạm ẩn. Bỏ chọn góp ý nếu muốn chấm mức cao nhất.'}
+                                                {t.cappedByViolation}
                                             </span>
                                         </div>
                                     )}
@@ -328,7 +318,7 @@ export function KioskFeedbackModal({ group, initialBooking, onClose }: { group: 
                                 </button>
                                 <button 
                                     onClick={handleSubmit}
-                                    disabled={isSubmitting || mergedKtvGroups.length === 0}
+                                    disabled={isSubmitting || !ratingConfigLoaded || mergedKtvGroups.length === 0}
                                     className="bg-[#5A00FF] hover:bg-[#4A00E0] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xl font-bold py-4 px-12 rounded-full shadow-lg hover:shadow-xl transition-all"
                                 >
                                     {isSubmitting ? '...' : t.btnSubmit}

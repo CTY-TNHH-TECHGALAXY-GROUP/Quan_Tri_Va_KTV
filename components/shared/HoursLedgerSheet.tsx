@@ -23,6 +23,8 @@ export interface HoursLedgerEntry {
   tuChotSo?: boolean;
   /** Có giá trị nghĩa là dòng PHẠT, không phải tua làm. */
   penaltyLabel: string | null;
+  /** Admin/DEV cộng giờ thủ công — dòng CỘNG nhưng không phải tua, `note` là lý do. */
+  isGrant?: boolean;
   orderCode: string | null;
 }
 
@@ -31,6 +33,8 @@ interface Props {
   subtitle: string;
   earned: number;
   penalty: number;
+  /** Giờ được admin cộng thêm trong kỳ (0 = không hiện ô). */
+  granted?: number;
   net: number;
   rows: HoursLedgerEntry[];
   /** Chữ nhỏ dưới ba ô tổng, ví dụ tổng của cả tháng để đối chiếu. */
@@ -46,7 +50,7 @@ interface Props {
  * thấy giờ mình lớn dần qua từng tua thay vì chỉ thấy một con số tổng.
  */
 export const HoursLedgerSheet = ({
-  subtitle, earned, penalty, net, rows, note, emptyText, onClose,
+  subtitle, earned, penalty, granted = 0, net, rows, note, emptyText, onClose,
 }: Props) => (
   <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center">
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -62,11 +66,17 @@ export const HoursLedgerSheet = ({
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 p-5 pb-4 shrink-0">
+      <div className={`grid ${granted > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-2 p-5 pb-4 shrink-0`}>
         <div className="bg-slate-50 rounded-2xl p-3 text-center">
           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Làm thực</p>
           <p className="text-base font-black tabular-nums mt-1 text-slate-700">{fmtHours(earned)}</p>
         </div>
+        {granted > 0 && (
+          <div className="bg-blue-50 rounded-2xl p-3 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-blue-500">Cộng thêm</p>
+            <p className="text-base font-black tabular-nums mt-1 text-blue-600">+ {fmtHours(granted)}</p>
+          </div>
+        )}
         <div className="bg-slate-50 rounded-2xl p-3 text-center">
           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Bị phạt</p>
           <p className={`text-base font-black tabular-nums mt-1 ${penalty > 0 ? 'text-rose-500' : 'text-slate-700'}`}>
@@ -105,13 +115,14 @@ export const HoursLedgerSheet = ({
 
             {rows.map((r) => {
               const isPenalty = !!r.penaltyLabel;
+              const isGrant = !isPenalty && r.isGrant === true;
               return (
                 <div key={r.id} className="relative pb-4 last:pb-0">
                   <div className={`absolute -left-6 top-1.5 w-4 h-4 rounded-full border-[3px] border-white shadow-sm flex items-center justify-center ${isPenalty ? 'bg-rose-500' : 'bg-blue-500'}`}>
                     {isPenalty && <AlertTriangle size={7} className="text-white" />}
                   </div>
 
-                  <div className={`rounded-2xl p-3 border ${isPenalty ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'}`}>
+                  <div className={`rounded-2xl p-3 border ${isPenalty ? 'bg-rose-50 border-rose-100' : isGrant ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -123,16 +134,19 @@ export const HoursLedgerSheet = ({
                             ? ' · chốt sổ cuối ngày'
                             : fmtClockOnDate(r.at, r.date) && ` · ${fmtClockOnDate(r.at, r.date)}`}
                         </p>
-                        <p className={`text-sm font-bold leading-snug mt-0.5 ${isPenalty ? 'text-rose-700' : 'text-slate-800'}`}>
-                          {isPenalty ? r.penaltyLabel : (r.note || 'Tua phục vụ')}
+                        <p className={`text-sm font-bold leading-snug mt-0.5 ${isPenalty ? 'text-rose-700' : isGrant ? 'text-blue-700' : 'text-slate-800'}`}>
+                          {isPenalty ? r.penaltyLabel : isGrant ? 'Cộng giờ (admin)' : (r.note || 'Tua phục vụ')}
                         </p>
+                        {isGrant && r.note && (
+                          <p className="text-[11px] text-slate-500 leading-snug mt-0.5">{r.note}</p>
+                        )}
                         {r.orderCode && (
                           <p className="text-[10px] font-mono font-bold text-slate-400 mt-0.5 truncate">{r.orderCode}</p>
                         )}
                       </div>
 
                       <div className="text-right shrink-0">
-                        <p className={`text-sm font-black tabular-nums ${isPenalty ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        <p className={`text-sm font-black tabular-nums ${isPenalty ? 'text-rose-600' : isGrant ? 'text-blue-600' : 'text-emerald-600'}`}>
                           {isPenalty ? `− ${fmtHours(r.penalty)}` : `+ ${fmtHours(r.earned)}`}
                         </p>
                         <p className="text-[10px] font-medium text-slate-400 mt-0.5">

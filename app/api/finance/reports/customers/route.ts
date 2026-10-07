@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { FinanceReportService } from '@/lib/services/FinanceReportService';
 import { requirePermission, authErrorResponse } from '@/lib/auth-server';
+import { computeCustomerVisit, type VisitBookingRow } from '@/lib/services/CustomerVisitService';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,32 @@ export async function GET(request: Request) {
             })).sort((a, b) => b.revenue - a.revenue);
         }
 
+        // ─── Tỉ lệ huỷ (lượt huỷ / lượt đã kết thúc) — CustomerVisitService, một công thức với CRM ──
+        // Dữ liệu phụ: lỗi thì trả null, KHÔNG làm hỏng cả báo cáo (CLAUDE.md 4.5-4).
+        let cancelSummary: { cancelled: number; closed: number; rate: number | null } | null = null;
+        try {
+            const rangeRows: (VisitBookingRow & { customerId: string | null; customerLang: string | null })[] = [];
+            for (let from = 0; ; from += 1000) {
+                const { data, error } = await supabase.from('Bookings')
+                    .select('id, status, source, parent_booking_id, bookingDate, createdAt, customerId, customerLang')
+                    .gte('bookingDate', `${dateFrom} 00:00:00`).lte('bookingDate', `${dateTo} 23:59:59`)
+                    .order('id').range(from, from + 999);
+                if (error) throw error;
+                rangeRows.push(...(data || []));
+                if (!data || data.length < 1000) break;
+            }
+            const scoped = lang === 'all' ? rangeRows
+                : rangeRows.filter(r => (r.customerLang || 'VN').toUpperCase() === lang.toUpperCase());
+            const overall = computeCustomerVisit(scoped);
+            cancelSummary = { cancelled: overall.cancelledVisits, closed: overall.closedVisits, rate: overall.cancelRate };
+            topCustomersData = topCustomersData.map(c => {
+                const v = computeCustomerVisit(scoped.filter(r => r.customerId === c.id));
+                return { ...c, cancelled: v.cancelledVisits, closed: v.closedVisits, cancelRate: v.cancelRate };
+            });
+        } catch (cancelErr: any) {
+            console.warn('⚠️ [Report customers] cancel rate failed (non-blocking):', cancelErr?.message || cancelErr);
+        }
+
         // ─── Language Breakdown ─────────────────────────────────────────────
         const langBreakdown: Record<string, { revenue: number, orders: number }> = {};
         completedBookings.forEach((b: any) => {
@@ -82,7 +109,8 @@ export async function GET(request: Request) {
                 createdAt: c.createdAt ? (c.createdAt.endsWith('Z') || c.createdAt.match(/[+-]\d{2}:?\d{2}$/) ? c.createdAt : c.createdAt + 'Z') : null,
             })),
             topCustomersData,
-            languageBreakdown
+            languageBreakdown,
+            cancelSummary
         });
     } catch (err) {
         const authRes = authErrorResponse(err);

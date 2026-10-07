@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TurnRow } from './KtvDLedgerEngine';
+import { normalizeScale, type RatingScale } from './RatingScaleService';
 
 /**
  * ================================================================
@@ -62,6 +63,7 @@ function normalize(r: any): TurnRowDb {
         custom_minutes: r.custom_minutes == null ? null : num(r.custom_minutes),
         rate_per_60m: num(r.rate_per_60m),
         rating_used: r.rating_used == null ? 0 : num(r.rating_used),
+        rating_scale: normalizeScale(r.rating_scale),
         deduction_rate: num(r.deduction_rate),
         commission_gross: num(r.commission_gross),
         commission_net: num(r.commission_net),
@@ -220,6 +222,8 @@ export interface HistoryGroup {
     actual_minutes: number;
     paid_minutes: number;
     rating: number;
+    /** Thang của `rating` (4|5). */
+    rating_scale: RatingScale;
     deduction_rate: number;
     commission_gross: number;
     commission_net: number;
@@ -249,6 +253,7 @@ export function groupForHistory(rows: TurnRow[]): HistoryGroup[] {
                 service_name: '',
                 assigned_minutes: 0, actual_minutes: 0, paid_minutes: 0,
                 rating: r.rating_used,
+                rating_scale: r.rating_scale,
                 deduction_rate: r.deduction_rate,
                 commission_gross: 0, commission_net: 0, bonus_amount: 0, tax_amount: 0, take_home: 0, tip: 0,
                 is_provisional: false,

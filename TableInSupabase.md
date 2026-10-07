@@ -28,6 +28,7 @@
 | `focusAreaNote` | text | Ghi chú vùng cần tập trung (VD: "Đau vai") |
 | `notes` | text | Ghi chú đơn hàng chung |
 | `guestCount` | integer | Số lượng khách (1: Khách lẻ, >1: Khách nhóm) |
+| ~~`vatRequested`~~ | — | ⚠️ **KHÔNG TỒN TẠI trên DB thật** (kiểm tra 06/10/2026). Migration `20260821164210_add_vat_requested.sql` nằm trong repo nhưng chưa apply; user chốt 06/10 **không apply**. Không code nào được select/insert cột này (đã sập bảng điều phối 06/10, hotfix `fec89390`). "Khách cần VAT" = `Customers.taxCode` (`hasVatBadge`) |
 | `customerGender` | text | Giới tính khách hàng (male / female) |
 | `technicianCode` | text | Mã KTV chính được phân công |
 | `reception_feedback` | text | Đánh giá/phản hồi chung của quầy Lễ tân cho đơn hàng này |
@@ -38,6 +39,7 @@
 | `status` | BookingStatus | Trạng thái: NEW → PREPARING → READY → IN_PROGRESS → COMPLETED → FEEDBACK → CLEANING → DONE. `SPLIT` (đơn cha đã bị tách) |
 | `source` | text | Phân loại nguồn đơn hàng: `STANDARD_WALK_IN`, `VIP_MENU`, `WEB_BOOKING` (default: `STANDARD_WALK_IN`) |
 | `rating` | numeric | Rating tổng đơn hàng (legacy — ít dùng) |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang sao lúc chấm `rating` (4 hoặc 5, CHECK). Diễn giải `rating` theo cột này — xem `lib/services/RatingScaleService.ts`. |
 | `tipAmount` | numeric | Tiền tip khách gửi |
 | `violations` | jsonb | Danh sách vi phạm khách phản hồi |
 | `feedbackNote` | text | Ghi chú phản hồi từ khách |
@@ -81,6 +83,7 @@
 | `checkout_time` | timestamptz | **[NEW]** Thời điểm thanh toán |
 | `ktv_ratings` | jsonb | **[NEW]** Đánh giá chi tiết cho từng KTV phục vụ khách này (vd: `{"NH016": 4}`) |
 | `rating` | numeric | **[NEW]** Điểm trung bình đánh giá của khách này (1-5) |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang sao lúc khách chấm `rating` / `ktv_ratings` (4 hoặc 5). Đánh giá cũ = 4. |
 | `guest_feedback` | text | **[NEW]** Lời nhận xét / phản hồi từ khách này |
 | `created_at` | timestamptz | Thời gian tạo |
 | `updated_at` | timestamptz | Thời gian cập nhật |
@@ -112,14 +115,18 @@
 | `handover_images` | jsonb | Mảng URL ảnh bàn giao phòng do KTV chụp |
 | `handover_reject_images` | jsonb | Mảng URL ảnh minh chứng phòng dơ từ Lễ Tân khi từ chối |
 | `handover_status` | text | Trạng thái duyệt ảnh: `PENDING`, `APPROVED`, `REJECTED` (mặc định: `PENDING`) |
+| `commission_locked` | boolean | **[Ghi bổ sung 03/10/2026]** Default `false` (migration `20260727000000_handover_v5_internal_reviews.sql`). Hiện không code nào bật; `true` = giữ ảnh làm chứng cứ — cron `/api/cron/cleanup-photos` KHÔNG xoá ảnh của item này. |
 | `handover_comment` | text | Lý do từ chối hoặc feedback của Lễ tân khi duyệt ảnh |
 | `itemRating` | integer | ⭐ **Rating tổng** cho item — dùng cho báo cáo, thống kê, allRated check |
 | `itemFeedback` | text | Phản hồi text từ khách cho item |
 | `ktvRatings` | jsonb | ⭐ **Rating riêng từng KTV** — `{"NH016": 4, "NH001": 3}`. Dùng cho lịch sử KTV + trigger thưởng |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang sao lúc chấm `itemRating` / `ktvRatings` (4 hoặc 5). Đánh giá cũ = 4. |
 | `tip` | numeric | Tiền tip riêng item (default 0) |
 
 **Triggers:**
 - `tr_notify_ktv_on_item_rating` → Gửi thông báo thưởng/cảnh báo khi `itemRating` hoặc `ktvRatings` thay đổi
+
+**Dọn ảnh (03/10/2026):** ảnh trong bucket `attendance` do Vercel Cron `/api/cron/cleanup-photos` xoá qua Storage API (`lib/services/PhotoCleanupService.ts`): ảnh chấm công 30 ngày; ảnh của item `DONE` (trừ `handover_status='REJECTED'` / `commission_locked`) 3 ngày; `office-evidence/` không xoá. Chỉ xoá file, link trong DB giữ nguyên. Hai job pg_cron xoá ảnh cũ đã gỡ (migration `20261003090000_unschedule_broken_photo_jobs.sql`).
 
 **Cron (pg_cron) — tự Hoàn tất khi khách không chấm** (migration `20260914120000_auto_complete_feedback_after_5m.sql`):
 - Job `auto_complete_feedback_job` chạy **mỗi phút** → `auto_complete_unrated_feedback()`.
@@ -233,6 +240,7 @@
 | `actual_minutes` | numeric | Phút thực tế dùng cho giờ tích lũy |
 | `paid_minutes` | numeric | Phút được trả tiền; revision 2 trả đủ thời lượng giao khi hoàn tất bình thường |
 | `rate_per_60m` | numeric | Đơn giá snapshot |
+| `rating_scale` | smallint NOT NULL DEFAULT 4 | Thang của `rating_used` (4\|5, migration `20261002130000`). Ghi bởi `ktvd_commit_recompute`; dòng cũ = 4. |
 | `commission_gross`, `commission_net`, `bonus_amount`, `tax_amount`, `tip` | numeric | Các thành phần tiền của tua |
 | `entry_status` | text | `OPEN`, `FINAL`, `LOCKED`, `VOID` |
 | `source`, `computed_at` | text, timestamptz | Nguồn và thời điểm tính |
@@ -240,6 +248,27 @@
 | `writer_commit` | text | Git SHA/định danh công cụ đã ghi dòng |
 
 **Constraint**: `UNIQUE(staff_id, booking_item_id)`. Từ migration `20260922091000`, mọi INSERT/UPDATE/DELETE phải đi qua RPC revision 2; direct writer cũ bị từ chối ở trigger DB.
+
+### 4.6b. KTVDPenaltyLedger ✅ GIỜ PHẠT / BÙ GIỜ LOẠI D
+**Nhiệm vụ**: Phạt giờ, dấu mốc kỷ luật và **bù giờ thủ công** của KTV loại D. Tách khỏi `KTVDTurnLedger` vì không gắn với BookingItem. Migration `20260904120000_ktvd_turn_ledger.sql`.
+
+**Công thức duy nhất** (`KtvDLedgerReader.netHoursByStaff`): `giờ ròng = Σ KTVDTurnLedger.actual_minutes/60 − Σ hours_penalty`. Thứ tự nhận tua, xếp hạng giờ, quỹ giờ xét khoá đều đọc từ đây.
+
+| Cột | Kiểu | Mô tả chức năng |
+|-----|------|-----------------|
+| `id` | uuid PK | |
+| `staff_id` | text | Mã KTV |
+| `work_date` | date | Ngày làm việc (mốc cắt sáng) — quyết định THÁNG được tính |
+| `penalty_type` | text | `ABSENT_NO_NOTICE`, `ABSENT_EARLY_NOTICE`, `LATE_NO_UPDATE`, `ORDER_REJECT` (trừ giờ) · `ACCOUNT_LOCK` (dấu mốc, 0h) · `REACTIVATION_FEE` (chỉ tiền) · **`HOURS_GRANT`** [03/10/2026] admin/DEV cộng giờ: `hours_penalty` **ÂM** (−5 = cộng 5h), cộng dồn trong ngày, `note` = "+Xh — người cộng: lý do". Route `/api/admin/ktv-office/hours-grant`, `requireRole(['ADMIN','DEV'])`. |
+| `hours_penalty` | numeric | Giờ trừ (dương) hoặc giờ cộng (âm, chỉ `HOURS_GRANT`). Không có CHECK ≥ 0. |
+| `money_penalty` | numeric | Tiền phạt/phí (chỉ `REACTIVATION_FEE`) |
+| `note` | text | Lý do |
+| `created_by` | text | Mã người ghi; `CRON_MIDNIGHT` nếu do cron chốt sổ |
+| `created_at` | timestamptz | |
+
+**Constraint**: `UNIQUE(staff_id, work_date, penalty_type)` — mỗi loại một dòng mỗi ngày (upsert cộng dồn).
+
+---
 
 ### 4.7. KTVDRecomputeQueue ✅ HÀNG ĐỢI TÍNH LẠI LOẠI D
 
@@ -281,6 +310,8 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 **Constraint / Invariant:**
 - `UNIQUE(employee_id, booking_item_id)` — 1 KTV không bị phân trùng 1 item.
 - `UNIQUE(employee_id, business_date) WHERE status = 'ACTIVE'` — mỗi KTV chỉ 1 assignment ACTIVE/ngày.
+- `ktv_assignments_no_live_overlap` (EXCLUDE gist, DEFERRABLE) — 2 phân công ACTIVE của cùng KTV không được chồng giờ (`planned_start_time`→`planned_end_time`). **Chỉ áp từ `business_date >= 2026-10-04`** (20261004110000; dòng cũ được để nguyên).
+- Trigger `validate_final_ktv_assignment_plan_trigger` (constraint trigger, cuối transaction) — phân công ACTIVE/QUEUED/READY từ 2026-10-04 phải có `planned_start_time` và `planned_end_time > planned_start_time`; ghi thiếu (VD đổi KTV không kèm giờ kết thúc) → lỗi "Giờ phân công không hợp lệ".
 
 ---
 
@@ -562,6 +593,12 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 ### 8. SystemConfigs ✅ CHỦ LỰC
 **Nhiệm vụ**: Cấu hình toàn cục (key-value store).
 
+**Key thang đánh giá** (migration `20261002110000`, nguồn đọc duy nhất `RatingScaleService`):
+- `customer_rating_scale`: `4` | `5` — thang cho đánh giá MỚI (mặc định 4).
+- `ktv_type_d_rating_deduction` (thang 4, key cũ) / `ktv_type_d_rating_deduction_5`: % trừ Loại D theo sao, tỉ lệ 0–1.
+- `ktv_abc_rating_deduction_4` / `ktv_abc_rating_deduction_5`: % trừ hoa hồng A/B/C theo sao (mặc định 0).
+- `rating_labels`: nhãn chữ từng mức theo thang `{ "4": { "1": { "internal", "VN", "EN", "KR", "JP", "ZH" } }, "5": {...} }`.
+
 | Cột | Kiểu | Mô tả chức năng |
 |-----|------|-----------------|
 | `id` | uuid PK | ID tự sinh |
@@ -668,6 +705,13 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `birthday` | timestamp | Ngày sinh |
 | `notes` | text | Ghi chú (sở thích, dị ứng...) |
 | `avatar_url` | text | Ảnh đại diện của khách (lưu public url từ Supabase Storage bucket `avatars/customers`) |
+| `taxCode` | text | Mã số thuế công ty (có → khách "cần VAT") |
+| `companyName` | text | Tên công ty xuất hoá đơn |
+| `companyAddress` | text | Địa chỉ công ty |
+| `companyEmail` | text | Email nhận hoá đơn |
+| `companyPhone` | text | SĐT công ty |
+
+> ⚠️ **Không có cột `vatRequested` ở `Customers` lẫn `Bookings`.** "Khách cần VAT" chỉ có một nguồn: `taxCode` + 4 cột công ty ở trên (WRB nội bộ và admin cùng ghi). Form Tạo đơn nhanh bật VAT thì bắt buộc nhập MST. Insert kèm cột không tồn tại sẽ bị PostgREST từ chối — đây là lỗi làm hồ sơ khách vãng lai không được tạo từ 22/08 đến 06/10/2026.
 | `lastVisited` | timestamp | Lần ghé thăm gần nhất |
 | `createdAt` | timestamp | Thời điểm tạo |
 | `updatedAt` | timestamp | Thời điểm cập nhật |

@@ -1,0 +1,1240 @@
+diff --git a/_plans/sequential_acceptance_plan_20260926.md b/_plans/sequential_acceptance_plan_20260926.md
+new file mode 100644
+index 00000000..f2afdf0c
+--- /dev/null
++++ b/_plans/sequential_acceptance_plan_20260926.md
+@@ -0,0 +1,31 @@
++# Nghiệm thu bổ sung nối tiếp A/B
++
++Phê duyệt sửa file ổn định đã có trong session. Thực hiện trong branch feature, không migrate DB dùng chung.
++
++## Lỗi đã tái hiện và diff dự kiến
++```diff
++- demo thêm row B mới mỗi lần quay lại; merge stamp theo employee
+++ tái sử dụng row B, giữ segment lịch sử; merge stamp theo segment id
++- tên fallback nhân viên ưu tiên generatedDisplayName
+++ ưu tiên displayName hiện tại như admin
++- confirmOverlap dùng chung cho mọi item/đơn con
+++ xác nhận theo item, reset mỗi payload, hỏi lại từng xung đột
++- orchestrator bỏ qua lỗi đọc/ghi Booking
+++ trả lỗi khi lưu hoặc safety recompute thất bại
++- FINISH ghi từng item riêng
+++ RPC giao dịch lưu batch, kiểm snapshot dưới lock, rollback khi một item lỗi
++```
++
++## Kiểm bắt buộc
++1. Demo B → C → B, đổi tên/giờ và actual stamps không lấy lượt cũ.
++2. Fallback displayName giống admin và nhân viên.
++3. Hai item overlap và hai đơn con phải xác nhận riêng; không lưu một phần khi bị từ chối.
++4. PATCH lỗi Booking SELECT/UPDATE/safety phải trả failure.
++5. FINISH nhiều item atomic, lỗi item thứ hai rollback, stale bị chặn, retry giữ timestamp.
++6. Chạy lại bộ nghiệm thu 6 lỗi + 5 flow + tài khoản A/B + TypeScript/lint.
++
++Báo cáo cuối phân biệt test local SQL/handler/component với browser, full migration chain và push ngoài môi trường.
++
++## Hoàn thành
++
++Đã triển khai và nghiệm thu bổ sung tại `sequential_acceptance_results_20260926.md`. Diff thực tế tại `sequential_acceptance_implemented_20260926.patch`. RPC đã kiểm thêm với native BookingStatus enum và các trigger nối tiếp/audit thật; smoke test Safari hoàn thành.
+diff --git a/_plans/sequential_acceptance_results_20260926.md b/_plans/sequential_acceptance_results_20260926.md
+new file mode 100644
+index 00000000..aa82522e
+--- /dev/null
++++ b/_plans/sequential_acceptance_results_20260926.md
+@@ -0,0 +1,68 @@
++# Báo cáo nghiệm thu nối tiếp A/B — 26/09/2026
++
++## Kết luận
++
++Code và demo local đạt các gate đã chạy. Đã sửa các lỗi còn sót tái hiện trong lượt nghiệm thu này. Chưa nghiệm thu môi trường vận hành thật: DB dùng chung chưa migrate; chưa kiểm realtime/RLS/push trên DB test đủ schema.
++
++Branch: `feat/sequential-two-slot-handoff-20260926`, nền `2c71a214`. Plan: `sequential_acceptance_plan_20260926.md`; diff thực tế: `sequential_acceptance_implemented_20260926.patch`.
++
++## Phần còn sót đã hoàn thành
++
++| Lỗi | Sửa / bằng chứng | Kết quả |
++| --- | --- | --- |
++| Demo B → C → B có hàng B trùng, lấy giờ/tên/stamp lượt cũ | Tái sử dụng hàng; giữ segments lịch sử; merge stamp theo segment ID; phục hồi snapshot LocalStorage cũ | PASS flow/reload/history |
++| Tên fallback nhân viên khác admin | Ưu tiên displayName hiện tại trước generatedDisplayName; AccountDemo dùng helper chung | PASS API/realtime/Dashboard/Timer/demo |
++| Xác nhận overlap lan sang item/đơn con khác | RPC trả itemId; hỏi từng item; reset mỗi payload; chặn blanket boolean cho batch nhiều item | PASS SQL rollback và UI retry loop |
++| PATCH bỏ qua lỗi Booking/shared SELECT/safety | Kiểm error/null và trả failure; không ghi tiếp sau lỗi | PASS 14 ca PATCH |
++| Hoàn thành nhiều item có thể lưu một phần | RPC transaction all items + merged children + Booking status/updatedAt; khóa và kiểm snapshot; route không ghi đè kết quả atomic | PASS 7 nhóm SQL + handler + tích hợp trigger |
++| Demo segment rỗng/voided dạng chuỗi vẫn được nhận | Predicate live chung | PASS accounts |
++| RPC FINISH gặp BookingStatus enum | Populate record theo native type trước UPDATE | PASS fixture enum cùng migration nối tiếp/audit |
++
++## Năm flow thực tế bắt buộc
++
++1. Dịch vụ mới → A30/B30 → gửi cùng lúc → giờ riêng → A/B xong → đánh giá → DONE.
++2. A full60 đã gửi → sửa A30 trước bắt đầu; A đang chạy dừng thực ở30 → B30 → DONE.
++3. A làm trước/B trống → A xong vẫn chờ → gán B sau, giữ mốc A → DONE.
++4. Đổi phút/người trong nháp → gửi → nhập giờ B → đổi B live → tài khoản bị thay bị chặn → DONE.
++5. Hoàn thành sau A → hủy B chưa làm → chặn callback cũ → reload giữ kết quả → DONE.
++
++Cả 5 PASS qua actual demo hooks; SQL kiểm phân công/ledger/tua tương ứng. Ngoài ra PASS returning B, tên riêng độc lập, lưu lần2 từ lần1, stale revision, midnight datetime và notification failure.
++
++## Lệnh test đã chạy
++
++- `node _plans/sequential_operational_audit_20260926.cjs`: các nhóm 6 lỗi ban đầu + atomic FINISH + PATCH.
++- `node scripts/test_sequential_flows.cjs`: 5 flow và lịch sử/returning B.
++- `node scripts/test_sequential_accounts.cjs`: 5 ca tài khoản A/B và guards/title.
++- `node scripts/test_sequential_b_redispatch.cjs`: 5 redispatch và overlap từng item/đơn con.
++- `node scripts/test_dispatch_actual_time.cjs`: thời gian thực và revision.
++- `ts-node -P scripts/qa/tsconfig.qa.json -r tsconfig-paths/register scripts/test_dispatch_live_guard.ts`: PASS.
++- `tsc --noEmit --incremental false`: PASS, 0 lỗi.
++- ESLint 9 file TS/TSX thay đổi: PASS, 0 lỗi.
++- `git diff --check`: PASS.
++
++SQL dùng PGlite chạy migration thật trên fixture local; handler/component tests dùng source thật với DB/clock/transport giả lập. Đây chưa phải full Supabase integration. Ca tích hợp cuối chạy cả guard nối tiếp, audit history và atomic FINISH với BookingStatus enum: A xong chờ B, B xong cùng child CLEANING, revision/history đúng, stale bị chặn, retry không thêm lịch sử giả.
++
++## Nghiệm thu trực quan Safari local
++
++Demo `http://localhost:3001/reception/dispatch/sequential-demo` trả HTTP200 và tải giao diện. Đã thao tác:
++
++- Chọn A: không có selector cách làm; có nút khung gạch đứt `+ Nối tiếp`.
++- Nhập A30/60: gợi ý `Còn 30 phút · + Nối tiếp`; bấm mở hàng B trống.
++- Gửi A khi B trống: Kanban có `Chưa gán B · + Điều phối`.
++- Bấm nút Kanban: mở modal gán/sửa B; chọn và lưu B thành công.
++- Đổi tên B thành `Nghiệm thu B · lần 1`, cập nhật và điều phối: Kanban/tài khoản B cập nhật, A giữ tên cũ.
++- Mở riêng B: giờ `23:23 → 23:53`, tên riêng đã lưu. Mở A: giờ `22:53 → 23:23`, tên dịch vụ chung giữ nguyên.
++
++Đây là smoke test trực quan một flow; 5 flow đầy đủ được kiểm tự động ở trên. Mẫu còn trong LocalStorage Safari để test tiếp.
++
++## Các bước còn lại trước vận hành thật
++
++1. Áp migration trên DB test riêng; chạy full migration chain/constraints/triggers/RLS. Cần RPC `ktv_finish_service_atomic` trước khi chạy FINISH của branch mới. RPC thiếu trả failure, không fallback ghi từng item.
++2. Kiểm hai tài khoản thật cùng admin: realtime, retry sau cạnh tranh snapshot, notification INSERT và webhook/push đến thiết bị. INSERT thành công chưa chứng minh push đã giao.
++3. Sau các gate DB test, quyết định migrate DB dùng chung và phát hành cùng code. Chưa merge/push/deploy ở lượt này.
++
++## Giới hạn kỹ thuật còn biết
++
++- Storage upload ngoài transaction PostgreSQL; DB lỗi sau upload có thể để ảnh chưa được tham chiếu. Không tự xóa khi transport lỗi vì transaction có thể đã commit nhưng response mất. Reconciliation Storage riêng nếu ảnh rác phát sinh đáng kể.
++- Hai FINISH/dispatch cùng snapshot: một request có thể bị từ chối vì dữ liệu đã đổi; tải lại và thử lại giữ timestamp đã commit.
++- Chưa thử mất kết nối sau DB commit trên Supabase thật; retry local SQL đã chứng minh không reset timestamp.
+diff --git a/_plans/sequential_operational_audit_20260926.cjs b/_plans/sequential_operational_audit_20260926.cjs
+index 3ea69c3d..baa52b65 100644
+--- a/_plans/sequential_operational_audit_20260926.cjs
++++ b/_plans/sequential_operational_audit_20260926.cjs
+@@ -4,6 +4,7 @@ const {spawnSync}=require('node:child_process');
+ const {resolve}=require('node:path');
+ const root=resolve(__dirname,'..');
+ for(const test of ['test_sequential_live_segments.cjs','test_sequential_finish_persistence.cjs',
++ 'test_sequential_finish_atomic_sql.cjs','test_sequential_patch_errors.cjs',
+  'test_sequential_employee_consistency.cjs','test_sequential_midnight_metadata.cjs',
+  'test_sequential_notifications.cjs','test_sequential_inline_ui.cjs','test_sequential_sql.cjs']) {
+  const result=spawnSync(process.execPath,[resolve(root,'scripts',test)],{cwd:root,stdio:'inherit'});
+diff --git a/_plans/sequential_six_fixes_plan_20260926.md b/_plans/sequential_six_fixes_plan_20260926.md
+index 4c11234f..88aa78d3 100644
+--- a/_plans/sequential_six_fixes_plan_20260926.md
++++ b/_plans/sequential_six_fixes_plan_20260926.md
+@@ -1,5 +1,7 @@
+ # Plan sửa gấp 6 lỗi nối tiếp A/B
+ 
++> Nghiệm thu bổ sung: `sequential_acceptance_results_20260926.md`. Giới hạn FINISH ghi từng item ở plan ban đầu đã được thay bằng RPC giao dịch sau khi nghiệm thu xác nhận rủi ro lưu một phần. Plan này giữ lại quyết định ở thời điểm ban đầu.
++
+ ## Phạm vi
+ - Branch: `feat/sequential-two-slot-handoff-20260926`, nền `f206bfb8`.
+ - Diff đầy đủ đề xuất: `sequential_six_fixes_20260926.patch` (16 file nguồn).
+diff --git a/app/api/ktv/booking/_handlers/handleFinishService.ts b/app/api/ktv/booking/_handlers/handleFinishService.ts
+index c4ab672d..312af83d 100644
+--- a/app/api/ktv/booking/_handlers/handleFinishService.ts
++++ b/app/api/ktv/booking/_handlers/handleFinishService.ts
+@@ -1,5 +1,5 @@
+ import { NextResponse } from 'next/server';
+-import { isLiveKtvSegment } from '@/lib/ktvUtils';
++import { isLiveKtvSegment, parseKtvOptions } from '@/lib/ktvUtils';
+ /**
+  * ============================================================
+  * ✅ HANDLER: CLEANING / FEEDBACK / DONE
+@@ -28,12 +28,14 @@ import { isLiveKtvSegment } from '@/lib/ktvUtils';
+  *   - Ca đêm: Cross-midnight time calculation
+  *   - Khách rate trước KTV xong: alreadyRated check
+  * 
+- * 📊 DB OPERATIONS (tự xử lý):
+- *   - UPDATE BookingItems.segments + status (per-item Smart Status)
+- *   - SELECT BookingItems → recomputeBookingStatus
++ * 📊 DB OPERATIONS:
++ *   - Read immutable Booking/item/guest-rating snapshots and compute Smart Status
++ *   - ktv_finish_service_atomic locks/validates snapshots, then saves all items,
++ *     merged-child statuses and Bookings.status in one transaction
+  * 
+  * 📤 TRẢ VỀ:
+- *   - bookingUpdatePayload: { status: bStatus }
++ *   - bookingPersisted: true, bookingData: committed booking row
++ *   - earlyResponse on read/RPC failure; no subsequent booking write/recompute
+  * 
+  * 🔗 PHỤ THUỘC: lib/dispatch-status.ts (recomputeBookingStatus)
+  * ============================================================
+@@ -52,7 +54,7 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+     // 🔍 Fetch bookings and guest ratings để check rating
+     const { data: bookingData, error: bookingError } = await supabase
+         .from('Bookings')
+-        .select('rating, BookingGuests(id, rating)')
++        .select('id, status, rating, BookingGuests(id, rating)')
+         .eq('id', bookingId)
+         .single();
+     
+@@ -66,11 +68,20 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+         });
+     }
+ 
+-    // 🛠️ 1. GOM SEGMENTS CỦA KTV NÀY 🛠️
+-    const { data: items, error: itemsError } = await supabase.from('BookingItems').select('id, segments, status, itemRating, guest_id, options').in('id', allItemIdsForThisKTV);
+-    if (itemsError || !items?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++    // One immutable baseline for all writes and merged-child status synchronization.
++    const { data: bookingItems, error: itemsError } = await supabase.from('BookingItems')
++        .select('id, segments, status, itemRating, guest_id, options, handover_status, handover_images, handover_skipped, handover_submitted_at, serviceId').eq('bookingId', bookingId);
++    const targetIds = new Set(allItemIdsForThisKTV);
++    const items = bookingItems?.filter((item: any) => targetIds.has(item.id));
++    if (itemsError || !items?.length || items.length !== targetIds.size) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+         error: 'Chưa đọc được chặng hoàn thành. Tải lại đơn và thử lại.' }, { status: 500 }) };
+-    
++    const itemSnapshots = structuredClone(bookingItems);
++    const { data: itemsWithServices, error: servicesError } = await supabase.from('BookingItems')
++        .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)').eq('bookingId', bookingId);
++    if (servicesError || !itemsWithServices?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++        error: 'Chưa tổng hợp được trạng thái đơn. Tải lại để tiếp tục.' }, { status: 500 }) };
++    const updates: any[] = [];
++
+     let allGlobalSegs: any[] = [];
+     let originalItemsData: Record<string, any[]> = {};
+     for (const item of items || []) {
+@@ -194,8 +205,6 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+         });
+     }
+ 
+-    // ponytail: per-item writes can partially succeed; reload/retry preserves saved stamps.
+-    // Use a DB transaction if all-item atomic completion becomes required.
+     // ─── 3. 🧠 SMART STATUS PER-ITEM ───
+     for (const item of items || []) {
+         let segs = originalItemsData[item.id];
+@@ -274,65 +283,36 @@ export async function handleFinishService(ctx: HandlerContext): Promise<HandlerR
+             }
+         }
+         
+-        const { error: saveError } = await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
+-        if (saveError) {
+-            console.error('[FinishService] Save failed', item.id, saveError);
+-            return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+-                error: 'Chưa lưu xong giờ hoàn thành; có thể đã lưu một phần. Tải lại đơn và thử lại.', itemId: item.id }, { status: 500 }) };
+-        }
+-        console.log(`🧠 [Smart Status] Item ${item.id}: allSegsDone=${allSegsDone}, alreadyRated=${alreadyRated}, allHandovered=${allHandovered} → ${newItemStatus}`);
++        updates.push({ id: item.id, ...updatePayload });
++        item.status = newItemStatus;
+     }
+-    
+-    // ─── 3.5 🔄 SYNC CHILD ITEMS ───
+-    // Đảm bảo các dịch vụ con (merged) luôn đồng bộ trạng thái với dịch vụ cha
+-    const { data: bookingItemsToSync, error: syncReadError } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
+-    if (syncReadError || !bookingItemsToSync?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+-        error: 'Đã lưu một phần; chưa đọc được dữ liệu đồng bộ. Tải lại để tiếp tục.' }, { status: 500 }) };
+-    if (bookingItemsToSync) {
+-        const updates = [];
+-        for (const item of bookingItemsToSync) {
+-            let opts: any = {};
+-            try { opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {}); } catch {}
+-            if (opts.mergedIntoId) {
+-                const parent = bookingItemsToSync.find((p: any) => p.id === opts.mergedIntoId);
+-                if (parent && parent.status && parent.status !== item.status) {
+-                    updates.push({ id: item.id, status: parent.status });
+-                    item.status = parent.status; // Update local state
+-                }
+-            }
+-        }
+-        if (updates.length > 0) {
+-            for (const upd of updates) {
+-                const { error: syncError } = await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
+-                if (syncError) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+-                    error: 'Đã lưu một phần; chưa đồng bộ được dịch vụ con. Tải lại để tiếp tục.' }, { status: 500 }) };
++
++    // Build child changes from the same baseline, then persist the complete batch atomically.
++    for (const item of bookingItems) {
++        const opts = parseKtvOptions(item.options);
++        if (opts.mergedIntoId) {
++            const parent = bookingItems.find((p: any) => p.id === opts.mergedIntoId);
++            if (parent?.status && parent.status !== item.status) {
++                const existing = updates.find(update => update.id === item.id);
++                if (existing) existing.status = parent.status;
++                else updates.push({ id: item.id, status: parent.status });
++                item.status = parent.status;
+             }
+         }
+     }
+-
+-    // ─── 4. 🔄 RECOMPUTE BOOKING STATUS ───
+-    // Dùng bookingItemsToSync thay vì fetch lại để giảm thiểu query và sử dụng state đã sync
+-    const allItems = bookingItemsToSync;
+-    if (allItems && allItems.length > 0) {
+-        // Cần fetch lại Services info cho phần kiểm tra is_utility
+-        const { data: itemsWithServices, error: servicesError } = await supabase
+-            .from('BookingItems')
+-            .select('id, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
+-            .eq('bookingId', bookingId);
+-            
+-        if (servicesError || !itemsWithServices?.length) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
+-            error: 'Đã lưu một phần; chưa tổng hợp được trạng thái đơn. Tải lại để tiếp tục.' }, { status: 500 }) };
+-        const validItems = allItems.filter((i: any) => {
+-            const svcInfo = (itemsWithServices || []).find((is: any) => is.id === i.id);
+-            return !isUtilityService(svcInfo);
+-        });
+-        const finalItems = validItems.length > 0 ? validItems : allItems;
+-        const statuses = finalItems.map((i: any) => i.status);
+-        const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
+-        const bStatus = recomputeBookingStatus(statuses);
+-        bookingUpdatePayload.status = bStatus;
+-    }
+-
+-
+-    return { bookingUpdatePayload };
++    const validItems = bookingItems.filter((item: any) => !isUtilityService(itemsWithServices.find((svc: any) => svc.id === item.id)));
++    const finalItems = validItems.length ? validItems : bookingItems;
++    const { recomputeBookingStatus } = await import('@/lib/dispatch-status');
++    const bStatus = recomputeBookingStatus(finalItems.map((item: any) => item.status));
++    const { data: saved, error: saveError } = await supabase.rpc('ktv_finish_service_atomic', {
++        p_booking_id: bookingId,
++        p_booking_snapshot: { id: bookingData.id, status: bookingData.status, rating: bookingData.rating },
++        p_item_snapshots: itemSnapshots,
++        p_guest_ratings: bookingData.BookingGuests || [],
++        p_updates: updates,
++        p_booking_status: bStatus,
++    });
++    if (saveError || !saved?.success || !saved.booking) return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false,
++        error: 'Chưa lưu được lượt hoàn thành. Dữ liệu đã thay đổi hoặc lưu thất bại; tải lại đơn và thử lại.' }, { status: 409 }) };
++    return { bookingUpdatePayload, bookingPersisted: true, bookingData: saved.booking };
+ }
+diff --git a/app/api/ktv/booking/_shared/utils.ts b/app/api/ktv/booking/_shared/utils.ts
+index 5d329aa4..20918d12 100644
+--- a/app/api/ktv/booking/_shared/utils.ts
++++ b/app/api/ktv/booking/_shared/utils.ts
+@@ -60,6 +60,8 @@ export interface HandlerContext {
+ }
+ 
+ export interface HandlerResult {
++    bookingPersisted?: boolean; // Handler already committed booking + items atomically.
++    bookingData?: any;
+     bookingUpdatePayload: Record<string, any>;  // → merge vào Bookings.update()
+     earlyResponse?: NextResponse;               // → 403/400 response (bypass normal flow)
+     // NOTE: Handlers tự xử lý BookingItems/TurnQueue/KtvAssignments DB ops bên trong
+diff --git a/app/api/ktv/booking/route.ts b/app/api/ktv/booking/route.ts
+index d0c94006..216f58ac 100644
+--- a/app/api/ktv/booking/route.ts
++++ b/app/api/ktv/booking/route.ts
+@@ -74,12 +74,13 @@ export async function PATCH(request: Request) {
+         if (!supabase) throw new Error('Supabase admin not initialized');
+ 
+         const today = await getBusinessDateFromConfig(supabase);
+-        const { data: turnForSync } = await supabase
++        const { data: turnForSync, error: turnError } = await supabase
+             .from('TurnQueue')
+             .select('id, booking_item_id, booking_item_ids, last_served_at, start_time, turns_completed, status, room_id')
+             .eq('employee_id', technicianCode)
+             .eq('date', today)
+             .maybeSingle();
++        if (turnError) throw turnError;
+ 
+         const updatePayload: any = { updatedAt: new Date().toISOString() };
+         
+@@ -88,8 +89,10 @@ export async function PATCH(request: Request) {
+         let allItemIdsForThisKTV: string[] = [];
+ 
+         if (technicianCode) {
+-            const { data: ktvItems } = await supabase.from('BookingItems').select('id, "technicianCodes", guest_id').eq('bookingId', bookingId);
++            const { data: ktvItems, error: ktvItemsError } = await supabase.from('BookingItems').select('id, "technicianCodes", guest_id').eq('bookingId', bookingId);
+             
++            if (ktvItemsError) throw ktvItemsError;
++            if (!ktvItems) throw new Error('Không đọc được dịch vụ; vui lòng thử lại.');
+             const targetItem = targetBookingItemId ? (ktvItems || []).find((i: any) => i.id === targetBookingItemId) : null;
+             
+             if (targetItem && targetItem.guest_id) {
+@@ -136,12 +139,16 @@ export async function PATCH(request: Request) {
+         // ─── 6. MERGE & APPLY BOOKING UPDATE ───
+         Object.assign(updatePayload, result.bookingUpdatePayload);
+ 
+-        let data = null;
+-        if (Object.keys(updatePayload).length > 0) {
++        let data = result.bookingData || null;
++        if (!result.bookingPersisted && Object.keys(updatePayload).length > 0) {
+             const res = await supabase.from('Bookings').update(updatePayload).eq('id', bookingId).select().maybeSingle();
++            if (res.error) throw res.error;
++            if (!res.data) throw new Error('Không lưu được đơn; vui lòng tải lại.');
+             data = res.data;
+-        } else {
++        } else if (!result.bookingPersisted) {
+             const res = await supabase.from('Bookings').select().eq('id', bookingId).maybeSingle();
++            if (res.error) throw res.error;
++            if (!res.data) throw new Error('Không tìm thấy đơn; vui lòng tải lại.');
+             data = res.data;
+         }
+ 
+@@ -149,13 +156,15 @@ export async function PATCH(request: Request) {
+         // Re-read latest item statuses AFTER all updates are committed,
+         // then recompute booking status one final time to catch race conditions
+         // where 2 KTVs finish nearly simultaneously.
+-        if (status === 'CLEANING' || status === 'FEEDBACK' || status === 'DONE') {
++        if (!result.bookingPersisted && (status === 'CLEANING' || status === 'FEEDBACK' || status === 'DONE')) {
+             try {
+-                const { data: latestItems } = await supabase
++                const { data: latestItems, error: latestItemsError } = await supabase
+                     .from('BookingItems')
+                     .select('status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
+                     .eq('bookingId', bookingId);
+-                if (latestItems && latestItems.length > 0) {
++                if (latestItemsError) throw latestItemsError;
++                if (!latestItems?.length) throw new Error('Không đọc được trạng thái dịch vụ sau lưu; vui lòng tải lại.');
++                if (latestItems.length > 0) {
+                     const validItems = latestItems.filter((i: any) => {
+                         return !isUtilityService(i);
+                     });
+@@ -166,12 +175,14 @@ export async function PATCH(request: Request) {
+                     
+                     if (data && data.status !== correctStatus) {
+                         console.log(`🛡️ [Safety Recompute] Race condition detected! Booking ${bookingId}: ${data.status} → ${correctStatus} (items: ${statuses.join(',')})`);
+-                        await supabase.from('Bookings').update({ status: correctStatus }).eq('id', bookingId);
++                        const { error: correctionError } = await supabase.from('Bookings').update({ status: correctStatus }).eq('id', bookingId);
++                        if (correctionError) throw correctionError;
+                         data.status = correctStatus;
+                     }
+                 }
+             } catch (safetyErr) {
+-                console.error('⚠️ [Safety Recompute] Non-critical error:', safetyErr);
++                console.error('⚠️ [Safety Recompute] Error:', safetyErr);
++                throw safetyErr;
+             }
+         }
+ 
+diff --git a/app/reception/dispatch/actions.ts b/app/reception/dispatch/actions.ts
+index c2529113..aed84a80 100644
+--- a/app/reception/dispatch/actions.ts
++++ b/app/reception/dispatch/actions.ts
+@@ -635,6 +635,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
+     /** Mã KTV quầy đã bấm OK ở popup "chưa điểm danh" cho ĐÚNG lần gửi này (không lưu). */
+     confirmedUncheckedKtvIds?: string[];
+     confirmOverlap?: boolean;
++    confirmedOverlapItemIds?: string[];
+ }) {
+     try {
+         await requirePermission('dispatch_board');
+@@ -1164,6 +1165,7 @@ async function resolveNewExternalKtvIds(
+ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+     date?: string;
+     confirmOverlap?: boolean;
++    confirmedOverlapItemIds?: string[];
+     technicianCode?: string | null;
+     bedId: string | null;
+     roomName: string | null;
+diff --git a/app/reception/dispatch/page.tsx b/app/reception/dispatch/page.tsx
+index 6767f01c..eebb0f40 100644
+--- a/app/reception/dispatch/page.tsx
++++ b/app/reception/dispatch/page.tsx
+@@ -1281,16 +1281,18 @@ if (!hasPermission('dispatch_board')) {
+       }
+ 
+       const { saveDraftDispatch } = await import('./actions');
+-      let confirmOverlap = false;
++      const confirmedOverlapItemIds: string[] = [];
+       const savePayload = () => saveDraftDispatch(clonedOrder.id, {
+-        date: selectedDate, confirmOverlap,
++        date: selectedDate, confirmedOverlapItemIds: [...confirmedOverlapItemIds],
+         bedId: primarySeg?.bedId || null, roomName: primarySeg?.roomId || null,
+         notes: finalNotesToSave, itemUpdates
+       });
+       let res = await savePayload();
+-      if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
++      while (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
++        if (!res.itemId || !itemUpdates.some(item => item.id === res.itemId)
++            || confirmedOverlapItemIds.includes(res.itemId)) throw new Error('Không xác định được dịch vụ cần xác nhận; tải lại đơn.');
+         if (!confirmUpdatedBOverlap(res)) return;
+-        confirmOverlap = true;
++        confirmedOverlapItemIds.push(res.itemId);
+         res = await savePayload();
+       }
+ 
+@@ -1649,7 +1651,6 @@ if (!hasPermission('dispatch_board')) {
+       // bằng ConfirmActionModal; OK thì gửi lại kèm danh sách đã xác nhận (áp luôn cho các
+       // payload sau của CÙNG lần bấm). Lần bấm gửi sau lại hỏi — chốt 14/09/2026.
+       const confirmedUncheckedKtvIds: string[] = [];
+-      let confirmOverlap = false;
+       const askCheckinConfirm = (ktvs: CheckinGateKtv[]) => new Promise<boolean>(resolve => {
+           setConfirmModal({
+               isOpen: true,
+@@ -1662,6 +1663,7 @@ if (!hasPermission('dispatch_board')) {
+           });
+       });
+       for (const payload of dispatchPayloads) {
++          const confirmedOverlapItemIds: string[] = [];
+           const sendPayload = () => processDispatch(payload.dbBookingId, {
+               status: bookingStatus as any,
+               bedId: payload.bedId,
+@@ -1670,7 +1672,7 @@ if (!hasPermission('dispatch_board')) {
+               date: selectedDate,
+               notes: isPartial ? undefined : finalNotesToSave,
+               itemUpdates: payload.itemUpdates,
+-              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds], confirmOverlap,
++              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds], confirmedOverlapItemIds: [...confirmedOverlapItemIds],
+           });
+           let res: any = await sendPayload();
+           if (!res.success && res.code === 'NEED_CHECKIN_CONFIRM' && Array.isArray(res.ktvs) && res.ktvs.length > 0) {
+@@ -1681,9 +1683,12 @@ if (!hasPermission('dispatch_board')) {
+               });
+               res = await sendPayload();
+           }
+-          if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
++          while (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
++              if (!res.itemId || !payload.itemUpdates.some(item => item.id === res.itemId)
++                  || confirmedOverlapItemIds.includes(res.itemId)) throw new Error('Không xác định được dịch vụ cần xác nhận; tải lại đơn.');
+               if (!confirmUpdatedBOverlap(res)) return;
+-              confirmOverlap = true; res = await sendPayload();
++              confirmedOverlapItemIds.push(res.itemId);
++              res = await sendPayload();
+           }
+           if (res.success && res.warnings?.length) alert(res.warnings.join('\n'));
+           if (!res.success) {
+diff --git a/app/reception/dispatch/sequential-demo/AccountDemo.tsx b/app/reception/dispatch/sequential-demo/AccountDemo.tsx
+index ff60439b..56811648 100644
+--- a/app/reception/dispatch/sequential-demo/AccountDemo.tsx
++++ b/app/reception/dispatch/sequential-demo/AccountDemo.tsx
+@@ -1,5 +1,6 @@
+ 'use client';
+ 
++import { ktvServiceName } from '@/lib/ktvUtils';
+ import { demoAccountState } from './demo-account';
+ import { WorkingTimeline } from '@/app/ktv/dashboard/_screens/ScreenTimer';
+ import { gioDongHoVN } from '@/lib/segment-time';
+@@ -17,7 +18,7 @@ export function AccountDemo({ service, employeeId, employeeName, now, onStamp }:
+     <h2 className="text-lg font-bold">Tài khoản demo · {employeeName}</h2>
+     <p className="mb-4 text-sm text-slate-500">Mã nhân viên: {employeeId}</p>
+     {!state.assigned ? <p>Chưa có phân công gửi cho tài khoản này.</p> : <>
+-      <h3 className="font-bold">{state.row?.serviceNameForKtv || service.serviceName}</h3>
++      <h3 className="font-bold">{ktvServiceName({ options: service.options, base_service_name: service.serviceName }, employeeId)}</h3>
+       <p>Phòng {segment!.roomId} · Giường {segment!.bedId} · {segment!.duration} phút</p>
+       <p>Giờ dự kiến của bạn: {segment!.startTime} → {segment!.endTime}</p>
+       <div className="my-4"><WorkingTimeline segments={[segment!]} activeIndex={segment!.actualStartTime && !segment!.actualEndTime ? 0 : undefined} /></div>
+diff --git a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+index f689b19b..26320ef7 100644
+--- a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
++++ b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+@@ -53,7 +53,17 @@ export default function SequentialDemo() {
+   const readOrder = (): PendingOrder | null => {
+     try {
+       const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+-      return saved?.services?.[0]?.staffList ? saved : null;
++      if (!saved?.services?.[0]?.staffList) return null;
++      // Repair demo snapshots made before returning employees reused their row.
++      for (const service of saved.services) {
++        const rows = new Map<string, ServiceBlock['staffList'][number]>();
++        for (const row of service.staffList) {
++          const previous = rows.get(row.ktvId);
++          rows.set(row.ktvId, previous ? { ...previous, ...row, segments: [...row.segments, ...previous.segments] } : row);
++        }
++        service.staffList = [...rows.values()];
++      }
++      return saved;
+     } catch { return null; }
+   };
+   const saveOrder = (next: PendingOrder) => {
+@@ -167,10 +177,12 @@ export default function SequentialDemo() {
+         startTime: handoff.start.slice(11, 16), endTime: localInput(end).slice(11),
+         duration: handoff.duration, plannedStartAt: new Date(startMs).toISOString(), plannedEndAt: end.toISOString(),
+       };
+-      if (old?.ktvId === handoff.ktvId) old.segments = [segment];
++      if (old?.ktvId === handoff.ktvId) old.segments = old.segments.map(previous => previous.id === segment.id ? segment : previous);
+       else {
+         if (old) segmentOf(old).voided = true;
+-        s.staffList.push({ id: `demo-row-${handoff.ktvId}`, ktvId: handoff.ktvId,
++        const returning = s.staffList.find(row => row.ktvId === handoff.ktvId);
++        if (returning) returning.segments = [segment, ...returning.segments];
++        else s.staffList.push({ id: `demo-row-${handoff.ktvId}`, ktvId: handoff.ktvId,
+           ktvName: staff.find(person => person.id === handoff.ktvId)?.full_name || handoff.ktvId,
+           segments: [segment], noteForKtv: '' });
+       }
+@@ -251,11 +263,13 @@ export default function SequentialDemo() {
+           s.status = status;
+           s.staffList.forEach(row => {
+             segmentOf(row).ktvId = row.ktvId;
+-            const previous = before.find(old => old.ktvId === row.ktvId);
+-            if (previous) {
+-              segmentOf(row).actualStartTime = segmentOf(previous).actualStartTime;
+-              segmentOf(row).actualEndTime = segmentOf(previous).actualEndTime;
+-            }
++            row.segments.forEach(segment => {
++              const previous = before.find(old => old.ktvId === row.ktvId)?.segments.find(old => old.id === segment.id);
++              if (previous) {
++                segment.actualStartTime = previous.actualStartTime;
++                segment.actualEndTime = previous.actualEndTime;
++              }
++            });
+           });
+         }, 'DRAFT', dispatchRevision(updated[0].options))}
+         onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={service.status === 'NEW' ? dispatchA : redispatchB}
+diff --git a/app/reception/dispatch/sequential-demo/demo-account.ts b/app/reception/dispatch/sequential-demo/demo-account.ts
+index 8055e93f..031ad5b2 100644
+--- a/app/reception/dispatch/sequential-demo/demo-account.ts
++++ b/app/reception/dispatch/sequential-demo/demo-account.ts
+@@ -1,13 +1,14 @@
+ import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
++import { isLiveKtvSegment } from '@/lib/ktvUtils';
+ import { workedMsOf } from '@/lib/segment-time';
+ import type { ServiceBlock, WorkSegment } from '../types';
+ 
+ export type DemoSegment = WorkSegment & { ktvId: string; voided?: boolean; plannedStartAt?: string; plannedEndAt?: string };
+-export const segmentOf = (row: ServiceBlock['staffList'][number]) => row.segments[0] as DemoSegment;
+-export const segmentsOf = (service: ServiceBlock) => service.staffList.map(row => ({ ...segmentOf(row), ktvId: row.ktvId }));
++export const segmentOf = (row: ServiceBlock['staffList'][number]) => (row.segments.find(seg => (seg as any).voided !== true && (seg as any).voided !== 'true') || row.segments[0]) as DemoSegment;
++export const segmentsOf = (service: ServiceBlock) => service.staffList.flatMap(row => row.segments.map(segment => ({ ...segment, ktvId: row.ktvId })));
+ 
+ export function demoAccountState(service: ServiceBlock, employeeId: string, now: number) {
+-  const row = service.staffList.find(person => person.ktvId === employeeId && segmentOf(person).voided !== true);
++  const row = service.staffList.find(person => !!segmentOf(person) && isLiveKtvSegment({ ...segmentOf(person), ktvId: person.ktvId }, employeeId));
+   const segment = row && segmentOf(row);
+   const assigned = service.status !== 'NEW' && service.status !== 'WAITING' && !!segment;
+   const elapsedMs = assigned && segment ? workedMsOf(segment, segment.actualEndTime || now) ?? 0 : 0;
+diff --git a/lib/ktvUtils.ts b/lib/ktvUtils.ts
+index c1e774ee..e5e38413 100644
+--- a/lib/ktvUtils.ts
++++ b/lib/ktvUtils.ts
+@@ -46,5 +46,5 @@ export function ktvServiceName(item: any, code: string | undefined | null): stri
+     const opts = parseKtvOptions(item?.options);
+     const names = parseKtvOptions(opts.serviceNamesForKtvs);
+     const own = Object.entries(names).find(([id]) => id.trim().toLowerCase() === code?.trim().toLowerCase())?.[1];
+-    return String(own || opts._generatedDisplayName || opts.displayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
++    return String(own || opts.displayName || opts._generatedDisplayName || item?.base_service_name || item?.service_name || 'Dịch vụ');
+ }
+diff --git a/scripts/test_sequential_accounts.cjs b/scripts/test_sequential_accounts.cjs
+index 3eed7f9e..71b6e252 100644
+--- a/scripts/test_sequential_accounts.cjs
++++ b/scripts/test_sequential_accounts.cjs
+@@ -143,3 +143,18 @@ try {
+   React.useState = originals.useState; React.useEffect = originals.useEffect;
+ }
+ console.log('PASS 5/5: Hai tab đồng bộ localStorage, handler cũ không xóa mốc của người kia, reload giữ đúng tài khoản/giờ');
++
++const removedString = structuredClone(fixture().services[0]);
++removedString.staffList[1].segments[0].voided = 'true';
++assert.equal(demoAccountState(removedString, 'DEMO-B', at('11:00')).assigned, false);
++assert.ok(renderAccount(removedString, 'DEMO-B').includes('Chưa có phân công'));
++removedString.staffList[1].segments = [];
++assert.equal(demoAccountState(removedString, 'DEMO-B', at('11:00')).assigned, false);
++assert.ok(renderAccount(removedString, 'DEMO-B').includes('Chưa có phân công'));
++const renamedCommon = fixture().services[0];
++renamedCommon.options = { sequentialSlots: 2, displayName: 'Tên chung mới', _generatedDisplayName: 'Tên cũ' };
++assert.ok(renderAccount(renamedCommon, 'DEMO-B').includes('Tên chung mới'));
++assert.ok(!renderAccount(renamedCommon, 'DEMO-B').includes('Tên cũ'));
++renamedCommon.options.serviceNamesForKtvs = { 'demo-b': 'Tên B riêng' };
++assert.ok(renderAccount(renamedCommon, 'DEMO-B').includes('Tên B riêng'));
++console.log('PASS demo guards/title: string voided and empty rows unassigned; common and own names use shared latest fallback');
+diff --git a/scripts/test_sequential_b_redispatch.cjs b/scripts/test_sequential_b_redispatch.cjs
+index b3363967..06f14ef7 100644
+--- a/scripts/test_sequential_b_redispatch.cjs
++++ b/scripts/test_sequential_b_redispatch.cjs
+@@ -65,11 +65,27 @@ async function main(){
+   const page=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
+   const retryBody=page.slice(page.indexOf('          let res: any = await sendPayload();'),page.indexOf('          if (!res.success) {',page.indexOf('          let res: any = await sendPayload();')));
+   const retryCode=ts.transpileModule(retryBody,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+-  const runRetry=new Function('sendPayload','askCheckinConfirm','confirmUpdatedBOverlap',`return (async()=>{let confirmOverlap=false;const confirmedUncheckedKtvIds=[];${retryCode}return {res,confirmOverlap,confirmedUncheckedKtvIds};})()`);
++  const runRetry=new Function('sendPayload','askCheckinConfirm','confirmUpdatedBOverlap',`return (async()=>{const confirmedOverlapItemIds=[];const payload={itemUpdates:[{id:'one'},{id:'two'}]};const confirmedUncheckedKtvIds=[];${retryCode}return {res,confirmedOverlapItemIds,confirmedUncheckedKtvIds};})()`);
+   let calls=0;
+-  const results=[{success:false,code:'NEED_CHECKIN_CONFIRM',ktvs:[{id:'B'}]},{success:false,code:'OVERLAP_CONFIRM_REQUIRED'},{success:true}];
++  const results=[{success:false,code:'NEED_CHECKIN_CONFIRM',ktvs:[{id:'B'}]},
++    {success:false,code:'OVERLAP_CONFIRM_REQUIRED',itemId:'one'},
++    {success:false,code:'OVERLAP_CONFIRM_REQUIRED',itemId:'two'},{success:true}];
+   const retry=await runRetry(async()=>results[calls++],async()=>true,()=>true);
+-  assert.equal(calls,3);assert.equal(retry.res.success,true);assert.equal(retry.confirmOverlap,true);assert.deepEqual(retry.confirmedUncheckedKtvIds,['B']);
+-  console.log('PASS retry UI: xác nhận điểm danh B rồi xác nhận overlap vẫn gửi được bản mới');
++  assert.equal(calls,4);assert.equal(retry.res.success,true);assert.deepEqual(retry.confirmedOverlapItemIds,['one','two']);assert.deepEqual(retry.confirmedUncheckedKtvIds,['B']);
++  await assert.rejects(runRetry(async()=>({code:'OVERLAP_CONFIRM_REQUIRED',itemId:'unknown'}),async()=>true,()=>true),/Không xác định/);
++  let repeats=0;
++  await assert.rejects(runRetry(async()=>{repeats++;return {code:'OVERLAP_CONFIRM_REQUIRED',itemId:'one'};},async()=>true,()=>true),/Không xác định/);
++  assert.equal(repeats,2);
++  // Run the actual per-payload loop: a confirmation from child one must not reach child two.
++  const loop=page.slice(page.indexOf('      for (const payload of dispatchPayloads) {'),page.indexOf('      if (!isPartial || targetSvcIds.length',page.indexOf('      for (const payload of dispatchPayloads) {')));
++  const loopCode=ts.transpileModule(loop,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
++  const sent=[],asked=[];
++  const runLoop=new Function('dispatchPayloads','processDispatch','confirmUpdatedBOverlap',`return (async()=>{const confirmedUncheckedKtvIds=[];const bookingStatus='PREPARING',selectedDate='2026-09-26',isPartial=false,finalNotesToSave='';const askCheckinConfirm=async()=>true;const alert=()=>{};${loopCode}})()`);
++  await runLoop(['one','two'].map(id=>({bookingId:id,dbBookingId:id,itemUpdates:[{id}]})),async(id,payload)=>{
++    sent.push([id,[...payload.confirmedOverlapItemIds]]);
++    return payload.confirmedOverlapItemIds.includes(id)?{success:true}:{success:false,code:'OVERLAP_CONFIRM_REQUIRED',itemId:id};
++  },res=>{asked.push(res.itemId);return true;});
++  assert.deepEqual(sent,[['one',[]],['one',['one']],['two',[]],['two',['two']]]);assert.deepEqual(asked,['one','two']);
++  console.log('PASS retry UI: checkin + từng overlap; reset theo đơn con; chặn item lạ/xác nhận lặp');
+ }
+ main().catch(error=>{console.error(error);process.exitCode=1;});
+diff --git a/scripts/test_sequential_employee_consistency.cjs b/scripts/test_sequential_employee_consistency.cjs
+index 917fb07c..19ab8389 100644
+--- a/scripts/test_sequential_employee_consistency.cjs
++++ b/scripts/test_sequential_employee_consistency.cjs
+@@ -22,6 +22,7 @@ for (const raw of [options, JSON.stringify(options), JSON.stringify(JSON.stringi
+ }
+ for (const raw of [null, 'broken', 'null', '[]', []]) assert.deepEqual(parseKtvOptions(raw), {});
+ assert.equal(ktvServiceName({ options: { serviceNamesForKtvs: { B: '' } }, base_service_name: 'Tên gốc', service_name: 'Tên B cache cũ' }, 'B'), 'Tên gốc');
++assert.equal(ktvServiceName({ options: { _generatedDisplayName: 'Massage (60p)', displayName: 'Gói mới', serviceNamesForKtvs: { B: '' } }, base_service_name: 'Massage' }, 'B'), 'Gói mới');
+ console.log('PASS options object/JSON/double JSON/malformed, own names and cleared override');
+ const segments = [
+  { id: 'a', ktvId: 'A', sequenceSlot: 1, startTime: '10:00', endTime: '10:30', duration: 30 },
+diff --git a/scripts/test_sequential_finish_atomic_sql.cjs b/scripts/test_sequential_finish_atomic_sql.cjs
+new file mode 100644
+index 00000000..f73b176d
+--- /dev/null
++++ b/scripts/test_sequential_finish_atomic_sql.cjs
+@@ -0,0 +1,120 @@
++const assert = require('node:assert/strict');
++const { readFileSync } = require('node:fs');
++const { join } = require('node:path');
++const { PGlite } = require('pglite-2');
++async function main() {
++  const db = new PGlite();
++  await db.exec(`
++    CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
++    CREATE TABLE "Bookings" (id text PRIMARY KEY, status text, rating numeric, "updatedAt" timestamptz);
++    CREATE TABLE "BookingGuests" (id text PRIMARY KEY, booking_id text, rating numeric);
++    CREATE TABLE "BookingItems" (id text PRIMARY KEY, "bookingId" text, segments jsonb, status text, "itemRating" numeric,
++      guest_id text, options jsonb, handover_status text, "serviceId" text,
++      handover_images jsonb, handover_skipped boolean, handover_submitted_at timestamptz);
++  `);
++  await db.exec(readFileSync(join(__dirname, '../supabase/migrations/20260926140000_ktv_finish_service_atomic.sql'), 'utf8'));
++  const start = '2026-09-26T03:00:00Z';
++  const end = '2026-09-26T03:30:00Z';
++  const seg = (id, employee = 'A') => ({ id, ktvId: employee, duration: 30, actualStartTime: start });
++  await db.query('INSERT INTO "Bookings" (id,status,rating) VALUES ($1,$2,NULL)', ['booking', 'IN_PROGRESS']);
++  const insert = async (id, segments, options = {}) => db.query(`INSERT INTO "BookingItems" (id,"bookingId",segments,status,options,"serviceId") VALUES ($1,'booking',$2,'IN_PROGRESS',$3,'svc')`, [id, JSON.stringify(segments), JSON.stringify(options)]);
++  await insert('one', [seg('one-a')]);
++  await insert('two', [seg('two-a')]);
++  await insert('child', [], { mergedIntoId: 'one' });
++  const rows = async () => (await db.query('SELECT * FROM "BookingItems" ORDER BY id')).rows;
++  const booking = async () => (await db.query('SELECT * FROM "Bookings"')).rows[0];
++  const snapshots = async () => (await db.query('SELECT id,segments,status,"itemRating",guest_id,options,handover_status,handover_images,handover_skipped,handover_submitted_at,"serviceId" FROM "BookingItems" ORDER BY id')).rows;
++  const payload = async () => ({ booking: ((row) => ({ ...row, rating: row.rating == null ? null : Number(row.rating) }))(await booking()), snapshots: await snapshots(), guests: (await db.query('SELECT id,rating FROM "BookingGuests" ORDER BY id')).rows.map(row => ({ ...row, rating: row.rating == null ? null : Number(row.rating) })) });
++  const finishPatches = async () => (await rows()).map(row => ({ id: row.id, status: 'CLEANING', ...(row.id === 'child' ? {} : { segments: row.segments.map(s => ({ ...s, actualEndTime: s.actualEndTime || end })) }) }));
++  const commit = (baseline, patches, status = 'CLEANING') => db.query('SELECT ktv_finish_service_atomic($1,$2,$3,$4,$5,$6) AS result', ['booking', JSON.stringify(baseline.booking), JSON.stringify(baseline.snapshots), JSON.stringify(baseline.guests), JSON.stringify(patches), status]);
++  await db.exec(`UPDATE "BookingItems" SET handover_submitted_at = '2026-09-26T03:00:00Z' WHERE id = 'child'`);
++  const before = await rows(), bookingBefore = await booking(), baseline = await payload();
++  const patches = await finishPatches();
++  await db.exec(`CREATE FUNCTION reject_finish_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id = 'two' THEN RAISE EXCEPTION 'second item failure'; END IF; RETURN NEW; END $$;
++    CREATE TRIGGER reject_finish_test BEFORE UPDATE ON "BookingItems" FOR EACH ROW EXECUTE FUNCTION reject_finish_test();`);
++  await assert.rejects(() => commit(baseline, patches), /second item failure/);
++  assert.deepEqual(await rows(), before);
++  assert.deepEqual(await booking(), bookingBefore);
++  await db.exec('DROP TRIGGER reject_finish_test ON "BookingItems"');
++  console.log('PASS ATOMIC FINISH 1: second target error rolls back all targets, child and Booking status');
++
++  await db.exec(`CREATE FUNCTION reject_child_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id = 'child' THEN RAISE EXCEPTION 'child failure'; END IF; RETURN NEW; END $$;
++    CREATE TRIGGER reject_child_test BEFORE UPDATE ON "BookingItems" FOR EACH ROW EXECUTE FUNCTION reject_child_test();`);
++  await assert.rejects(() => commit(baseline, [...patches.filter(p => p.id !== 'child'), patches.find(p => p.id === 'child')]), /child failure/);
++  assert.deepEqual(await rows(), before);
++  assert.deepEqual(await booking(), bookingBefore);
++  await db.exec('DROP TRIGGER reject_child_test ON "BookingItems"');
++  console.log('PASS ATOMIC FINISH 2: merged child error rolls back earlier target writes');
++
++  await db.exec(`CREATE FUNCTION reject_booking_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'booking failure'; END $$;
++    CREATE TRIGGER reject_booking_test BEFORE UPDATE ON "Bookings" FOR EACH ROW EXECUTE FUNCTION reject_booking_test();`);
++  await assert.rejects(() => commit(baseline, patches), /booking failure/);
++  assert.deepEqual(await rows(), before);
++  assert.deepEqual(await booking(), bookingBefore);
++  await db.exec('DROP TRIGGER reject_booking_test ON "Bookings"');
++  console.log('PASS ATOMIC FINISH 3: Booking update failure rolls back all item/child changes');
++
++  for (const sql of [
++    `UPDATE "BookingItems" SET options = '{"dispatchRevision":1}' WHERE id = 'one'`,
++    `UPDATE "BookingItems" SET segments = jsonb_set(segments,'{0,actualStartTime}','"2026-09-26T03:05:00Z"') WHERE id = 'one'`,
++    `UPDATE "BookingItems" SET status = 'DONE' WHERE id = 'child'`,
++    `UPDATE "Bookings" SET rating = 5`,
++    `INSERT INTO "BookingGuests" VALUES ('guest','booking',5)`
++  ]) {
++    const prior = await payload();
++    await db.exec(sql);
++    const changed = await rows(), changedBooking = await booking();
++    await assert.rejects(() => commit(prior, patches), /changed/);
++    assert.deepEqual(await rows(), changed);
++    assert.deepEqual(await booking(), changedBooking);
++  }
++  const staleSet = await payload();
++  await insert('late', [seg('late-a')]);
++  await assert.rejects(() => commit(staleSet, patches), /item set changed/);
++  await db.exec(`DELETE FROM "BookingItems" WHERE id = 'late'`);
++  console.log('PASS ATOMIC FINISH 4: options, stamps, child status, booking rating, guest rating/set and item-set stale snapshots rejected');
++
++  const latest = await payload();
++  const result = (await commit(latest, await finishPatches())).rows[0].result;
++  assert.equal(result.success, true);
++  assert.equal(result.booking.status, 'CLEANING');
++  assert.ok(result.booking.updatedAt);
++  assert.ok((await rows()).filter(r => r.id !== 'child').every(r => r.segments[0].actualEndTime));
++  assert.equal((await rows()).find(r => r.id === 'child').status, 'CLEANING');
++  const completed = await rows();
++  await commit(await payload(), await finishPatches());
++  assert.deepEqual(await rows(), completed);
++  await assert.rejects(() => commit(latest, patches), /changed/);
++  console.log('PASS ATOMIC FINISH 5: successful batch + reload/retry preserve committed stamps; previous version rejected');
++
++  await db.exec('DELETE FROM "BookingItems"');
++  await db.exec(`UPDATE "Bookings" SET status = 'IN_PROGRESS'`);
++  const oldB = { ...seg('old-b', 'B'), sequenceSlot: 2, voided: true };
++  const seqA = { ...seg('seq-a'), sequenceSlot: 1 };
++  const seqB = { id: 'seq-b', ktvId: 'B', sequenceSlot: 2, duration: 30 };
++  await insert('seq', [seqA, oldB, seqB], { sequentialSlots: 2 });
++  await commit(await payload(), [{ id: 'seq', segments: [{ ...seqA, actualEndTime: end }, oldB, seqB], status: 'IN_PROGRESS' }], 'IN_PROGRESS');
++  assert.equal((await booking()).status, 'IN_PROGRESS');
++  const aDone = (await rows())[0].segments[0];
++  const bDone = { ...seqB, actualStartTime: end, actualEndTime: '2026-09-26T04:00:00Z' };
++  await commit(await payload(), [{ id: 'seq', segments: [aDone, oldB, bDone], status: 'CLEANING' }]);
++  assert.equal((await booking()).status, 'CLEANING');
++  assert.deepEqual((await rows())[0].segments[0], aDone);
++  assert.deepEqual((await rows())[0].segments[1], oldB);
++  console.log('PASS ATOMIC FINISH 6: sequential A waits B, current B completes with cancelled B/A untouched');
++
++  const prior = await payload(), savedRows = await rows();
++  await assert.rejects(() => commit(prior, [{ id: 'foreign', status: 'CLEANING' }]), /Invalid FINISH item update/);
++  await assert.rejects(() => commit(prior, [{ id: 'seq', status: 'CLEANING', options: {} }]), /Invalid FINISH item update/);
++  await assert.rejects(() => commit({ ...prior, snapshots: [{ id: 'seq' }] }, [{ id: 'seq', status: 'CLEANING' }]), /Incomplete FINISH snapshot/);
++  await assert.rejects(() => commit(prior, [{ id: 'seq', status: null }]), /Invalid FINISH item update/);
++  await assert.rejects(() => commit(prior, [{ id: 'seq', status: 'CLEANING' }], null), /Invalid FINISH batch/);
++  assert.deepEqual(await rows(), savedRows);
++  const access = (await db.query(`SELECT has_function_privilege('anon','ktv_finish_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text)','EXECUTE') AS anon,
++    has_function_privilege('authenticated','ktv_finish_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text)','EXECUTE') AS authenticated,
++    has_function_privilege('service_role','ktv_finish_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text)','EXECUTE') AS service`)).rows[0];
++  assert.deepEqual(access, { anon: false, authenticated: false, service: true });
++  console.log('PASS ATOMIC FINISH 7: malformed/foreign batches fail closed; only service role can execute');
++  await db.close();
++}
++main().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/scripts/test_sequential_finish_persistence.cjs b/scripts/test_sequential_finish_persistence.cjs
+index 2565927a..08437083 100644
+--- a/scripts/test_sequential_finish_persistence.cjs
++++ b/scripts/test_sequential_finish_persistence.cjs
+@@ -20,11 +20,18 @@ function load(file) {
+ }
+ const { handleFinishService } = load('app/api/ktv/booking/_handlers/handleFinishService.ts');
+ const start = '2026-09-26T03:00:00.000Z';
+-const item = (id, ktv = 'A') => ({ id, bookingId: 'booking', status: 'IN_PROGRESS', options: {}, segments: [{ id: id + '-seg', ktvId: ktv, roomId: 'room', duration: 30, actualStartTime: start }] });
++const item = (id, ktv = 'A') => ({ id, bookingId: 'booking', status: 'IN_PROGRESS', options: {}, serviceId: 'svc', handover_status: null, itemRating: null, guest_id: null, segments: [{ id: id + '-seg', ktvId: ktv, roomId: 'room', duration: 30, actualStartTime: start }] });
+ function database(seed, failure = '') {
+   const rows = structuredClone(seed);
+   let reads = 0, writes = 0;
+-  const db = { from(table) {
++  const db = { rpc: async (name, args) => {
++    assert.equal(name, 'ktv_finish_service_atomic');
++    if (failure === 'network') throw new Error('offline');
++    if (failure === 'missing-rpc') return { error: { code: 'PGRST202', message: 'Could not find ktv_finish_service_atomic in schema cache' } };
++    if (failure.startsWith('write-') || failure === 'rpc' || failure === 'missing-rpc') return { error: { message: failure } };
++    for (const patch of args.p_updates) Object.assign(rows.find(row => row.id === patch.id), structuredClone(patch));
++    return { data: { success: true, booking: { id: 'booking', status: args.p_booking_status } } };
++  }, from(table) {
+     let operation, payload, filterKey, filterValue;
+     const query = {
+       select() { operation = 'select'; return this; },
+@@ -37,7 +44,7 @@ function database(seed, failure = '') {
+           if (operation === 'select') {
+             reads++;
+             if (failure === `read-${reads}`) return Promise.resolve({ data: null, error: { message: failure } }).then(resolve, reject);
+-            if (table === 'Bookings') return Promise.resolve({ data: { rating: null, BookingGuests: [] } }).then(resolve, reject);
++            if (table === 'Bookings') return Promise.resolve({ data: { id: 'booking', status: 'IN_PROGRESS', rating: null, BookingGuests: [] } }).then(resolve, reject);
+             let selected = rows.filter(row => filterKey === 'id' ? (Array.isArray(filterValue) ? filterValue.includes(row.id) : row.id === filterValue) : row.bookingId === filterValue);
+             return Promise.resolve({ data: structuredClone(selected) }).then(resolve, reject);
+           }
+@@ -56,37 +63,36 @@ function database(seed, failure = '') {
+ const run = (state, ktv = 'A', ids = state.rows.map(row => row.id)) => handleFinishService({ supabase: state.db, bookingId: 'booking', technicianCode: ktv, status: 'CLEANING', allItemIdsForThisKTV: ids, body: {} });
+ const segments = row => typeof row.segments === 'string' ? JSON.parse(row.segments) : row.segments;
+ async function main() {
+-  for (const failure of ['read-1', 'read-2', 'write-1', 'read-3', 'read-4']) {
++  for (const failure of ['read-1', 'read-2', 'read-3', 'rpc', 'missing-rpc']) {
+     const state = database([item('one')], failure);
+     const result = await run(state);
+-    assert.equal(result.earlyResponse.status, 500, failure);
++    assert.equal(result.earlyResponse.status, ['rpc', 'missing-rpc'].includes(failure) ? 409 : 500, failure);
++    assert.equal(state.writes, 0);
+     assert.equal(result.earlyResponse.body.success, false);
+     assert.deepEqual(result.bookingUpdatePayload, {});
+     if (failure.startsWith('read-') && ['read-1', 'read-2'].includes(failure)) assert.equal(state.writes, 0);
+   }
+-  console.log('PASS FINISH errors: booking/items/sync/services reads and item update cannot report success');
++  console.log('PASS FINISH errors: booking/items/services reads and atomic RPC cannot report success');
+ 
+-  const partial = database([item('one'), item('two')], 'write-2');
+-  const failed = await run(partial);
+-  assert.equal(failed.earlyResponse.status, 500);
+-  const saved = structuredClone(segments(partial.rows[0])[0]);
+-  assert.ok(saved.actualEndTime);
+-  assert.equal(segments(partial.rows[1])[0].actualEndTime, undefined);
+-  const retry = database(partial.rows);
+-  assert.equal((await run(retry)).earlyResponse, undefined);
+-  assert.equal(segments(retry.rows[0])[0].actualStartTime, saved.actualStartTime);
+-  assert.equal(segments(retry.rows[0])[0].actualEndTime, saved.actualEndTime);
+-  assert.ok(segments(retry.rows[1])[0].actualEndTime);
+-  console.log('PASS FINISH partial second write: error returned, reload/retry keeps saved start/end');
++  const before = [item('one'), item('two')];
++  const batchFailure = database(before, 'write-2');
++  assert.equal((await run(batchFailure)).earlyResponse.status, 409);
++  assert.deepEqual(batchFailure.rows, before);
++  const retry = database(batchFailure.rows);
++  assert.equal((await run(retry)).bookingPersisted, true);
++  const saved = structuredClone(retry.rows);
++  const again = database(saved);
++  assert.equal((await run(again)).bookingPersisted, true);
++  assert.deepEqual(again.rows.map(row => segments(row)[0].actualEndTime), saved.map(row => segments(row)[0].actualEndTime));
++  console.log('PASS FINISH atomic RPC failure: no local per-item writes; retry preserves committed stamps');
+ 
+   const parent = item('parent');
+-  const child = { ...item('child'), options: { mergedIntoId: 'parent' } };
+-  const childFailure = database([parent, child], 'write-2');
+-  const childResult = await run(childFailure, 'A', ['parent']);
+-  assert.equal(childResult.earlyResponse.status, 500);
+-  assert.equal(childFailure.rows[0].status, 'CLEANING');
+-  assert.equal(childFailure.rows[1].status, 'IN_PROGRESS');
+-  console.log('PASS FINISH child synchronization update failure does not report success');
++  const child = { ...item('child'), options: JSON.stringify(JSON.stringify({ mergedIntoId: 'parent' })) };
++  const merged = database([parent, child]);
++  assert.equal((await run(merged, 'A', ['parent'])).bookingPersisted, true);
++  assert.equal(merged.rows[0].status, 'CLEANING');
++  assert.equal(merged.rows[1].status, 'CLEANING');
++  console.log('PASS FINISH merged-child status included in same RPC batch');
+ 
+   const sequential = item('seq');
+   sequential.options = { sequentialSlots: 2 };
+@@ -94,7 +100,7 @@ async function main() {
+   const oldB = { id: 'old-b', ktvId: 'B', sequenceSlot: 2, voided: true, actualStartTime: start, duration: 30 };
+   sequential.segments.push(oldB, { id: 'new-b', ktvId: 'B', sequenceSlot: 2, duration: 30 });
+   const a = database([sequential]);
+-  assert.equal((await run(a)).bookingUpdatePayload.status, 'IN_PROGRESS');
++  assert.equal((await run(a)).bookingData.status, 'IN_PROGRESS');
+   assert.ok(segments(a.rows[0])[0].actualEndTime);
+   assert.deepEqual(segments(a.rows[0])[1], oldB);
+   assert.equal(segments(a.rows[0])[2].actualEndTime, undefined);
+@@ -102,14 +108,14 @@ async function main() {
+   bSeed[0].segments = segments(bSeed[0]);
+   bSeed[0].segments[2].actualStartTime = start;
+   const b = database(bSeed);
+-  assert.equal((await run(b, 'B')).bookingUpdatePayload.status, 'CLEANING');
++  assert.equal((await run(b, 'B')).bookingData.status, 'CLEANING');
+   assert.deepEqual(segments(b.rows[0])[1], oldB);
+   assert.equal(segments(b.rows[0])[0].actualEndTime, segments(a.rows[0])[0].actualEndTime);
+   assert.ok(segments(b.rows[0])[2].actualEndTime);
+   console.log('PASS FINISH sequential: A waits B, latest B completes, cancelled B and A stamps untouched');
+ 
+   const noB = { ...item('only-a'), options: { sequentialSlots: 2, finishedAfterA: true }, segments: [{ ...item('only-a').segments[0], sequenceSlot: 1 }] };
+-  assert.equal((await run(database([noB]))).bookingUpdatePayload.status, 'CLEANING');
++  assert.equal((await run(database([noB]))).bookingData.status, 'CLEANING');
+   const replaced = item('replaced');
+   replaced.segments[0].voided = true;
+   const stale = database([replaced]);
+diff --git a/scripts/test_sequential_flows.cjs b/scripts/test_sequential_flows.cjs
+index 03d86713..f0258a1f 100644
+--- a/scripts/test_sequential_flows.cjs
++++ b/scripts/test_sequential_flows.cjs
+@@ -294,4 +294,40 @@ try {
+   assert.equal(service().options.dispatchHistory.at(-1).action,'DISPATCH');
+   console.log('PASS UPDATE B UI: A gửi trước → gán B sau → sửa tên/giờ → lưu & điều phối → tài khoản B/reload → sửa lần 2; A giữ nguyên');
+ 
++
++  reset(); chooseA(); minutes(0,30); send(); sequential(); assignLiveB();
++  const originalB = structuredClone(segmentOf(row('DEMO-B')));
++  at('10:01'); assignLiveB('DEMO-C','2026-09-26T10:40',20);
++  at('10:02'); assignLiveB('DEMO-B','2026-09-26T10:50',10);
++  assert.equal(service().staffList.filter(person=>person.ktvId==='DEMO-B').length,1);
++  assert.equal(row('DEMO-B').segments.length,2);
++  assert.equal(row('DEMO-B').segments.find(segment=>segment.id===originalB.id).voided,true);
++  assert.notEqual(segmentOf(row('DEMO-B')).id,originalB.id);
++  checkPlan('DEMO-B','10:50',10);
++  name('DEMO-B','B quay lại');
++  changeInput(elements(card.tree,e=>e.props['aria-label']==='Giờ bắt đầu B')[0],'10:55');
++  checkPlan('DEMO-B','10:55',10); assertName('DEMO-B','B quay lại');
++  stamp('DEMO-B','actualStartTime','10:55');
++  const liveActual=segmentOf(row('DEMO-B')).actualStartTime;
++  name('DEMO-B','B đã bắt đầu');
++  assert.equal(segmentOf(row('DEMO-B')).actualStartTime,liveActual);
++  assert.equal(row('DEMO-B').segments.find(segment=>segment.id===originalB.id).actualStartTime,undefined);
++  app=hooks(SequentialDemo);quick=card=null;flush();
++  checkPlan('DEMO-B','10:55',10);assertName('DEMO-B','B đã bắt đầu');
++  assert.equal(segmentOf(row('DEMO-B')).actualStartTime,liveActual);
++  assert.equal(demoAccountState(service(),'DEMO-C',now).canStart,false);
++  const legacySnapshot=order();
++  const legacyB=legacySnapshot.services[0].staffList.find(person=>person.ktvId==='DEMO-B');
++  const legacyOld=structuredClone(legacyB);legacyOld.segments=legacyOld.segments.filter(segment=>segment.voided===true);
++  legacyB.segments=legacyB.segments.filter(segment=>segment.voided!==true);
++  legacySnapshot.services[0].staffList.splice(1,0,legacyOld);
++  data.set(key,JSON.stringify(legacySnapshot));
++  app=hooks(SequentialDemo);quick=card=null;flush();
++  name('DEMO-B','B đã bắt đầu');
++  assert.equal(service().staffList.filter(person=>person.ktvId==='DEMO-B').length,1);
++  assert.equal(row('DEMO-B').segments.length,2);
++  checkPlan('DEMO-B','10:55',10);
++  assert.equal(segmentOf(row('DEMO-B')).actualStartTime,liveActual);
++  console.log('PASS RETURNING B DEMO: B → C → B keeps one row/history, latest plan/name and actual stamp across edit/reload; old C cannot start');
++
+ } finally { global.Date = originalDate; console.log = originalLog; }
+diff --git a/scripts/test_sequential_patch_errors.cjs b/scripts/test_sequential_patch_errors.cjs
+new file mode 100644
+index 00000000..4461c298
+--- /dev/null
++++ b/scripts/test_sequential_patch_errors.cjs
+@@ -0,0 +1,60 @@
++const assert = require('node:assert/strict');
++const { readFileSync } = require('node:fs');
++const { join } = require('node:path');
++const ts = require('typescript');
++const { NextResponse } = require('next/server');
++const source = readFileSync(join(__dirname, '../app/api/ktv/booking/route.ts'), 'utf8');
++const compiled = ts.transpileModule(source.slice(source.indexOf('export async function PATCH(')), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
++async function scenario(failure) {
++ let handlerCalls = 0, bookingWrites = 0, released = 0, safetyReads = 0;
++ const atomic = failure === 'atomic' || failure === 'atomic-release';
++ const atomicData = { id: 'booking', status: 'IN_PROGRESS', updatedAt: 'atomic timestamp' };
++ const db = { from(table) {
++  let write = false, sharedItems = false;
++  const query = {
++   select(fields) { if (table === 'BookingItems') sharedItems = fields.includes('technicianCodes'); return this; },
++   update() { write = true; if (table === 'Bookings') bookingWrites++; return this; },
++   eq() { return this; }, maybeSingle() { return Promise.resolve(result()); },
++   then(resolve, reject) { return Promise.resolve(result()).then(resolve, reject); }
++  };
++  function result() {
++   const phase = table === 'TurnQueue' ? 'turn-read' : table === 'BookingItems' ? (sharedItems ? 'items-read' : 'safety-read') : bookingWrites === 1 ? 'booking-write' : 'safety-write';
++   if (phase === 'safety-read') safetyReads++;
++   if (atomic && (phase === 'booking-write' || phase === 'safety-read' || phase === 'safety-write')) throw new Error('Must not write/recompute after atomic handler');
++   if (failure === phase) return { data: null, error: { message: `Injected ${phase} failed` } };
++   if (failure === `${phase}-throw`) throw new Error(`Injected ${phase} network`);
++   if (failure === `${phase}-empty`) return { data: table === 'BookingItems' ? [] : null, error: null };
++   if (table === 'TurnQueue') return { data: { booking_item_id: 'item' }, error: null };
++   if (table === 'BookingItems') return { data: sharedItems ? [{ id: 'item', technicianCodes: ['B'], guest_id: 'g' }] : [{ status: 'IN_PROGRESS', serviceId: 'service' }], error: null };
++   return { data: { id: 'booking', status: 'CLEANING' }, error: null };
++  }
++  return query;
++ } };
++ const exportsStub = {};
++ const fn = new Function('exports', 'NextResponse', 'getSupabaseAdmin', 'KtvBookingPatchSchema', 'getBusinessDateFromConfig', 'handleStartTimer', 'handleFinishService', 'handleReleaseKTV', 'isUtilityService', 'require', compiled);
++ fn(exportsStub, NextResponse, () => db, { safeParse: body => ({ success: true, data: body }) }, async () => '2026-09-26', async () => ({ bookingUpdatePayload: {} }), async () => {
++  handlerCalls++;
++  if (atomic) return { bookingUpdatePayload: { status: 'STALE_STATUS' }, bookingPersisted: true, bookingData: atomicData };
++  if (failure === 'handler-early') return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false, error: 'Already saved a portion; reload.' }, { status: 500 }) };
++  if (failure === 'handler-throw') throw new Error('Injected handler network');
++  return { bookingUpdatePayload: { status: 'CLEANING' } };
++ }, async () => { released++; }, () => false, id => {
++  assert.equal(id, '@/lib/dispatch-status'); return { recomputeBookingStatus: () => 'IN_PROGRESS' };
++ });
++ const response = await exportsStub.PATCH(new Request('http://localhost/api/ktv/booking', { method: 'PATCH', body: JSON.stringify({ bookingId: 'booking', techCode: 'B', status: 'CLEANING', ...(failure === 'atomic-release' ? { action: 'RELEASE_KTV' } : {}) }), headers: { 'Content-Type': 'application/json' } }));
++ const body = await response.json();
++ if (atomic) { assert.equal(response.status, 200); assert.equal(body.success, true); assert.deepEqual(body.data, atomicData); assert.equal(bookingWrites, 0); assert.equal(safetyReads, 0); assert.equal(handlerCalls, 1); }
++ else if (!failure) { assert.equal(response.status, 200); assert.equal(body.success, true); assert.equal(body.data.status, 'IN_PROGRESS'); assert.equal(bookingWrites, 2); }
++ else {
++  assert.ok(response.status >= 400, `${failure} must not report HTTP200`);
++  assert.equal(body.success, false, `${failure} must not report successful completion`);
++  assert.ok(body.error);
++  if (failure.startsWith('turn-') || failure.startsWith('items-')) assert.equal(handlerCalls, 0);
++  if (failure.startsWith('handler-') || failure.startsWith('turn-') || failure.startsWith('items-')) assert.equal(bookingWrites, 0);
++ }
++ assert.equal(released, failure === 'atomic-release' ? 1 : 0);
++ console.log(`PASS PATCH ${failure || 'success'}: no false success, no later writes after failure`);
++}
++(async () => {
++ for (const failure of ['turn-read', 'items-read', 'booking-write', 'booking-write-empty', 'safety-read', 'safety-read-empty', 'safety-write', 'safety-read-throw', 'safety-write-throw', 'handler-early', 'handler-throw', 'atomic', 'atomic-release', null]) await scenario(failure);
++})().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/scripts/test_sequential_sql.cjs b/scripts/test_sequential_sql.cjs
+index 60850c16..d96603d5 100644
+--- a/scripts/test_sequential_sql.cjs
++++ b/scripts/test_sequential_sql.cjs
+@@ -568,6 +568,89 @@ async function main() {
+   assert.deepEqual(await item(midnight),nightAfter);
+   console.log('PASS MIDNIGHT: inline rollback, explicit next-day ISO + pending name/note atomic, stale/invalid/overlap preserve latest/A');
+ 
++  // Two live sequential items in one booking: each overlap needs its own confirmation.
++  const multi1=await businessFixture('overlap1'), multi2=await businessFixture('overlap2');
++  for (const id of [multi1,multi2]) {
++    await dispatch(id,[planned(id,id.a,1,'10:00',30)]);
++    await apply(id,'ENABLE_SEQUENTIAL',{itemId:id.item,expectedRevision:(await item(id)).options.dispatchRevision});
++    await apply(id,'ASSIGN_B',{itemId:id.item,toKtvId:id.b,plannedStartAt:'2026-09-26T03:30:00Z',durationMinutes:30,expectedRevision:(await item(id)).options.dispatchRevision});
++  }
++  await db.query('UPDATE "BookingItems" SET "bookingId"=$1 WHERE id=$2',[multi1.booking,multi2.item]);
++  await db.query('UPDATE "KtvAssignments" SET booking_id=$1 WHERE booking_item_id=$2',[multi1.booking,multi2.item]);
++  const overlapBaseline=await Promise.all([item(multi1),item(multi2)]);
++  const multiEdits=overlapBaseline.map(row=>{const update=updateOf(row),b=update.segments.find(s=>s.sequenceSlot===2&&!s.voided);b.startTime='10:15';b.endTime='10:45';return update;});
++  async function unchanged(){assert.deepEqual(await Promise.all([item(multi1),item(multi2)]),overlapBaseline);}
++  const overlapPayload={date:'2026-09-26',itemUpdates:multiEdits};
++  await assert.rejects(apply(multi1,'DRAFT',{...overlapPayload,confirmOverlap:true}),err=>JSON.parse(err.detail).itemId===multi1.item);
++  await unchanged();
++  await assert.rejects(apply(multi1,'DISPATCH',{...overlapPayload,confirmedOverlapItemIds:[multi1.item]}),err=>JSON.parse(err.detail).itemId===multi2.item);
++  await unchanged();
++  await assert.rejects(apply(multi1,'DRAFT',{...overlapPayload,confirmedOverlapItemIds:true}),/không hợp lệ/);
++  await unchanged();
++  await apply(multi1,'DISPATCH',{...overlapPayload,confirmedOverlapItemIds:[multi1.item,multi2.item]});
++  assert.equal((await item(multi1)).segments.find(s=>s.sequenceSlot===2&&!s.voided).startTime,'10:15');
++  assert.equal((await item(multi2)).segments.find(s=>s.sequenceSlot===2&&!s.voided).startTime,'10:15');
++  console.log('PASS scoped overlap: two items confirmed separately, rejected attempts rollback all, blanket multi-item confirmation blocked');
++
++  // FINISH acceptance with the actual sequential guard + audit triggers still enabled.
++  await db.exec(`
++    ALTER TABLE "Bookings" ADD COLUMN rating numeric;
++    ALTER TABLE "BookingItems" ADD COLUMN "itemRating" numeric, ADD COLUMN handover_status text,
++      ADD COLUMN handover_images jsonb, ADD COLUMN handover_skipped boolean,
++      ADD COLUMN handover_submitted_at timestamptz, ADD COLUMN "serviceId" text;
++    CREATE TABLE "BookingGuests" (id text PRIMARY KEY, booking_id text, rating numeric);
++  `);
++  await db.exec(readFileSync(join(__dirname, '../supabase/migrations/20260926140000_ktv_finish_service_atomic.sql'), 'utf8'));
++  const finishId=midnight;
++  const childId='atomic-finish-child';
++  await db.query(`INSERT INTO "BookingItems" (id,"bookingId",status,segments,options)
++    VALUES ($1,$2,'NEW','[]',$3::jsonb)`,[childId,finishId.booking,JSON.stringify({mergedIntoId:finishId.item})]);
++  async function finishBaseline(){
++    const booking=(await db.query('SELECT id,status,rating FROM "Bookings" WHERE id=$1',[finishId.booking])).rows[0];
++    const snapshots=(await db.query(`SELECT id,segments,status,"itemRating",guest_id,options,handover_status,
++      handover_images,handover_skipped,handover_submitted_at,"serviceId" FROM "BookingItems" WHERE "bookingId"=$1 ORDER BY id`,[finishId.booking])).rows;
++    return {booking,snapshots};
++  }
++  const finishAtomic=async(baseline,updates,status)=>(await db.query('SELECT ktv_finish_service_atomic($1,$2,$3,$4,$5,$6) AS result',
++    [finishId.booking,JSON.stringify(baseline.booking),JSON.stringify(baseline.snapshots),'[]',JSON.stringify(updates),status])).rows[0].result;
++  const beforeFinish=await item(finishId),finishAPlan=structuredClone(beforeFinish.segments);
++  finishAPlan.find(seg=>seg.sequenceSlot===1).actualEndTime='2026-09-26T04:00:00Z';
++  const aBaseline=await finishBaseline();
++  const aFinished=await finishAtomic(aBaseline,[{id:finishId.item,segments:JSON.stringify(finishAPlan),status:'IN_PROGRESS'},
++    {id:childId,status:'IN_PROGRESS'}],'IN_PROGRESS');
++  assert.equal(aFinished.booking.status,'IN_PROGRESS');
++  assert.ok(aFinished.booking.updatedAt);
++  const afterA=await item(finishId);
++  assert.equal(afterA.status,'IN_PROGRESS');
++  assert.equal(afterA.segments.find(seg=>seg.sequenceSlot===2&&!seg.voided).actualEndTime,undefined);
++  assert.equal(afterA.options.dispatchRevision,beforeFinish.options.dispatchRevision+1);
++  assert.equal(afterA.options.dispatchHistory.length,beforeFinish.options.dispatchHistory.length+1);
++  assert.equal(afterA.options.dispatchHistory.at(-1).action,'UPDATE');
++  assert.ok(afterA.options.dispatchHistory.at(-1).changes.some(change=>change.employeeId===finishId.a&&change.field==='actualEndTime'));
++  assert.deepEqual(afterA.options.serviceNamesForKtvs,beforeFinish.options.serviceNamesForKtvs);
++  assert.equal((await db.query('SELECT status FROM "BookingItems" WHERE id=$1',[childId])).rows[0].status,'IN_PROGRESS');
++  await assert.rejects(finishAtomic(aBaseline,[{id:finishId.item,segments:finishAPlan,status:'IN_PROGRESS'}],'IN_PROGRESS'),/changed/);
++  assert.deepEqual(await item(finishId),afterA);
++  await actual(finishId,finishId.b,'actualStartTime','2026-09-26T17:10:00Z');
++  const beforeBFinish=await item(finishId),bFinishPlan=structuredClone(beforeBFinish.segments);
++  bFinishPlan.find(seg=>seg.sequenceSlot===2&&!seg.voided).actualEndTime='2026-09-26T17:30:00Z';
++  const bBaseline=await finishBaseline();
++  const bFinished=await finishAtomic(bBaseline,[{id:finishId.item,segments:bFinishPlan,status:'CLEANING'},
++    {id:childId,status:'CLEANING'}],'CLEANING');
++  assert.equal(bFinished.booking.status,'CLEANING');
++  const afterB=await item(finishId);
++  assert.equal(afterB.status,'CLEANING');
++  assert.deepEqual(afterB.segments.find(seg=>seg.sequenceSlot===1),beforeBFinish.segments.find(seg=>seg.sequenceSlot===1));
++  assert.equal(afterB.options.dispatchRevision,beforeBFinish.options.dispatchRevision+1);
++  assert.equal(afterB.options.dispatchHistory.length,beforeBFinish.options.dispatchHistory.length+1);
++  assert.ok(afterB.options.dispatchHistory.at(-1).changes.some(change=>change.employeeId===finishId.b&&change.field==='actualEndTime'));
++  assert.equal((await db.query('SELECT status FROM "BookingItems" WHERE id=$1',[childId])).rows[0].status,'CLEANING');
++  // An idempotent retry has no new actual-time edit or revision/history entry.
++  await finishAtomic(await finishBaseline(),[{id:finishId.item,segments:afterB.segments,status:'CLEANING'},
++    {id:childId,status:'CLEANING'}],'CLEANING');
++  assert.deepEqual(await item(finishId),afterB);
++  console.log('PASS integrated atomic FINISH: enum Booking status, guard + audit, A waits B, B/child CLEANING, latest revisions/history, stale rejection and retry');
++
+   await db.close();
+ }
+ 
+diff --git a/supabase/migrations/20260926120000_dispatch_edit_history.sql b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+index 13f6550d..973e1ea7 100644
+--- a/supabase/migrations/20260926120000_dispatch_edit_history.sql
++++ b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+@@ -149,7 +149,7 @@ BEGIN
+     result := dispatch_assign_sequential_slot_b(p_booking_id,item_row.id,b->>'ktvId',plan_start,
+       (next_b->>'duration')::integer,p_confirm_overlap);
+     IF result->>'code' = 'OVERLAP_CONFIRM_REQUIRED' THEN
+-      RAISE EXCEPTION USING MESSAGE = 'OVERLAP_CONFIRM_REQUIRED', DETAIL = result::text;
++      RAISE EXCEPTION USING MESSAGE = 'OVERLAP_CONFIRM_REQUIRED', DETAIL = (result || jsonb_build_object('itemId', item_row.id))::text;
+     END IF;
+     IF COALESCE((result->>'success')::boolean,false) = false THEN RAISE EXCEPTION 'Chưa cập nhật được kế hoạch B'; END IF;
+   END IF;
+@@ -198,11 +198,16 @@ BEGIN
+   PERFORM set_config('app.dispatch_action', p_action, true);
+   PERFORM set_config('app.dispatch_actor', COALESCE(p_actor, 'null')::text, true);
+   IF p_action IN ('DRAFT','DISPATCH') THEN
++    IF p_payload ? 'confirmedOverlapItemIds' AND jsonb_typeof(p_payload->'confirmedOverlapItemIds') IS DISTINCT FROM 'array' THEN
++      RAISE EXCEPTION 'Danh sách xác nhận chồng giờ không hợp lệ';
++    END IF;
+     FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
+       SELECT * INTO item_row FROM "BookingItems" WHERE id = edit->>'id';
+       IF jsonb_unwrap_string(item_row.options)->>'sequentialSlots' = '2'
+          AND item_row.status IN ('PREPARING','READY','IN_PROGRESS') THEN
+-        PERFORM dispatch_save_sequential_update(p_booking_id,edit,COALESCE((p_payload->>'confirmOverlap')::boolean,false));
++        PERFORM dispatch_save_sequential_update(p_booking_id,edit,
++          COALESCE(p_payload->'confirmedOverlapItemIds', '[]'::jsonb) ? item_row.id
++          OR (jsonb_array_length(item_updates) = 1 AND COALESCE((p_payload->>'confirmOverlap')::boolean,false)));
+         live_ids := array_append(live_ids,item_row.id);
+       ELSE
+         normal_updates := normal_updates || jsonb_build_array(edit);
+diff --git a/supabase/migrations/20260926140000_ktv_finish_service_atomic.sql b/supabase/migrations/20260926140000_ktv_finish_service_atomic.sql
+new file mode 100644
+index 00000000..35f3a7b1
+--- /dev/null
++++ b/supabase/migrations/20260926140000_ktv_finish_service_atomic.sql
+@@ -0,0 +1,83 @@
++-- Service-role FINISH commit: all item/child writes and booking status share one transaction.
++CREATE OR REPLACE FUNCTION ktv_finish_service_atomic(
++    p_booking_id text, p_booking_snapshot jsonb, p_item_snapshots jsonb,
++    p_guest_ratings jsonb, p_updates jsonb, p_booking_status text
++) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
++DECLARE
++    booking_row "Bookings"%ROWTYPE;
++    item_row "BookingItems"%ROWTYPE;
++    snapshot jsonb;
++    patch jsonb;
++    field text;
++    guests jsonb;
++BEGIN
++    IF jsonb_typeof(p_item_snapshots) IS DISTINCT FROM 'array'
++       OR jsonb_typeof(p_updates) IS DISTINCT FROM 'array'
++       OR jsonb_typeof(p_guest_ratings) IS DISTINCT FROM 'array'
++       OR jsonb_array_length(p_updates) = 0
++       OR p_booking_status IS NULL
++       OR p_booking_status NOT IN ('NEW','PREPARING','IN_PROGRESS','CLEANING','FEEDBACK','DONE') THEN
++        RAISE EXCEPTION 'Invalid FINISH batch';
++    END IF;
++    SELECT * INTO booking_row FROM "Bookings" WHERE id = p_booking_id FOR UPDATE;
++    IF NOT FOUND THEN RAISE EXCEPTION 'Booking not found'; END IF;
++    -- Match dispatch's lock order: booking, items by id, guests by id.
++    PERFORM id FROM "BookingItems" WHERE "bookingId" = p_booking_id ORDER BY id FOR UPDATE;
++    PERFORM id FROM "BookingGuests" WHERE booking_id = p_booking_id ORDER BY id FOR UPDATE;
++    IF p_booking_snapshot->>'id' IS DISTINCT FROM p_booking_id
++       OR to_jsonb(booking_row)->'status' IS DISTINCT FROM p_booking_snapshot->'status'
++       OR to_jsonb(booking_row)->'rating' IS DISTINCT FROM p_booking_snapshot->'rating' THEN
++        RAISE EXCEPTION 'FINISH snapshot changed; reload booking';
++    END IF;
++    SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'rating',rating) ORDER BY id),'[]') INTO guests
++      FROM "BookingGuests" WHERE booking_id = p_booking_id;
++    IF guests IS DISTINCT FROM (SELECT COALESCE(jsonb_agg(value ORDER BY value->>'id'),'[]') FROM jsonb_array_elements(p_guest_ratings)) THEN
++        RAISE EXCEPTION 'FINISH ratings changed; reload booking';
++    END IF;
++    IF jsonb_array_length(p_item_snapshots) <> (SELECT count(*) FROM "BookingItems" WHERE "bookingId" = p_booking_id)
++       OR jsonb_array_length(p_item_snapshots) <> (SELECT count(DISTINCT value->>'id') FROM jsonb_array_elements(p_item_snapshots))
++       OR jsonb_array_length(p_updates) <> (SELECT count(DISTINCT value->>'id') FROM jsonb_array_elements(p_updates)) THEN
++        RAISE EXCEPTION 'FINISH item set changed; reload booking';
++    END IF;
++    FOR snapshot IN SELECT value FROM jsonb_array_elements(p_item_snapshots) LOOP
++        SELECT * INTO item_row FROM "BookingItems" WHERE id = snapshot->>'id' AND "bookingId" = p_booking_id;
++        IF NOT FOUND THEN RAISE EXCEPTION 'FINISH item not found'; END IF;
++        -- Every field used by the handler must be present, not omitted by a malformed payload.
++        IF NOT snapshot ?& ARRAY['id','segments','status','itemRating','guest_id','options','handover_status','handover_images','handover_skipped','handover_submitted_at','serviceId'] THEN
++            RAISE EXCEPTION 'Incomplete FINISH snapshot';
++        END IF;
++        FOR field IN SELECT jsonb_object_keys(snapshot) LOOP
++            IF (CASE WHEN field = 'handover_submitted_at'
++                THEN item_row.handover_submitted_at IS DISTINCT FROM (snapshot->>field)::timestamptz
++                ELSE to_jsonb(item_row)->field IS DISTINCT FROM snapshot->field END) THEN
++                RAISE EXCEPTION 'FINISH item snapshot changed: %; reload booking', item_row.id;
++            END IF;
++        END LOOP;
++    END LOOP;
++    FOR patch IN SELECT value FROM jsonb_array_elements(p_updates) LOOP
++        IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(p_item_snapshots) s WHERE s->>'id' = patch->>'id')
++           OR patch->>'status' IS NULL
++           OR patch->>'status' NOT IN ('CANCELLED','DONE','IN_PROGRESS','CLEANING','FEEDBACK')
++           OR NOT patch ? 'status'
++           OR (patch - ARRAY['id','segments','status','handover_images','handover_status','handover_skipped','handover_submitted_at']) <> '{}'::jsonb THEN
++            RAISE EXCEPTION 'Invalid FINISH item update';
++        END IF;
++        IF patch ? 'segments' AND jsonb_typeof(patch->'segments') = 'string' THEN
++            patch := jsonb_set(patch,'{segments}',(patch->>'segments')::jsonb);
++        END IF;
++        IF patch ? 'segments' AND jsonb_typeof(patch->'segments') IS DISTINCT FROM 'array' THEN
++            RAISE EXCEPTION 'Invalid FINISH segments';
++        END IF;
++        SELECT * INTO item_row FROM "BookingItems" WHERE id = patch->>'id' AND "bookingId" = p_booking_id;
++        SELECT * INTO item_row FROM jsonb_populate_record(item_row,patch - 'id');
++        UPDATE "BookingItems" SET segments = item_row.segments, status = item_row.status,
++            handover_images = item_row.handover_images, handover_status = item_row.handover_status,
++            handover_skipped = item_row.handover_skipped, handover_submitted_at = item_row.handover_submitted_at
++          WHERE id = item_row.id;
++    END LOOP;
++    SELECT * INTO booking_row FROM jsonb_populate_record(booking_row, jsonb_build_object('status', p_booking_status));
++    UPDATE "Bookings" SET status = booking_row.status, "updatedAt" = now() WHERE id = p_booking_id RETURNING * INTO booking_row;
++    RETURN jsonb_build_object('success',true,'booking',to_jsonb(booking_row));
++END $$;
++REVOKE ALL ON FUNCTION ktv_finish_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text) FROM PUBLIC, anon, authenticated;
++GRANT EXECUTE ON FUNCTION ktv_finish_service_atomic(text,jsonb,jsonb,jsonb,jsonb,text) TO service_role;

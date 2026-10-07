@@ -68,6 +68,10 @@ const summaryOf = (ac: PromotionApplyConditions): PromotionConditionsSummary => 
 });
 const NO_CONDITIONS: PromotionApplyConditions = { match: 'ALL', conditions: [] };
 const VIP_90: PromotionApplyConditions = { match: 'ALL', conditions: [{ menus: ['NHP'], categories: [], serviceIds: [], minMinutes: 90, minOrderAmount: null }] };
+const WB_CONDITIONS: PromotionApplyConditions = {
+  match: 'ALL',
+  conditions: [{ menus: [], categories: [], serviceIds: [], minMinutes: null, minOrderAmount: null, sources: ['WEB_BOOKING'] }],
+};
 
 const CANDIDATES: CustomerCandidate[] = [
   { id: 'CUS001', name: 'Charlotte Nguyen', phone: '0901234567', email: 'charlotte@example.com', gender: 'FEMALE', nationality: 'Việt Nam', language: 'vi', visitCount: 12, totalSpent: 14_400_000, lastVisitAt: '2026-10-01T18:05:00', vipMenuCount: 9, guestType: 'SINGLE', qualifyingOrderCount: 6 },
@@ -162,6 +166,29 @@ const buildFixtures = () => {
       usageCount: 20,
       createdAt: '2026-08-25T10:00:00+07:00',
     },
+    {
+      id: 'CMP_WEBBOOKING',
+      campaignCode: 'WB2026',
+      name: 'Web Booking Special Voucher',
+      nameI18n: { vi: 'Voucher Đặt Lịch Website' },
+      descriptionI18n: {},
+      description: 'Áp dụng cho các đơn đặt qua Web Booking.',
+      benefit: { type: 'PERCENT_DISCOUNT', value: 20, config: {}, serviceId: null },
+      usage: { type: 'ONE_TIME', limit: 1, maxPerOrder: 1, maxPerCustomer: null },
+      qualification: { type: 'MANUAL_ASSIGNMENT', value: null, config: null },
+      applicableMenus: { menus: [], categories: [], serviceIds: [], allMenus: true },
+      applyConditions: WB_CONDITIONS,
+      conditionsSummary: summaryOf(WB_CONDITIONS),
+      validity: { type: 'CAMPAIGN_PERIOD', days: null },
+      assignmentMode: 'MANUAL_ONLY',
+      status: 'ACTIVE',
+      validFrom: vnStartOfDay('2026-10-01'),
+      validUntil: vnEndOfDay('2026-12-31'),
+      voucherPrefix: 'WB2',
+      issuedPassCount: 1,
+      usageCount: 0,
+      createdAt: '2026-10-01T10:00:00+07:00',
+    },
   ];
 
   const pass = (
@@ -218,6 +245,9 @@ const buildFixtures = () => {
       usage: { type: 'LIMITED', limit: 10, usedCount: 9, maxPerOrder: 1 },
       lastUsedAt: '2026-09-29T14:00:00+07:00',
       validUntil: vnEndOfDay('2026-12-28'),
+    }),
+    pass('675c9b6a-05fd-45b1-b8fb-1253b794c4a6', 'WB2-YJD784', 'CMP_WEBBOOKING', charlotte, {
+      qrPayload: 'https://admin.example/voucher?t=IatxSM2gdml8TJbPc6_rSmdcXgsgq6QI4pOs88MD6qA',
     }),
   ];
 
@@ -432,8 +462,19 @@ export const createMockPromotionApi = (): PromotionApi => {
   return {
     async getSpaContact() {
       await delay();
-      // Mirrors EMAIL_CONFIG_DEFAULTS (lib/email-config.ts); the real API reads the saved email config.
-      return ok({ brandName: 'ORIA SPA', hotline: '+84 964 090 277', address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh', websiteUrl: 'https://oria-spa.vercel.app' });
+      return ok({
+        brandName: 'ORIA SPA',
+        hotline: '+84 964 090 277',
+        address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam',
+        websiteUrl: 'https://oria-spa.vercel.app',
+        webBookingInstructions: {
+          vi: 'Vui lòng đặt lịch qua website để áp dụng voucher này.',
+          en: 'Please book through our website to apply this voucher.',
+          cn: '请通过我们的网站预约以使用此优惠券。',
+          jp: '当クーポンをご利用の際は、ウェブサイトよりご予約ください。',
+          kr: '이 바우처를 사용하시려면 웹사이트를 통해 예약해 주세요.',
+        },
+      });
     },
 
     async getOverview() {

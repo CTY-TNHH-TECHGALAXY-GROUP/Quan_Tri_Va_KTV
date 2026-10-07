@@ -74,12 +74,13 @@ export async function PATCH(request: Request) {
         if (!supabase) throw new Error('Supabase admin not initialized');
 
         const today = await getBusinessDateFromConfig(supabase);
-        const { data: turnForSync } = await supabase
+        const { data: turnForSync, error: turnError } = await supabase
             .from('TurnQueue')
             .select('id, booking_item_id, booking_item_ids, last_served_at, start_time, turns_completed, status, room_id')
             .eq('employee_id', technicianCode)
             .eq('date', today)
             .maybeSingle();
+        if (turnError) throw turnError;
 
         const updatePayload: any = { updatedAt: new Date().toISOString() };
         
@@ -88,8 +89,10 @@ export async function PATCH(request: Request) {
         let allItemIdsForThisKTV: string[] = [];
 
         if (technicianCode) {
-            const { data: ktvItems } = await supabase.from('BookingItems').select('id, "technicianCodes", guest_id').eq('bookingId', bookingId);
+            const { data: ktvItems, error: ktvItemsError } = await supabase.from('BookingItems').select('id, "technicianCodes", guest_id').eq('bookingId', bookingId);
             
+            if (ktvItemsError) throw ktvItemsError;
+            if (!ktvItems) throw new Error('Không đọc được dịch vụ; vui lòng thử lại.');
             const targetItem = targetBookingItemId ? (ktvItems || []).find((i: any) => i.id === targetBookingItemId) : null;
             
             if (targetItem && targetItem.guest_id) {
@@ -124,7 +127,9 @@ export async function PATCH(request: Request) {
         // ─── 4. ROUTE TO HANDLER ───
         let result: HandlerResult = { bookingUpdatePayload: {} };
 
-        if (status === 'IN_PROGRESS' || action === 'NEXT_SEGMENT_PREPARE') {
+        if (action === 'RELEASE_KTV') {
+            result = await handleReleaseKTV(ctx);
+        } else if (status === 'IN_PROGRESS' || action === 'NEXT_SEGMENT_PREPARE') {
             result = await handleStartTimer(ctx);
         } else if (status === 'CLEANING' || status === 'DONE' || status === 'FEEDBACK') {
             result = await handleFinishService(ctx);
@@ -136,12 +141,16 @@ export async function PATCH(request: Request) {
         // ─── 6. MERGE & APPLY BOOKING UPDATE ───
         Object.assign(updatePayload, result.bookingUpdatePayload);
 
-        let data = null;
-        if (Object.keys(updatePayload).length > 0) {
+        let data = result.bookingData || null;
+        if (!result.bookingPersisted && Object.keys(updatePayload).length > 0) {
             const res = await supabase.from('Bookings').update(updatePayload).eq('id', bookingId).select().maybeSingle();
+            if (res.error) throw res.error;
+            if (!res.data) throw new Error('Không lưu được đơn; vui lòng tải lại.');
             data = res.data;
-        } else {
+        } else if (!result.bookingPersisted) {
             const res = await supabase.from('Bookings').select().eq('id', bookingId).maybeSingle();
+            if (res.error) throw res.error;
+            if (!res.data) throw new Error('Không tìm thấy đơn; vui lòng tải lại.');
             data = res.data;
         }
 
@@ -149,13 +158,15 @@ export async function PATCH(request: Request) {
         // Re-read latest item statuses AFTER all updates are committed,
         // then recompute booking status one final time to catch race conditions
         // where 2 KTVs finish nearly simultaneously.
-        if (status === 'CLEANING' || status === 'FEEDBACK' || status === 'DONE') {
+        if (!result.bookingPersisted && (status === 'CLEANING' || status === 'FEEDBACK' || status === 'DONE')) {
             try {
-                const { data: latestItems } = await supabase
+                const { data: latestItems, error: latestItemsError } = await supabase
                     .from('BookingItems')
                     .select('status, serviceId, Services!BookingItems_serviceId_fkey(nameVN, is_utility)')
                     .eq('bookingId', bookingId);
-                if (latestItems && latestItems.length > 0) {
+                if (latestItemsError) throw latestItemsError;
+                if (!latestItems?.length) throw new Error('Không đọc được trạng thái dịch vụ sau lưu; vui lòng tải lại.');
+                if (latestItems.length > 0) {
                     const validItems = latestItems.filter((i: any) => {
                         return !isUtilityService(i);
                     });
@@ -166,19 +177,17 @@ export async function PATCH(request: Request) {
                     
                     if (data && data.status !== correctStatus) {
                         console.log(`🛡️ [Safety Recompute] Race condition detected! Booking ${bookingId}: ${data.status} → ${correctStatus} (items: ${statuses.join(',')})`);
-                        await supabase.from('Bookings').update({ status: correctStatus }).eq('id', bookingId);
+                        const { error: correctionError } = await supabase.from('Bookings').update({ status: correctStatus }).eq('id', bookingId);
+                        if (correctionError) throw correctionError;
                         data.status = correctStatus;
                     }
                 }
             } catch (safetyErr) {
-                console.error('⚠️ [Safety Recompute] Non-critical error:', safetyErr);
+                console.error('⚠️ [Safety Recompute] Error:', safetyErr);
+                throw safetyErr;
             }
         }
 
-        // ─── 7. RELEASE_KTV (runs after booking update, independent) ───
-        if (action === 'RELEASE_KTV' && technicianCode) {
-            await handleReleaseKTV(ctx);
-        }
 
         // Removed destructive syncOrderTimelineToDb
 

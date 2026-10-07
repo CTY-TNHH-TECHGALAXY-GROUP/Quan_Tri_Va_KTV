@@ -5,8 +5,10 @@ export interface WorkSegment {
   startTime: string;
   actualStartTime?: string | null;
   duration: number;
+  sequenceSlot?: number;
   endTime: string;
   actualEndTime?: string | null;
+  pauses?: Array<{ from: string; to?: string | null }>;
   feedbackTime?: string | null;
   startPhotoUrl?: string | null;
   guestSlipperPhotoUrl?: string | null;
@@ -78,6 +80,10 @@ export interface ServiceBlock {
   guestId?: string; // ID của Guest đang sử dụng dịch vụ này
 }
 
+// Id of a service shown on the board before the server has created it (swapped for the real id on success).
+export const TEMP_SVC_PREFIX = 'tmp-svc-';
+export const isTempServiceId = (id: string) => id.startsWith(TEMP_SVC_PREFIX);
+
 export type DispatchStatus = 'pending' | 'dispatched' | 'PREPARING' | 'IN_PROGRESS' | 'CLEANING' | 'FEEDBACK' | 'DONE' | 'CANCELLED';
 
 export interface PendingOrder {
@@ -107,6 +113,11 @@ export interface PendingOrder {
   guestCount?: number;
   isReturning?: boolean;
   visitCount?: number;
+  /** Nhãn khách — CustomerVisitService (một công thức với CRM). */
+  visitStatus?: 'RETURNING' | 'VISITED' | 'NEW';
+  cancelledVisits?: number;
+  closedVisits?: number;
+  cancelRate?: number | null;
   nationality?: string;
   customerGender?: string;
   timeStart?: string | null;
@@ -114,6 +125,8 @@ export interface PendingOrder {
   customerLang?: string;
   accessToken?: string | null;
   rating?: number | null;
+  /** Scale the rating was given on (4|5, column rating_scale). */
+  ratingScale?: number;
   feedbackNote?: string | null;
   /** KTV chấm quầy ở màn Reward (bảng KTVReviewReception). */
   ktvReviewsOfReception?: {

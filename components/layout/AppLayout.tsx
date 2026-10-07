@@ -23,9 +23,10 @@ interface AppLayoutProps {
    */
   headerRight?: React.ReactNode;
   disablePullToRefresh?: boolean;
+  onBeforeNavigate?: () => boolean;
 }
 
-export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disablePullToRefresh = false, headerRight }: AppLayoutProps) {
+export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disablePullToRefresh = false, headerRight, onBeforeNavigate }: AppLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar state
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true); // Desktop sidebar state
   const [mounted, setMounted] = useState(false);
@@ -148,6 +149,7 @@ export function AppLayout({ children, hideAI = false, title = 'Oria Spa', disabl
         onClose={() => setIsSidebarOpen(false)}
         isExpanded={isSidebarExpanded}
         onToggleExpand={() => setIsSidebarExpanded(!isSidebarExpanded)}
+        onBeforeNavigate={onBeforeNavigate}
       />
 
       <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden">

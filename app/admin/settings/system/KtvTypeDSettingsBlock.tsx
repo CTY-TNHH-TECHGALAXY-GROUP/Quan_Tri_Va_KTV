@@ -3,6 +3,7 @@ import { Save, Loader2, CheckCircle2, DollarSign, Star, Coins, AlertTriangle, Sh
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { TYPE_D_DISCIPLINE_CASES, type TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
+import { DEFAULT_TYPE_D_DEDUCTION } from '@/lib/services/RatingScaleService';
 
 /**
  * Ba chế tài, viết bằng tiếng người. Giá trị phải khớp `TypeDDisciplineAction`
@@ -22,6 +23,7 @@ const THU_TU_CASE: TypeDDisciplineCaseKey[] = [
     'NO_SHOW_NO_NOTICE',
     'LATE_REPORTED_NO_SHOW',
     'ABSENT_REPORTED_NO_SHOW',
+    'SUDDEN_OFF_REPORTED',
 ];
 
 
@@ -50,7 +52,7 @@ export function KtvTypeDSettingsBlock() {
                 
                 // Defaults
                 if (!parsed.ktv_type_d_rating_deduction) {
-                    parsed.ktv_type_d_rating_deduction = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
+                    parsed.ktv_type_d_rating_deduction = { ...DEFAULT_TYPE_D_DEDUCTION[4] };
                 }
                 if (!parsed.ktv_type_d_discipline_rules) { parsed.ktv_type_d_discipline_rules = { "ABSENT_NO_NOTICE":10, "ABSENT_EARLY_NOTICE":5, "LATE_NO_UPDATE":5, "ORDER_REJECT_MULTIPLIER":3, "MIN_HOURS_TO_REJECT":3 }; }
                 // Cấu hình cũ chưa có khối CASES → điền mặc định quy chế, để bảng
@@ -201,23 +203,9 @@ export function KtvTypeDSettingsBlock() {
                             </div>
                             <h2 className="text-lg font-black text-gray-900">Khấu trừ đánh giá (%)</h2>
                         </div>
-                        <SaveButton group="stars" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['ktv_type_d_rating_deduction'], 'stars')} />
                     </div>
-                    <div className="space-y-3">
-                        {[0,1,2,3,4].map(star => (
-                            <div key={star} className="flex items-center gap-4">
-                                <div className="w-16 font-bold text-gray-700">{star} Sao</div>
-                                <NumberInput
-                                    value={((configs.ktv_type_d_rating_deduction?.[star] !== undefined ? configs.ktv_type_d_rating_deduction[star] : (star === 4 ? 0 : 1))) * 100}
-                                    onChange={(v: any) => {
-                                        const newVal = { ...configs.ktv_type_d_rating_deduction, [star]: v / 100 };
-                                        handleChange('ktv_type_d_rating_deduction', newVal);
-                                    }}
-                                    suffix="%"
-                                />
-                            </div>
-                        ))}
-                    </div>
+                    {/* Bảng % trừ theo sao đã chuyển lên khung "Thang đánh giá" (chung mọi loại, theo thang 4/5). */}
+                    <p className="text-sm text-gray-500">Chỉnh ở khung <b>Thang đánh giá &amp; khấu trừ theo sao</b> phía trên.</p>
                 </div>
             </div>
 
@@ -305,7 +293,10 @@ export function KtvTypeDSettingsBlock() {
                                                 onChange={(e) => doiCase({ action: e.target.value })}
                                                 className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                                             >
-                                                {CHE_TAI.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                                {CHE_TAI
+                                                    // Case "không bao giờ khoá": chỉ cho chọn trừ giờ hoặc bỏ qua.
+                                                    .filter(c => !TYPE_D_DISCIPLINE_CASES[key].khongKhoa || c.value === 'DEDUCT' || c.value === 'NONE')
+                                                    .map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                                             </select>
                                         </div>
                                         <div className="col-span-2">
@@ -337,7 +328,7 @@ export function KtvTypeDSettingsBlock() {
                         <div className="space-y-4">
                             <NumberInput khiNao="Lúc điểm danh" hint="Trừ NGAY lúc điểm danh. So với giờ đã đăng ký; nếu đã bấm Báo trễ thì so với giờ mới đã hẹn. Đến đúng giờ hoặc sớm hơn thì không sao." label="Đến trễ (kể cả đã báo trễ mà vẫn trễ hơn giờ đã báo)" value={configs.ktv_type_d_discipline_rules?.LATE_NO_UPDATE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, LATE_NO_UPDATE: v})} suffix="Giờ" />
                             <NumberInput khiNao="Lúc đổi lịch" hint="Trừ NGAY lúc KTV bấm đổi. Ba mốc: ngày làm còn ở TƯƠNG LAI → đổi thoải mái, không phạt; từ 00:00 đến trước 07:00 của CHÍNH NGÀY LÀM → vẫn đổi được nhưng trừ số giờ này; từ 07:00 trở đi → không cho đổi nữa, chỉ còn đường báo trễ." label="Bỏ ca đã đăng ký — đổi sang OFF từ 00:00 đến trước 07:00 ngày làm" value={configs.ktv_type_d_discipline_rules?.ABSENT_EARLY_NOTICE ?? 5} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_EARLY_NOTICE: v})} suffix="Giờ" />
-                            <NumberInput khiNao="Lúc bấm Nghỉ đột xuất" hint="Trừ NGAY lúc KTV bấm Nghỉ đột xuất ở màn chấm công. Chỉ áp dụng khi nhân viên đó được bật cờ sudden_leave_penalty." label="Nghỉ đột xuất" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
+                            <NumberInput khiNao="Lúc bấm Tan ca sớm" hint="Trừ NGAY khi KTV đã vào ca rồi bấm tan ca trước giờ (ghi nhận nghỉ đột xuất). Chỉ áp dụng khi nhân viên đó được bật cờ sudden_leave_penalty. Báo off đột xuất TRƯỚC khi vào ca thì theo dòng 'Báo off đột xuất' ở bảng trên." label="Tan ca sớm (nghỉ đột xuất giữa ca)" value={configs.ktv_type_d_discipline_rules?.ABSENT_NO_NOTICE ?? 10} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ABSENT_NO_NOTICE: v})} suffix="Giờ" />
                             <NumberInput khiNao="Lúc bấm Từ chối tua" hint="Trừ NGAY lúc bấm Từ chối. Trừ theo THỜI LƯỢNG TUA nhân hệ số này — tua 60 phút với hệ số 3 thì mất 3 giờ. Mỗi tua bị từ chối tính riêng." label="Từ chối tua đã gán (hệ số x thời lượng)" value={configs.ktv_type_d_discipline_rules?.ORDER_REJECT_MULTIPLIER ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, ORDER_REJECT_MULTIPLIER: v})} suffix="x giờ tua" />
                             <NumberInput khiNao="Lúc bấm Từ chối tua" hint="Quỹ giờ phải LỚN HƠN mức này mới được từ chối tua. Thấp hơn hoặc bằng: hệ thống cảnh báo trước, KTV xác nhận lần hai thì vẫn từ chối được nhưng bị KHOÁ TÀI KHOẢN. Đặt 0 để bỏ cửa chặn." label="Hạn mức giờ tối thiểu mới được từ chối tua" value={configs.ktv_type_d_discipline_rules?.MIN_HOURS_TO_REJECT ?? 3} onChange={(v:any) => handleChange('ktv_type_d_discipline_rules', {...configs.ktv_type_d_discipline_rules, MIN_HOURS_TO_REJECT: v})} suffix="Giờ" />
                         </div>

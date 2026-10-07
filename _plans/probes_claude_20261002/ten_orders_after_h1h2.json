@@ -1,0 +1,961 @@
+{
+  "project": "eknggruuiuadwldacpmb",
+  "branch": "test/sequential-two-slot-handoff-20260928",
+  "commit": "db19ebe8",
+  "businessDate": "2026-10-02",
+  "prefix": "QA10-MUQXJUI0",
+  "bookings": [
+    "QA10-MUQXJUI0-B1",
+    "QA10-MUQXJUI0-B2",
+    "QA10-MUQXJUI0-B3",
+    "QA10-MUQXJUI0-B4",
+    "QA10-MUQXJUI0-B5",
+    "QA10-MUQXJUI0-B6",
+    "QA10-MUQXJUI0-B7",
+    "QA10-MUQXJUI0-B8",
+    "QA10-MUQXJUI0-B9",
+    "QA10-MUQXJUI0-B10"
+  ],
+  "scenarios": [
+    "Một KTV, một dịch vụ 1 phút",
+    "Một KTV, hai dịch vụ gộp 1+2 phút",
+    "Hai KTV cùng một dịch vụ, hoàn tất độc lập",
+    "A/B nối tiếp 1+2 phút, B bắt đầu khi A đang làm",
+    "A/B nối tiếp, A bàn giao rồi B mới bắt đầu",
+    "A/B nối tiếp, B xong trước A",
+    "A/B nối tiếp, khách đánh giá trước khi bàn giao",
+    "A/B nối tiếp, bàn giao thiếu ảnh rồi thử lại",
+    "Một KTV, hai dịch vụ đi lần lượt và tự kéo đơn",
+    "A đến trễ, quầy đổi thời lượng A/B rồi hoàn tất"
+  ],
+  "evidence": [
+    {
+      "label": "B1 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B1-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B1-I1\",\"bedId\":\"QA10-MUQXJUI0-D1\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:19:20.343743+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI011\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA10-M"
+    },
+    {
+      "label": "B1 assignment count",
+      "pass": true,
+      "detail": "1/1"
+    },
+    {
+      "label": "B1 START Q10UQXJUI011",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B1\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D1\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B1\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R1\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:22."
+    },
+    {
+      "label": "B1 CLEANING Q10UQXJUI011",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B1\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D1\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B1\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R1\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:22.576"
+    },
+    {
+      "label": "B1 RELEASE Q10UQXJUI011",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B1\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D1\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B1\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R1\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:22.576"
+    },
+    {
+      "label": "B1 DONE Q10UQXJUI011",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B1\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D1\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B1\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R1\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:22.576\",\"tipA"
+    },
+    {
+      "label": "B1 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B1 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B1 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B1 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED"
+    },
+    {
+      "label": "B1 Q10UQXJUI011 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B1 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B2 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B2-I1\":1,\"QA10-MUQXJUI0-B2-I2\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B2-I1\",\"bedId\":\"QA10-MUQXJUI0-D2\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:19:26.83534+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI021\",\"field\":\"ktvId\",\"before\":n"
+    },
+    {
+      "label": "B2 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B2 START Q10UQXJUI021",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B2\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D2\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B2\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R2\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:28."
+    },
+    {
+      "label": "B2 CLEANING Q10UQXJUI021",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B2\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D2\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B2\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R2\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:28.202"
+    },
+    {
+      "label": "B2 RELEASE Q10UQXJUI021",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B2\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D2\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B2\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R2\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:28.202"
+    },
+    {
+      "label": "B2 DONE Q10UQXJUI021",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B2\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D2\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B2\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R2\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:28.202\",\"tipA"
+    },
+    {
+      "label": "B2 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B2 all items DONE",
+      "pass": true,
+      "detail": "DONE,DONE"
+    },
+    {
+      "label": "B2 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B2 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B2 Q10UQXJUI021 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B2 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE",
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B3 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B3-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B3-I1\",\"bedId\":\"QA10-MUQXJUI0-D3\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:19:31.969008+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI031\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA10-M"
+    },
+    {
+      "label": "B3 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B3 START Q10UQXJUI031",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B3\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D3\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B3\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R3\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:33."
+    },
+    {
+      "label": "B3 START Q10UQXJUI032",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B3\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D3\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B3\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R3\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:33."
+    },
+    {
+      "label": "B3 CLEANING Q10UQXJUI031",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B3\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D3\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B3\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R3\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:33."
+    },
+    {
+      "label": "B3 RELEASE Q10UQXJUI031",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B3\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D3\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B3\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R3\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:33."
+    },
+    {
+      "label": "B3 item held for KTV2",
+      "pass": true
+    },
+    {
+      "label": "B3 KTV2 remains working",
+      "pass": true
+    },
+    {
+      "label": "B3 CLEANING Q10UQXJUI032",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B3\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D3\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B3\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R3\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:33.064"
+    },
+    {
+      "label": "B3 RELEASE Q10UQXJUI032",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B3\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D3\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B3\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R3\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:33.064"
+    },
+    {
+      "label": "B3 DONE Q10UQXJUI032",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B3\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D3\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B3\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R3\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:33.064\",\"tipA"
+    },
+    {
+      "label": "B3 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B3 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B3 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B3 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B3 Q10UQXJUI031 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B3 Q10UQXJUI032 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B3 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B4 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B4-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B4-I1\",\"bedId\":\"QA10-MUQXJUI0-D4\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:19:40.714192+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI041\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA10-M"
+    },
+    {
+      "label": "B4 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B4 START Q10UQXJUI041",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B4\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D4\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B4\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R4\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:41."
+    },
+    {
+      "label": "B4 START Q10UQXJUI042",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B4\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D4\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B4\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R4\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:41."
+    },
+    {
+      "label": "B4 CLEANING Q10UQXJUI041",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B4\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D4\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B4\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R4\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:41."
+    },
+    {
+      "label": "B4 RELEASE Q10UQXJUI041",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B4\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D4\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B4\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R4\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:41."
+    },
+    {
+      "label": "B4 CLEANING Q10UQXJUI042",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B4\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D4\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B4\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R4\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:41.834"
+    },
+    {
+      "label": "B4 RELEASE Q10UQXJUI042",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B4\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D4\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B4\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R4\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:41.834"
+    },
+    {
+      "label": "B4 DONE Q10UQXJUI042",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B4\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D4\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B4\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R4\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:41.834\",\"tipA"
+    },
+    {
+      "label": "B4 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B4 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B4 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B4 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B4 Q10UQXJUI041 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B4 Q10UQXJUI042 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B4 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B5 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B5-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B5-I1\",\"bedId\":\"QA10-MUQXJUI0-D5\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:19:48.55436+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI052\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA10-MU"
+    },
+    {
+      "label": "B5 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B5 START Q10UQXJUI051",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B5\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D5\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B5\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R5\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:49."
+    },
+    {
+      "label": "B5 CLEANING Q10UQXJUI051",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B5\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D5\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B5\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R5\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:49."
+    },
+    {
+      "label": "B5 RELEASE Q10UQXJUI051",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B5\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D5\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B5\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R5\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:49."
+    },
+    {
+      "label": "B5 START Q10UQXJUI052",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B5\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D5\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B5\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R5\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:49."
+    },
+    {
+      "label": "B5 CLEANING Q10UQXJUI052",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B5\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D5\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B5\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R5\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:49.539"
+    },
+    {
+      "label": "B5 RELEASE Q10UQXJUI052",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B5\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D5\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B5\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R5\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:49.539"
+    },
+    {
+      "label": "B5 DONE Q10UQXJUI052",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B5\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D5\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B5\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R5\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:49.539\",\"tipA"
+    },
+    {
+      "label": "B5 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B5 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B5 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B5 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B5 Q10UQXJUI051 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B5 Q10UQXJUI052 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B5 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B6 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B6-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B6-I1\",\"bedId\":\"QA10-MUQXJUI0-D6\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:19:56.415587+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI062\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA10-M"
+    },
+    {
+      "label": "B6 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B6 START Q10UQXJUI061",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B6\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D6\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B6\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R6\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:57."
+    },
+    {
+      "label": "B6 START Q10UQXJUI062",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B6\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D6\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B6\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R6\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:57."
+    },
+    {
+      "label": "B6 CLEANING Q10UQXJUI062",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B6\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D6\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B6\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R6\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:57."
+    },
+    {
+      "label": "B6 RELEASE Q10UQXJUI062",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B6\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D6\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B6\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R6\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:57."
+    },
+    {
+      "label": "B6 CLEANING Q10UQXJUI061",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B6\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D6\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B6\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R6\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:57.408"
+    },
+    {
+      "label": "B6 RELEASE Q10UQXJUI061",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B6\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D6\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B6\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R6\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:57.408"
+    },
+    {
+      "label": "B6 DONE Q10UQXJUI061",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B6\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D6\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B6\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R6\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:19:57.408\",\"tipA"
+    },
+    {
+      "label": "B6 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B6 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B6 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B6 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B6 Q10UQXJUI061 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B6 Q10UQXJUI062 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B6 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B7 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B7-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B7-I1\",\"bedId\":\"QA10-MUQXJUI0-D7\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:20:05.629875+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI072\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA10-M"
+    },
+    {
+      "label": "B7 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B7 START Q10UQXJUI071",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B7\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D7\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B7\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R7\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:06."
+    },
+    {
+      "label": "B7 rating before release does not complete",
+      "pass": true
+    },
+    {
+      "label": "B7 START Q10UQXJUI072",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B7\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D7\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B7\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R7\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:06.763"
+    },
+    {
+      "label": "B7 CLEANING Q10UQXJUI071",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B7\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D7\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B7\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R7\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:06.763"
+    },
+    {
+      "label": "B7 RELEASE Q10UQXJUI071",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B7\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D7\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B7\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R7\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:06.763"
+    },
+    {
+      "label": "B7 CLEANING Q10UQXJUI072",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B7\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D7\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B7\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R7\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:06.763\",\""
+    },
+    {
+      "label": "B7 RELEASE Q10UQXJUI072",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B7\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D7\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B7\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R7\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:06.763\",\"tipA"
+    },
+    {
+      "label": "B7 DONE Q10UQXJUI072",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B7\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D7\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B7\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R7\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:06.763\",\"tipA"
+    },
+    {
+      "label": "B7 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B7 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B7 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B7 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B7 Q10UQXJUI071 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B7 Q10UQXJUI072 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B7 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B8 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B8-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B8-I1\",\"bedId\":\"QA10-MUQXJUI0-D8\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:20:13.734282+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI082\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA10-M"
+    },
+    {
+      "label": "B8 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B8 START Q10UQXJUI081",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B8\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D8\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B8\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R8\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:14."
+    },
+    {
+      "label": "B8 CLEANING Q10UQXJUI081",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B8\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D8\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B8\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R8\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:14."
+    },
+    {
+      "label": "B8 empty photo release rejected",
+      "pass": true,
+      "detail": "409 {\"success\":false,\"error\":\"Chưa xác nhận được bàn giao. Tải lại trước khi thử lại; ảnh trên thiết bị được giữ nguyên.\"}"
+    },
+    {
+      "label": "B8 failed release no handover stamp",
+      "pass": true
+    },
+    {
+      "label": "B8 RELEASE Q10UQXJUI081",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B8\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D8\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B8\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R8\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:14."
+    },
+    {
+      "label": "B8 START Q10UQXJUI082",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B8\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D8\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B8\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R8\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:14."
+    },
+    {
+      "label": "B8 CLEANING Q10UQXJUI082",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B8\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D8\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B8\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R8\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:14.842"
+    },
+    {
+      "label": "B8 RELEASE Q10UQXJUI082",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B8\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D8\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B8\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R8\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:14.842"
+    },
+    {
+      "label": "B8 DONE Q10UQXJUI082",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B8\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D8\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B8\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R8\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:14.842\",\"tipA"
+    },
+    {
+      "label": "B8 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B8 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B8 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B8 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B8 Q10UQXJUI081 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B8 Q10UQXJUI082 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B8 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B9 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B9-I1\":1,\"QA10-MUQXJUI0-B9-I2\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B9-I1\",\"bedId\":\"QA10-MUQXJUI0-D9\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:20:23.801561+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI091\",\"field\":\"ktvId\",\"before\":"
+    },
+    {
+      "label": "B9 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B9 assignments after dispatch",
+      "pass": true,
+      "detail": [
+        {
+          "employee_id": "Q10UQXJUI091",
+          "booking_item_id": "QA10-MUQXJUI0-B9-I1",
+          "segment_id": "QA10-MUQXJUI0-B9-S1",
+          "status": "ACTIVE",
+          "planned_start_time": "2026-10-02T12:16:00.000Z",
+          "planned_end_time": "2026-10-02T12:17:00.000Z"
+        },
+        {
+          "employee_id": "Q10UQXJUI091",
+          "booking_item_id": "QA10-MUQXJUI0-B9-I2",
+          "segment_id": "QA10-MUQXJUI0-B9-S2",
+          "status": "QUEUED",
+          "planned_start_time": "2026-10-02T12:17:00.000Z",
+          "planned_end_time": "2026-10-02T12:19:00.000Z"
+        }
+      ]
+    },
+    {
+      "label": "B9 START Q10UQXJUI091",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B9\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D9\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B9\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R9\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:25."
+    },
+    {
+      "label": "B9 CLEANING Q10UQXJUI091",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B9\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D9\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B9\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R9\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:25."
+    },
+    {
+      "label": "B9 RELEASE Q10UQXJUI091",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B9\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D9\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B9\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R9\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:25."
+    },
+    {
+      "label": "B9 second assignment promoted",
+      "pass": true
+    },
+    {
+      "label": "B9 queue selects second item",
+      "pass": true
+    },
+    {
+      "label": "B9 GET KTV selects second item",
+      "pass": true,
+      "detail": "200 QA10-MUQXJUI0-B9-I2 turnqueue_legacy"
+    },
+    {
+      "label": "B9 START Q10UQXJUI091",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B9\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D9\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B9\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R9\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:25."
+    },
+    {
+      "label": "B9 CLEANING Q10UQXJUI091",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B9\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D9\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B9\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R9\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:25.03\""
+    },
+    {
+      "label": "B9 RELEASE Q10UQXJUI091",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B9\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D9\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B9\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R9\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:25.03\""
+    },
+    {
+      "label": "B9 DONE Q10UQXJUI091",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B9\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D9\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B9\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R9\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:25.03\",\"tipAm"
+    },
+    {
+      "label": "B9 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B9 all items DONE",
+      "pass": true,
+      "detail": "DONE,DONE"
+    },
+    {
+      "label": "B9 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B9 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B9 Q10UQXJUI091 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B9 COMPLETE",
+      "pass": true,
+      "detail": {
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE",
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    },
+    {
+      "label": "B10 admin DISPATCH commit",
+      "pass": true,
+      "detail": "{\"success\":true,\"revisions\":{\"QA10-MUQXJUI0-B10-I1\":1},\"savedItems\":[{\"id\":\"QA10-MUQXJUI0-B10-I1\",\"bedId\":\"QA10-MUQXJUI0-D10\",\"status\":\"PREPARING\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:20:33.574622+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI0101\",\"field\":\"ktvId\",\"before\":null,\"segmentId\":\"QA"
+    },
+    {
+      "label": "B10 assignment count",
+      "pass": true,
+      "detail": "2/2"
+    },
+    {
+      "label": "B10 START Q10UQXJUI0101",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B10\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D10\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B10\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R10\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20"
+    },
+    {
+      "label": "B10 admin edit accepted",
+      "pass": true,
+      "detail": "{\"success\":true,\"revision\":3,\"savedItem\":{\"id\":\"QA10-MUQXJUI0-B10-I1\",\"bedId\":\"QA10-MUQXJUI0-D10\",\"status\":\"IN_PROGRESS\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:20:33.574622+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI0101\",\"field\":\"ktvId\",\"before\":null,\"segmentId\""
+    },
+    {
+      "label": "B10 B planned day unchanged after late A",
+      "pass": true,
+      "detail": "expected=2026-10-02 actual=2026-10-02"
+    },
+    {
+      "label": "B10 repeated edit accepted",
+      "pass": true,
+      "detail": "{\"success\":true,\"revision\":4,\"savedItem\":{\"id\":\"QA10-MUQXJUI0-B10-I1\",\"bedId\":\"QA10-MUQXJUI0-D10\",\"status\":\"IN_PROGRESS\",\"options\":{\"dispatchHistory\":[{\"at\":\"2026-10-02T12:20:33.574622+00:00\",\"actor\":{},\"action\":\"DISPATCH\",\"changes\":[{\"after\":\"Q10UQXJUI0101\",\"field\":\"ktvId\",\"before\":null,\"segmentId\""
+    },
+    {
+      "label": "B10 B planned day unchanged after repeated edit",
+      "pass": true
+    },
+    {
+      "label": "B10 ambiguous day change rejected",
+      "pass": true
+    },
+    {
+      "label": "B10 START Q10UQXJUI0102",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B10\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D10\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B10\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R10\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20"
+    },
+    {
+      "label": "B10 CLEANING Q10UQXJUI0101",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B10\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D10\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B10\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R10\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20"
+    },
+    {
+      "label": "B10 RELEASE Q10UQXJUI0101",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B10\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D10\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"IN_PROGRESS\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B10\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R10\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20"
+    },
+    {
+      "label": "B10 CLEANING Q10UQXJUI0102",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B10\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D10\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"CLEANING\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B10\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R10\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:34"
+    },
+    {
+      "label": "B10 RELEASE Q10UQXJUI0102",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B10\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D10\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":null,\"source\":\"STANDARD_MENU\",\"status\":\"FEEDBACK\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B10\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R10\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:34"
+    },
+    {
+      "label": "B10 DONE Q10UQXJUI0102",
+      "pass": true,
+      "detail": "200 {\"success\":true,\"data\":{\"id\":\"QA10-MUQXJUI0-B10\",\"tip\":0,\"bedId\":\"QA10-MUQXJUI0-D10\",\"notes\":\"QA10 full-flow QA10-MUQXJUI0; xoa sau test\",\"rating\":5,\"source\":\"STANDARD_MENU\",\"status\":\"DONE\",\"timeEnd\":null,\"billCode\":\"QA10-MUQXJUI0-B10\",\"idLegacy\":null,\"roomName\":\"QA10-MUQXJUI0-R10\",\"createdAt\":\"2026-10-02T12:19:14.765\",\"timeStart\":\"2026-10-02T12:20:34.625\",\""
+    },
+    {
+      "label": "B10 booking DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B10 all items DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "label": "B10 all started/ended/handed over",
+      "pass": true
+    },
+    {
+      "label": "B10 assignments COMPLETED",
+      "pass": true,
+      "detail": "COMPLETED,COMPLETED"
+    },
+    {
+      "label": "B10 Q10UQXJUI0101 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B10 Q10UQXJUI0102 not working after release",
+      "pass": true,
+      "detail": "waiting/null"
+    },
+    {
+      "label": "B10 COMPLETE",
+      "pass": true,
+      "detail": {
+        "plannedDay": "2026-10-02",
+        "farClock": "07:17",
+        "bookingStatus": "DONE",
+        "itemStatuses": [
+          "DONE"
+        ],
+        "assignments": [
+          "COMPLETED",
+          "COMPLETED"
+        ]
+      }
+    }
+  ],
+  "cleanup": {
+    "photosRemoved": 54,
+    "storageError": null,
+    "leftovers": {
+      "Bookings": 0,
+      "BookingItems": 0,
+      "Staff": 0,
+      "Rooms": 0,
+      "Beds": 0
+    }
+  }
+}

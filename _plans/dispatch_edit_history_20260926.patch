@@ -1,0 +1,1444 @@
+diff --git a/app/reception/dispatch/_components/QuickDispatchTable.tsx b/app/reception/dispatch/_components/QuickDispatchTable.tsx
+index 218fa731..855dadbf 100644
+--- a/app/reception/dispatch/_components/QuickDispatchTable.tsx
++++ b/app/reception/dispatch/_components/QuickDispatchTable.tsx
+@@ -355,8 +355,13 @@ export const QuickDispatchTable = ({
+   };
+ 
+   // Build fingerprint from current services data
+-  const buildFingerprint = (svcs: ServiceBlock[]) =>
+-    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.mergedServiceIds?.join(',') || ''}|${isTwoSlotSequential(s.options)}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.id || ''}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}:${st.serviceNameForKtv ?? s.options?.serviceNamesForKtvs?.[st.ktvId] ?? ''}`).join(',')}`).join(';');
++  const buildFingerprint = (svcs: ServiceBlock[]) => JSON.stringify(svcs.map(s => ({
++    id: s.id, mergedIntoId: s.mergedIntoId, mergedServiceIds: s.mergedServiceIds,
++    sequential: isTwoSlotSequential(s.options), revision: s.options?.dispatchRevision,
++    displayName: s.options?.displayName,
++    staff: s.staffList.map(st => ({ ktvId: st.ktvId, segments: st.segments,
++      name: st.serviceNameForKtv ?? s.options?.serviceNamesForKtvs?.[st.ktvId] ?? '', note: st.noteForKtv }))
++  })));
+ 
+   // Initialize / re-initialize group states when services change
+   useEffect(() => {
+@@ -390,15 +395,16 @@ export const QuickDispatchTable = ({
+                   ktvDisplayNames[staff.ktvId] = staff.ktvName;
+                 }
+                 roomIds.push(staff.segments?.[0]?.roomId || '');
+-                startTimes.push(staff.segments?.[0]?.startTime || defaultTime);
++                const saved = Number(item.options?.dispatchRevision || 0) > 0 || !['NEW', 'WAITING'].includes(item.status || 'NEW');
++                startTimes.push(staff.segments?.[0]?.startTime ?? (saved ? '' : defaultTime));
+                 
+-                let totalStaffDur = (staff.segments?.[0]?.duration !== undefined && staff.segments?.[0]?.duration !== null) ? staff.segments[0].duration : duration;
++                let totalStaffDur = (staff.segments?.[0]?.duration !== undefined && staff.segments?.[0]?.duration !== null) ? staff.segments[0].duration : (saved ? 0 : duration);
+                 let finalEndTime = staff.segments?.[0]?.endTime;
+                 
+                 // Parent segment duration already contains the TOTAL merged duration
+                 // Do NOT add child durations here — it would double-count
+                 if (!finalEndTime) {
+-                   finalEndTime = calcEndTime(staff.segments?.[0]?.startTime || defaultTime, totalStaffDur);
++                   finalEndTime = saved ? '' : calcEndTime(staff.segments?.[0]?.startTime ?? defaultTime, totalStaffDur);
+                 }
+                 
+                 endTimes.push(finalEndTime);
+@@ -519,7 +525,7 @@ export const QuickDispatchTable = ({
+           let bedId: string | null = state.ktvBedIds?.[idx] || null;
+           if (roomId && !bedId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
+           else if (bedId) { globalUsedBedIds.push(bedId); }
+-          const st = state.ktvStartTimes?.[idx] || getCurrentTime();
++          const st = state.ktvStartTimes?.[idx] ?? getCurrentTime();
+           
+           const originalDur = (updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration !== undefined && updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration !== null) ? updatedServices[svcIdx].staffList[0].segments[0].duration : updatedServices[svcIdx].duration;
+           
+@@ -541,11 +547,11 @@ export const QuickDispatchTable = ({
+             id: existingSeg?.id || `seg-${genId()}`,
+             roomId, bedId, startTime: st, duration: ktvDur,
+             sequenceSlot: state.confirmedSequential && items.length === 1 ? 1 : undefined,
+-            endTime: state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur),
++            endTime: state.ktvEndTimes?.[idx] ?? calcEndTime(st, ktvDur),
+           };
+           updatedServices[svcIdx] = {
+             ...updatedServices[svcIdx],
+-            staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
++            staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment, ...(updatedServices[svcIdx].staffList.find(r => r.ktvId === ktvId)?.segments.slice(1) || [])], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
+             options: { ...updatedServices[svcIdx].options, sequentialSlots: state.confirmedSequential && items.length === 1 ? 2 : undefined, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
+           };
+         });
+@@ -590,7 +596,7 @@ export const QuickDispatchTable = ({
+                     baseIdxToBedId.set(baseIdx, bedId);
+                 }
+             }
+-            const st = state.ktvStartTimes?.[ki] || getCurrentTime();
++            const st = state.ktvStartTimes?.[ki] ?? getCurrentTime();
+             const originalDur = (updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration !== undefined && updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration !== null) ? updatedServices[svcIdx].staffList[ki].segments[0].duration : updatedServices[svcIdx].duration;
+             
+             // For merged services, ktvDurations[0] already contains the TOTAL merged duration from the UI
+@@ -601,7 +607,7 @@ export const QuickDispatchTable = ({
+                 kd = (state.ktvDurations?.[ki] !== undefined && state.ktvDurations?.[ki] !== null) ? state.ktvDurations[ki] : originalDur;
+             }
+             
+-            const finalEndTime = state.ktvEndTimes?.[ki] || calcEndTime(st, kd);
++            const finalEndTime = state.ktvEndTimes?.[ki] ?? calcEndTime(st, kd);
+             
+             staffEntries.push({ ktvId, ktvName, roomId, bedId, startTime: st, endTime: finalEndTime, duration: kd });
+           }
+@@ -610,7 +616,7 @@ export const QuickDispatchTable = ({
+             staffList: staffEntries.map((e, si) => ({
+               id: updatedServices[svcIdx].staffList?.[si]?.id || `st-${item.id}-${e.ktvId}`,
+               ktvId: e.ktvId, ktvName: e.ktvName,
+-              segments: [{ ...updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0], id: updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime, sequenceSlot: state.confirmedSequential && items.length === 1 ? si + 1 : undefined }],
++              segments: [{ ...updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0], id: updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime, sequenceSlot: state.confirmedSequential && items.length === 1 ? si + 1 : undefined }, ...(updatedServices[svcIdx].staffList.find(r => r.ktvId === e.ktvId)?.segments.slice(1) || [])],
+               noteForKtv: (state.ktvNotes && state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] !== undefined) ? state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] : '',
+               serviceNameForKtv: state.ktvServiceNames?.[state.selectedKtvIds.indexOf(e.ktvId)] || '',
+             })),
+@@ -1035,10 +1041,10 @@ const ServiceGroupCard = ({
+     if (state.workMode === 'sequential') {
+         newStarts = [...(state.ktvStartTimes || [])];
+         newEnds = [...(state.ktvEndTimes || [])];
+-        let currentStart = newStarts[0] || getCurrentTime();
++        let currentStart = newStarts[0] ?? getCurrentTime();
+         for (let i = 0; i < state.selectedKtvIds.length; i++) {
+             newStarts[i] = currentStart;
+-            newEnds[i] = calcEndTime(currentStart, newDurations[i] || duration);
++            newEnds[i] = calcEndTime(currentStart, newDurations[i] ?? duration);
+             currentStart = newEnds[i];
+         }
+     }
+@@ -1086,7 +1092,7 @@ const ServiceGroupCard = ({
+ 
+       const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
+ 
+-      let defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
++      let defaultStart = latestEndTime || ((state.ktvStartTimes || [])[0] ?? getCurrentTime());
+       let defaultDur = duration;
+ 
+       if (state.workMode === 'sequential' && state.selectedKtvIds.length > 0) {
+@@ -1467,7 +1473,7 @@ const ServiceGroupCard = ({
+                          const newStarts: string[] = [];
+                          const newEnds: string[] = [];
+                          
+-                         let currentStart = (state.ktvStartTimes || [])[0] || getCurrentTime();
++                         let currentStart = (state.ktvStartTimes || [])[0] ?? getCurrentTime();
+                          
+                          for (let i = 0; i < numKtvs; i++) {
+                              const partDur = mode === 'sequential' ? Math.round(duration / numKtvs) : duration;
+diff --git a/app/reception/dispatch/_components/TimeEditorModal.tsx b/app/reception/dispatch/_components/TimeEditorModal.tsx
+index 8203b56c..6c057207 100644
+--- a/app/reception/dispatch/_components/TimeEditorModal.tsx
++++ b/app/reception/dispatch/_components/TimeEditorModal.tsx
+@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
+ import { motion, AnimatePresence } from 'motion/react';
+ import { X, Clock, Save, AlertCircle } from 'lucide-react';
+ import { supabase } from '@/lib/supabase';
++import { editDispatchActualTimes } from '../actions';
++import { dispatchRevision } from '@/lib/dispatch-edit-history';
+ 
+ interface TimeEditorModalProps {
+     isOpen: boolean;
+@@ -15,6 +17,7 @@ export function TimeEditorModal({ isOpen, onClose, orderId, itemId, onSuccess }:
+     const [loading, setLoading] = useState(false);
+     const [saving, setSaving] = useState(false);
+     const [segments, setSegments] = useState<any[]>([]);
++    const [expectedRevision, setExpectedRevision] = useState(0);
+     
+     // Lưu dưới dạng mảng các object thời gian theo từng KTV (từng segment)
+     const [segmentTimes, setSegmentTimes] = useState<{ktvId: string, actualStartTime: string, actualEndTime: string}[]>([]);
+@@ -28,12 +31,14 @@ export function TimeEditorModal({ isOpen, onClose, orderId, itemId, onSuccess }:
+     const loadItemData = async () => {
+         setLoading(true);
+         try {
+-            const { data, error } = await supabase.from('BookingItems').select('segments').eq('id', itemId).single();
++            const { data, error } = await supabase.from('BookingItems').select('segments, options').eq('id', itemId).single();
+             if (error) throw error;
+             if (data && data.segments) {
+                 let segs = typeof data.segments === 'string' ? JSON.parse(data.segments) : data.segments;
+                 if (!Array.isArray(segs)) segs = [];
+                 setSegments(segs);
++                const opts = typeof data.options === 'string' ? JSON.parse(data.options) : data.options;
++                setExpectedRevision(dispatchRevision(opts));
+                 
+                 // Khởi tạo state chỉnh sửa
+                 const initialTimes = segs.map((seg: any) => ({
+@@ -54,27 +59,18 @@ export function TimeEditorModal({ isOpen, onClose, orderId, itemId, onSuccess }:
+     const handleSave = async () => {
+         setSaving(true);
+         try {
+-            const updatedSegments = segments.map((seg, idx) => {
+-                const newSeg = { ...seg };
+-                if (segmentTimes[idx]) {
+-                    newSeg.actualStartTime = segmentTimes[idx].actualStartTime || null;
+-                    newSeg.actualEndTime = segmentTimes[idx].actualEndTime || null;
+-                }
+-                return newSeg;
+-            });
+-
+-            const { error } = await supabase.from('BookingItems').update({
+-                segments: JSON.stringify(updatedSegments)
+-            }).eq('id', itemId);
+-
+-            if (error) throw error;
++            const result = await editDispatchActualTimes(orderId, itemId, expectedRevision, segments.map((seg, idx) => ({
++                segmentId: seg.id, actualStartTime: segmentTimes[idx]?.actualStartTime || null,
++                actualEndTime: segmentTimes[idx]?.actualEndTime || null
++            })));
++            if (!result.success) throw new Error(result.error);
+ 
+             alert('Đã lưu thời gian thành công! (Dữ liệu sẽ được tự động cập nhật qua Realtime)');
+             if (onSuccess) onSuccess();
+             onClose();
+         } catch (err) {
+             console.error('Error saving item times:', err);
+-            alert('Có lỗi xảy ra khi lưu thời gian');
++            alert(err instanceof Error ? err.message : 'Có lỗi xảy ra khi lưu thời gian');
+         } finally {
+             setSaving(false);
+         }
+diff --git a/app/reception/dispatch/actions.ts b/app/reception/dispatch/actions.ts
+index 863c5359..00c91408 100644
+--- a/app/reception/dispatch/actions.ts
++++ b/app/reception/dispatch/actions.ts
+@@ -5,8 +5,9 @@ import { requirePermission, requireBusinessUser } from '@/lib/auth-server';
+ import { sendPushNotification } from '@/lib/push-helper';
+ import { createNotification } from '@/lib/notification-helper';
+ import { closeOpenPause, voidSegment } from '@/lib/segment-time';
+-import { liveDispatchConflict } from '@/lib/dispatch-live-guard';
++import { liveDispatchConflict, savedPlanFields } from '@/lib/dispatch-live-guard';
+ import { isTwoSlotSequential } from '@/lib/dispatch-status';
++import { currentCounterActor } from '@/lib/counter-action-log';
+ import { punishTurnIfIdle } from '@/lib/turn-punish';
+ import { layTrangThaiBaoCuaKtv, canhBaoLechKichBan } from '@/lib/ktv-notify-check';
+ import { BookingModificationService } from '@/lib/services/BookingModificationService';
+@@ -19,6 +20,12 @@ import { COMPLETED_STATUSES, isDummyPhone, isDummyEmail, isReturningCustomer, is
+ import { unstable_noStore as noStore } from 'next/cache';
+ import { after } from 'next/server';
+ 
++async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
++    const actor = await currentCounterActor();
++    return supabase.rpc('dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
++        p_payload: payload, p_actor: actor });
++}
++
+ async function resolveGuestIdsForUpdate(
+     supabase: any,
+     bookingId: string,
+@@ -757,11 +764,12 @@ export async function processDispatch(bookingId: string, dispatchData: {
+                     
+                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
+                         updateItem.segments = updateItem.segments.map(incomingSeg => {
+-                            const dbSeg = dbSegs.find((s: any) => s.ktvId === incomingSeg.ktvId);
++                            const dbSeg = dbSegs.find((s: any) => s.id === incomingSeg.id);
+                             if (dbSeg) {
+                                 // Trộn lại các mốc thời gian thực tế từ DB để không bị xóa mất
+                                 return {
+                                     ...incomingSeg,
++                                    ...savedPlanFields(dbSeg, incomingSeg),
+                                     actualStartTime: dbSeg.actualStartTime || incomingSeg.actualStartTime,
+                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
+                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
+@@ -848,16 +856,9 @@ export async function processDispatch(bookingId: string, dispatchData: {
+         }
+ 
+         // GỌI RPC MỚI ĐỂ THỰC THI TOÀN BỘ TRANSACTION
+-        const { data, error } = await supabase.rpc('dispatch_confirm_booking', {
+-            p_booking_id: bookingId,
+-            p_date: dispatchData.date,
+-            p_status: dispatchData.status || 'PREPARING',
+-            p_technician_code: dispatchData.technicianCode ?? null,
+-            p_bed_id: dispatchData.bedId ?? null,
+-            p_room_name: dispatchData.roomName ?? null,
+-            p_notes: dispatchData.notes ?? null,
+-            p_staff_assignments: dispatchData.staffAssignments || [],
+-            p_item_updates: dispatchData.itemUpdates || []
++        const { data, error } = await applyDispatchEdit(supabase, bookingId, 'DISPATCH', {
++            ...dispatchData, status: dispatchData.status || 'PREPARING',
++            staffAssignments: dispatchData.staffAssignments || [], itemUpdates: dispatchData.itemUpdates || []
+         });
+ 
+         if (error) {
+@@ -947,17 +948,56 @@ export async function processDispatch(bookingId: string, dispatchData: {
+     }
+ }
+ 
+-/** Ghi ý định nối tiếp khi A đã được điều phối, không chốt giờ A. */
+-export async function enableSequentialItem(bookingId: string, itemId: string) {
++/** Manual actual-time corrections use the same locked version/audit as dispatch. */
++export async function editDispatchActualTimes(bookingId: string, itemId: string, expectedRevision: number,
++    times: { segmentId: string; actualStartTime: string | null; actualEndTime: string | null }[]) {
+     try {
+         await requirePermission('dispatch_board');
+         const supabase = getSupabaseAdmin();
+         if (!supabase) throw new Error('Supabase admin not initialized');
+-        const { error } = await supabase.rpc('dispatch_enable_sequential_item', {
+-            p_booking_id: bookingId, p_item_id: itemId,
++        const { data: item, error: readError } = await supabase.from('BookingItems').select('segments, options')
++            .eq('id', itemId).eq('bookingId', bookingId).single();
++        if (readError) throw readError;
++        const segments = typeof item.segments === 'string' ? JSON.parse(item.segments) : item.segments;
++        if (!Array.isArray(segments) || !Array.isArray(times) || new Set(times.map(t => t.segmentId)).size !== times.length
++            || times.some(t => !segments.some(s => s.id === t.segmentId))) throw new Error('Chặng đã thay đổi; tải lại đơn');
++        const stamp = (value: string | null) => {
++            if (!value) return null;
++            if (!/(Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value)))
++                throw new Error('Giờ thực tế cần đúng dạng ISO, có múi giờ Z hoặc +07:00');
++            return new Date(value).toISOString();
++        };
++        const updated = segments.map(seg => {
++            const edit = times.find(t => t.segmentId === seg.id);
++            if (!edit) return seg;
++            const start = stamp(edit.actualStartTime), end = stamp(edit.actualEndTime);
++            if ((seg.actualStartTime && !start) || (seg.actualEndTime && !end))
++                throw new Error('Không xóa mốc giờ thực tế đã ghi nhận; chỉ chỉnh lại giờ');
++            if (end && (!start || Date.parse(end) < Date.parse(start))) throw new Error('Giờ kết thúc phải sau giờ bắt đầu');
++            if (seg.voided === true && (start !== stamp(seg.actualStartTime || null) || end !== stamp(seg.actualEndTime || null)))
++                throw new Error('Không sửa giờ lượt đã được thay');
++            if (seg.voided === true) return seg;
++            return { ...seg, actualStartTime: start, actualEndTime: end };
++        });
++        const { error } = await applyDispatchEdit(supabase, bookingId, 'EDIT_ACTUAL_TIME', {
++            itemUpdates: [{ id: itemId, options: { dispatchRevision: expectedRevision }, segments: updated }]
+         });
+         if (error) throw error;
+         return { success: true };
++    } catch (error: any) {
++        return { success: false, error: error.message || 'Không thể sửa giờ thực tế' };
++    }
++}
++
++/** Ghi ý định nối tiếp khi A đã được điều phối, không chốt giờ A. */
++export async function enableSequentialItem(bookingId: string, itemId: string, expectedRevision: number) {
++    try {
++        await requirePermission('dispatch_board');
++        const supabase = getSupabaseAdmin();
++        if (!supabase) throw new Error('Supabase admin not initialized');
++        const { data, error } = await applyDispatchEdit(supabase, bookingId, 'ENABLE_SEQUENTIAL', { itemId, expectedRevision });
++        if (error) throw error;
++        return { success: true, revision: data?.revisions?.[itemId] as number | undefined };
+     } catch (error: any) {
+         return { success: false, error: error.message || 'Không thể chọn nối tiếp' };
+     }
+@@ -971,19 +1011,13 @@ export async function handoffSequentialKtv(input: {
+     plannedStartAt: string;
+     durationMinutes: number;
+     confirmOverlap: boolean;
++    expectedRevision: number;
+ }) {
+     try {
+         await requirePermission('dispatch_board');
+         const supabase = getSupabaseAdmin();
+         if (!supabase) throw new Error('Supabase admin not initialized');
+-        const { data, error } = await supabase.rpc('dispatch_assign_sequential_slot_b', {
+-            p_booking_id: input.bookingId,
+-            p_item_id: input.itemId,
+-            p_to_ktv: input.toKtvId,
+-            p_planned_start_at: input.plannedStartAt,
+-            p_duration_minutes: input.durationMinutes,
+-            p_confirm_overlap: input.confirmOverlap,
+-        });
++        const { data, error } = await applyDispatchEdit(supabase, input.bookingId, 'ASSIGN_B', input);
+         if (error) throw error;
+         if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return {
+             success: false, code: 'OVERLAP_CONFIRM_REQUIRED' as const,
+@@ -1003,14 +1037,12 @@ export async function handoffSequentialKtv(input: {
+     }
+ }
+ 
+-export async function finishSequentialAfterA(bookingId: string, itemId: string) {
++export async function finishSequentialAfterA(bookingId: string, itemId: string, expectedRevision: number) {
+     try {
+         await requirePermission('dispatch_board');
+         const supabase = getSupabaseAdmin();
+         if (!supabase) throw new Error('Supabase admin not initialized');
+-        const { error } = await supabase.rpc('dispatch_finish_sequential_after_a', {
+-            p_booking_id: bookingId, p_item_id: itemId,
+-        });
++        const { error } = await applyDispatchEdit(supabase, bookingId, 'FINISH_AFTER_A', { itemId, expectedRevision });
+         if (error) throw error;
+         return { success: true };
+     } catch (error: any) {
+@@ -1109,6 +1141,7 @@ async function resolveNewExternalKtvIds(
+ }
+ 
+ export async function saveDraftDispatch(bookingId: string, dispatchData: {
++    date?: string;
+     technicianCode?: string | null;
+     bedId: string | null;
+     roomName: string | null;
+@@ -1239,10 +1272,11 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+                     
+                     if (updateItem.segments && Array.isArray(updateItem.segments)) {
+                         updateItem.segments = updateItem.segments.map(incomingSeg => {
+-                            const dbSeg = dbSegs.find((s: any) => s.ktvId === incomingSeg.ktvId);
++                            const dbSeg = dbSegs.find((s: any) => s.id === incomingSeg.id);
+                             if (dbSeg) {
+                                 return {
+                                     ...incomingSeg,
++                                    ...savedPlanFields(dbSeg, incomingSeg),
+                                     actualStartTime: dbSeg.actualStartTime || incomingSeg.actualStartTime,
+                                     actualEndTime: dbSeg.actualEndTime || incomingSeg.actualEndTime,
+                                     feedbackTime: dbSeg.feedbackTime || incomingSeg.feedbackTime,
+@@ -1259,22 +1293,8 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+             }
+         }
+ 
+-        // 1. Update Booking (Dữ liệu tổng quát cho Bill, không đổi status)
+-        const { error: bError } = await supabase
+-            .from('Bookings')
+-            .update({
+-                technicianCode: dispatchData.technicianCode,
+-                bedId: dispatchData.bedId,
+-                roomName: dispatchData.roomName,
+-                notes: dispatchData.notes,
+-                updatedAt: new Date().toISOString()
+-            })
+-            .eq('id', bookingId);
+-
+-        if (bError) {
+-            console.error('❌ [Server] Booking draft update error:', bError);
+-            throw bError;
+-        }
++        // Collect the whole draft; the RPC checks all revisions before any write.
++        const finalItemUpdates: any[] = [];
+ 
+         // 2. Update BookingItems (Dữ liệu chi tiết từng dịch vụ, không đổi status)
+         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
+@@ -1313,10 +1333,11 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+ 
+                         if (Array.isArray(dbSegments) && dbSegments.length > 0) {
+                             finalSegments = finalSegments.map((incomingSeg: any) => {
+-                                const existingSeg = dbSegments.find((s: any) => s.ktvId === incomingSeg.ktvId);
++                                const existingSeg = dbSegments.find((s: any) => s.id === incomingSeg.id);
+                                 if (existingSeg) {
+                                     return {
+                                         ...incomingSeg,
++                                        ...savedPlanFields(existingSeg, incomingSeg),
+                                         actualStartTime: existingSeg.actualStartTime || incomingSeg.actualStartTime,
+                                         actualEndTime: existingSeg.actualEndTime || incomingSeg.actualEndTime,
+                                         feedbackTime: existingSeg.feedbackTime || incomingSeg.feedbackTime,
+@@ -1343,46 +1364,14 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+                     updatePayload.guest_id = targetGuestId;
+                 }
+ 
+-                const { error: updError } = await supabase
+-                    .from('BookingItems')
+-                    .update(updatePayload)
+-                    .eq('id', item.id);
+-
+-                if (updError) {
+-                    console.error('❌ [Server] Lỗi khi update BookingItems trong saveDraftDispatch:', updError);
+-                    throw updError;
+-                }
+-                
+-                console.log(`✅ [Server] Đã lưu options cho item ${item.id}:`, JSON.stringify(item.options));
+-
+-                // NẾU LÀ CHILD ITEM THÌ DỪNG LẠI TẠI ĐÂY (không đồng bộ TurnQueue)
+-                if (isChild || isTwoSlotSequential(item.options)) continue;
+-
+-                // 3. Đồng bộ lại start_time cho TurnQueue (quan trọng để KTV không bị chặn khi Lễ tân đổi giờ)
+-                if (item.segments && Array.isArray(item.segments)) {
+-                    for (const seg of item.segments) {
+-                        if (seg.ktvId && seg.startTime) {
+-                            // Convert "10:54" -> "10:54:00" để match kiểu time của PG
+-                            const timeStr = String(seg.startTime).length === 5 ? `${seg.startTime}:00` : seg.startTime;
+-                            
+-                            // Chỉ update nếu KTV đang ở trạng thái 'assigned' cho đúng đơn này
+-                            const { error: tqError } = await supabase
+-                                .from('TurnQueue')
+-                                .update({ start_time: timeStr })
+-                                .eq('employee_id', seg.ktvId)
+-                                .eq('current_order_id', bookingId)
+-                                .eq('status', 'assigned');
+-                                
+-                            if (tqError) {
+-                                console.error(`❌ [Server] Lỗi đồng bộ start_time cho KTV ${seg.ktvId}:`, tqError);
+-                            } else {
+-                                console.log(`✅ [Server] Đã đồng bộ start_time = ${timeStr} cho KTV ${seg.ktvId} trong TurnQueue`);
+-                            }
+-                        }
+-                    }
+-                }
++                finalItemUpdates.push({ id: item.id, ...updatePayload });
+             }
+         }
++        const { data: saved, error: saveError } = await applyDispatchEdit(supabase, bookingId, 'DRAFT', {
++            ...dispatchData, itemUpdates: finalItemUpdates
++        });
++        if (saveError) throw saveError;
++        if (!saved?.success) throw new Error('Máy chủ chưa xác nhận lưu nháp');
+ 
+         // Fetch bookingDate to sync turns correctly
+         const { data: bData } = await supabase.from('Bookings').select('bookingDate').eq('id', bookingId).single();
+@@ -1392,7 +1381,7 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+             await syncTurnsForDate(dateStr);
+         }
+ 
+-        return { success: true };
++        return { success: true, revisions: saved.revisions as Record<string, number> };
+     } catch (error: any) {
+         console.error('❌ [Server] saveDraftDispatch error:', error);
+         return { success: false, error: error.message };
+diff --git a/app/reception/dispatch/page.tsx b/app/reception/dispatch/page.tsx
+index 833190fd..4b2fd962 100644
+--- a/app/reception/dispatch/page.tsx
++++ b/app/reception/dispatch/page.tsx
+@@ -1,4 +1,6 @@
+ 'use client';
++import { DispatchEditHistory } from './_components/DispatchEditHistory';
++import { dispatchRevision } from '@/lib/dispatch-edit-history';
+ import { displayBookingCode } from '@/lib/booking-display-code';
+ import { isUtilityService } from '@/lib/booking.logic';
+ import { parseDbDate } from "@/lib/utils";
+@@ -334,7 +336,7 @@ export default function DispatchBoardPage() {
+   } | null>(null);
+   const [liveHandoff, setLiveHandoff] = useState<{
+     bookingId: string; itemId: string; fromKtvId: string; toKtvId: string;
+-    plannedStartAt: string; durationMinutes: number; saving: boolean;
++    plannedStartAt: string; durationMinutes: number; expectedRevision: number; saving: boolean;
+   } | null>(null);
+ 
+   const [splitPreviewState, setSplitPreviewState] = useState<{
+@@ -733,7 +735,7 @@ if (!hasPermission('dispatch_board')) {
+     const plannedStartAt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh',
+       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+       .format(new Date((existingB as any)?.plannedStartAt || (Number.isFinite(existingStart) ? existingStart : plannedHandoffStartAt(selectedDate, segment) || Date.now()))).replace(' ', 'T');
+-    setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB,
++    setLiveHandoff({ bookingId, itemId, fromKtvId, toKtvId: selectedB, expectedRevision: dispatchRevision(item.options),
+       plannedStartAt: plannedStartTime ? `${plannedStartAt.slice(0, 10)}T${plannedStartTime}` : plannedStartAt,
+       durationMinutes: existingB?.duration ?? (segment.actualEndTime ? suggestedHandoffMinutes(item.duration, segment) : remainingHandoffMinutes(item.duration, segment.duration)), saving: false });
+   };
+@@ -748,15 +750,18 @@ if (!hasPermission('dispatch_board')) {
+       return;
+     }
+     const item = orders.find(o => o.id === liveHandoff.bookingId)?.services.find(s => s.id === liveHandoff.itemId);
++    let expectedRevision = liveHandoff.expectedRevision;
+     if (!isTwoSlotSequential(item?.options)) {
+-      const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId);
++      const enabled = await enableSequentialItem(liveHandoff.bookingId, liveHandoff.itemId, expectedRevision);
+       if (!enabled.success) {
+         alert('Không thể chọn nối tiếp: ' + enabled.error);
+         setLiveHandoff(prev => prev ? { ...prev, saving: false } : null);
+         return;
+       }
++      expectedRevision = enabled.revision ?? expectedRevision;
++      setLiveHandoff(prev => prev ? { ...prev, expectedRevision } : null);
+     }
+-    const input = { bookingId: liveHandoff.bookingId, itemId: liveHandoff.itemId,
++    const input = { expectedRevision, bookingId: liveHandoff.bookingId, itemId: liveHandoff.itemId,
+       toKtvId: liveHandoff.toKtvId, plannedStartAt: new Date(startMs).toISOString(),
+       durationMinutes: liveHandoff.durationMinutes };
+     let res = await handoffSequentialKtv({ ...input, confirmOverlap: false });
+@@ -1277,6 +1282,7 @@ if (!hasPermission('dispatch_board')) {
+ 
+       const { saveDraftDispatch } = await import('./actions');
+       const res = await saveDraftDispatch(clonedOrder.id, {
++        date: selectedDate,
+         bedId: primarySeg?.bedId || null,
+         roomName: primarySeg?.roomId || null,
+         notes: finalNotesToSave,
+@@ -1315,7 +1321,7 @@ if (!hasPermission('dispatch_board')) {
+         }
+ 
+         if (intent === 'DISPATCH') {
+-            await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan);
++            await handleDispatch(true, dispatchArgs?.specificSvcIds, dispatchArgs?.overrideOrderId, true, splitPlan, res.revisions);
+         } else {
+             alert('✅ Đã lưu thông tin' + (splitPlan.length > 1 ? ' và tách đơn' : '') + ' thành công!');
+             fetchData();
+@@ -1367,7 +1373,7 @@ if (!hasPermission('dispatch_board')) {
+     }
+   };
+ 
+-  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[]) => {
++  const handleDispatch = async (skipValidation: boolean = false, specificSvcIds?: string[], overrideOrderId?: string, skipSave: boolean = false, precomputedSplitPlan?: any[], savedRevisions?: Record<string, number>) => {
+     const orderToDispatch = overrideOrderId ? orders.find(o => o.id === overrideOrderId) : selectedOrder;
+     if (!orderToDispatch) return;
+     if (!skipValidation) {
+@@ -1426,6 +1432,10 @@ if (!hasPermission('dispatch_board')) {
+ 
+     try {
+       const clonedOrder = JSON.parse(JSON.stringify(orderToDispatch)) as PendingOrder;
++      // Continue from our own acknowledged draft, never from a newly read tab's revision.
++      clonedOrder.services.forEach(svc => {
++        if (savedRevisions?.[svc.id] !== undefined) svc.options = { ...svc.options, dispatchRevision: savedRevisions[svc.id] };
++      });
+       const isPartial = !!(specificSvcIds && specificSvcIds.length > 0);
+       
+       let splitPlan = precomputedSplitPlan || [];
+@@ -2742,12 +2752,13 @@ if (!hasPermission('dispatch_board')) {
+                       <button onClick={() => setInvoiceLangModal({ invoiceId: selectedSubOrder.originalOrder.parentBookingId as string })} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow hover:bg-indigo-700">Xem Hóa Đơn Nhóm</button>
+                     </div>
+                   )}
++                  <DispatchEditHistory services={selectedSubOrder.services} />
+                   <QuickDispatchTable
+                     services={selectedSubOrder.services}
+                     orderId={selectedSubOrder.bookingId}
+                     onLiveHandoff={(itemId, fromKtvId, toKtvId, plannedStartTime) => openLiveHandoff(selectedSubOrder.bookingId, itemId, fromKtvId, toKtvId, plannedStartTime)}
+                     onEnableSequential={async itemId => {
+-                      const result = await enableSequentialItem(selectedSubOrder.bookingId, itemId);
++                      const result = await enableSequentialItem(selectedSubOrder.bookingId, itemId, dispatchRevision(selectedSubOrder.services.find(s => s.id === itemId)?.options));
+                       if (!result.success) alert(result.error);
+                       else await fetchData();
+                     }}
+@@ -2819,7 +2830,7 @@ if (!hasPermission('dispatch_board')) {
+                              return svc;
+                           });
+ 
+-                          return recalculateAllTimes({ ...o, services: mergedServices }, roomTransitionTime);
++                          return { ...o, services: mergedServices };
+                       });
+                     }}
+                     onDispatchGroup={(group, specificSvcId) => {
+@@ -2998,7 +3009,7 @@ if (!hasPermission('dispatch_board')) {
+               onAssignSequentialB={(orderId, itemId, fromKtvId, toKtvId) => openLiveHandoff(orderId, itemId, fromKtvId, toKtvId || '')}
+               onFinishSequentialAfterA={async (orderId, itemId) => {
+                 if (!confirm('Kết thúc dịch vụ sau lượt A? Công của A vẫn được giữ.')) return;
+-                const result = await finishSequentialAfterA(orderId, itemId);
++                const result = await finishSequentialAfterA(orderId, itemId, dispatchRevision(orders.find(o => o.id === orderId)?.services.find(s => s.id === itemId)?.options));
+                 if (!result.success) alert(result.error);
+                 else await fetchData();
+               }}
+diff --git a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+index 068de164..50e1ae5c 100644
+--- a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
++++ b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+@@ -7,6 +7,8 @@ import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-sta
+ import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
+ import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData } from '../types';
+ import { AccountDemo } from './AccountDemo';
++import { dispatchRevision, recordDispatchEdit } from '@/lib/dispatch-edit-history';
++import { DispatchEditHistory } from '../_components/DispatchEditHistory';
+ import { segmentOf, segmentsOf, stampDemoAccount, type DemoSegment } from './demo-account';
+ 
+ const storageKey = 'dispatch-sequential-demo-v2';
+@@ -15,7 +17,7 @@ const staff: StaffData[] = [
+   { id: 'DEMO-B', full_name: 'KTV B', status: 'ĐANG LÀM', work_type: 'TYPE_A' },
+   { id: 'DEMO-C', full_name: 'KTV C', status: 'ĐANG LÀM', work_type: 'TYPE_A' },
+ ];
+-type HandoffForm = { ktvId: string; start: string; duration: number };
++type HandoffForm = { ktvId: string; start: string; duration: number; expectedRevision: number };
+ const localInput = (date: Date) => new Intl.DateTimeFormat('sv-SE', {
+   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+@@ -70,12 +72,17 @@ export default function SequentialDemo() {
+     return () => { window.removeEventListener('storage', sync); window.clearInterval(tick); };
+   }, []);
+ 
+-  const change = (edit: (service: ServiceBlock) => void | string) => {
++  const change = (edit: (service: ServiceBlock) => void | string, action = 'DRAFT', expectedRevision?: number) => {
+     const previous = readOrder() || order;
+     if (!previous) return;
++    if (expectedRevision !== undefined && expectedRevision !== dispatchRevision(previous.services[0].options)) {
++      alert('Dịch vụ đã có bản lưu mới. Tải lại đơn trước khi chỉnh tiếp; bản cũ chưa được lưu.');
++      setOrder(previous); return;
++    }
+     const next = structuredClone(previous);
+     const error = edit(next.services[0]);
+     if (error) { alert(error); setOrder(previous); return; }
++    recordDispatchEdit(previous.services[0], next.services[0], action, { id: accountId || 'DEMO-ADMIN', name: accountId || 'Quầy demo' });
+     const status = next.services[0].status || 'NEW';
+     next.dispatchStatus = status === 'NEW' ? 'pending' : status as PendingOrder['dispatchStatus'];
+     next.rawStatus = status;
+@@ -114,7 +121,7 @@ export default function SequentialDemo() {
+       s.selectedRoomId = current.roomId;
+       s.bedId = current.bedId;
+       s.status = 'PREPARING';
+-    });
++    }, 'DISPATCH', dispatchRevision(service.options));
+   };
+ 
+   const openHandoff = (_itemId: string, _fromKtvId: string, toKtvId: string, plannedStartTime?: string) => {
+@@ -125,7 +132,7 @@ export default function SequentialDemo() {
+     const start = current?.startTime && current.plannedEndAt
+         ? localInput(new Date(new Date(current.plannedEndAt).getTime() - current.duration * 60_000))
+         : localInput(new Date((a && plannedHandoffStartAt(localInput(new Date()).slice(0, 10), segmentOf(a))) || Date.now()));
+-    setHandoff({ ktvId: toKtvId || b?.ktvId || '',
++    setHandoff({ ktvId: toKtvId || b?.ktvId || '', expectedRevision: dispatchRevision(service.options),
+       start: plannedStartTime ? `${start.slice(0, 10)}T${plannedStartTime}` : start,
+       duration: current?.duration ?? (a && segmentOf(a).actualEndTime
+         ? suggestedHandoffMinutes(service.duration, segmentOf(a)) : remainingHandoffMinutes(service.duration, a ? segmentOf(a).duration : 0)) });
+@@ -159,11 +166,11 @@ export default function SequentialDemo() {
+           ktvName: staff.find(person => person.id === handoff.ktvId)?.full_name || handoff.ktvId,
+           segments: [segment], noteForKtv: '' });
+       }
+-    });
++    }, 'ASSIGN_B', handoff.expectedRevision);
+     setHandoff(null);
+   };
+   const stampEmployee = (employeeId: string, field: 'actualStartTime' | 'actualEndTime') =>
+-    change(s => stampDemoAccount(s, employeeId, field));
++    change(s => stampDemoAccount(s, employeeId, field), 'UPDATE');
+   const stamp = (slot: number, field: 'actualStartTime' | 'actualEndTime') => {
+     const employeeId = slot === 1 ? a?.ktvId : b?.ktvId;
+     if (employeeId) stampEmployee(employeeId, field);
+@@ -179,7 +186,7 @@ export default function SequentialDemo() {
+       if (currentB) segmentOf(currentB).voided = true;
+       s.options = { ...s.options, finishedAfterA: true };
+       s.status = 'CLEANING';
+-    });
++    }, 'FINISH_AFTER_A', dispatchRevision(service.options));
+   };
+ 
+   if (!order || !service) return <p className="p-6">Đang tạo dữ liệu mẫu…</p>;
+@@ -220,13 +227,14 @@ export default function SequentialDemo() {
+                 ? plannedEndAt(segmentOf(row)) : segmentOf(previous).plannedEndAt;
+             }
+           });
+-        })}
++        }, 'DRAFT', dispatchRevision(updated[0].options))}
+         onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={dispatchA}
+         onLiveHandoff={openHandoff} onEnableSequential={() => change(s => {
+           s.options = { ...s.options, sequentialSlots: 2 };
+           segmentOf(s.staffList[0]).sequenceSlot = 1;
+-        })} />
++        }, 'ENABLE_SEQUENTIAL', dispatchRevision(service.options))} />
+     </section>
++    <DispatchEditHistory services={[service]} />
+     <section className="rounded-xl border bg-white p-4">
+       <h2 className="mb-3 font-bold">2. Gửi phân công</h2>
+       <div className="flex flex-wrap gap-2">
+diff --git a/app/reception/dispatch/useDispatchBoard.logic.ts b/app/reception/dispatch/useDispatchBoard.logic.ts
+index 5d211b1f..97fc23e6 100644
+--- a/app/reception/dispatch/useDispatchBoard.logic.ts
++++ b/app/reception/dispatch/useDispatchBoard.logic.ts
+@@ -357,7 +357,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                         let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === tCode);
+ 
+                                         if (segments.length === 0) {
+-                                            const st = formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
++                                            const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
++                                            const st = saved ? '' : (formatTime(turn?.start_time) || forcedStartTime || b.timeBooking || getCurrentTime());
+                                             const totalDur = parsedOptions?.vipDuration || bi.duration || 0;
+                                             const dur = techCodes.length > 1 ? Math.ceil(totalDur / techCodes.length) : totalDur;
+                                             segments = [{
+@@ -366,7 +367,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                                 bedId: turn?.bed_id || bi.bedId || b.bedId,
+                                                 startTime: st,
+                                                 duration: dur,
+-                                                endTime: formatTime(turn?.estimated_end_time) || calcEndTime(st, dur)
++                                                endTime: saved ? '' : (formatTime(turn?.estimated_end_time) || calcEndTime(st, dur))
+                                             }];
+                                         }
+ 
+@@ -376,7 +377,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                             ktvName: parsedOptions?.external_technician_name?.[tCode] || staff?.full_name || tCode,
+                                             segments: segments,
+                                             noteForKtv: bi.options?.notesForKtvs?.[tCode] || bi.options?.noteForKtv || '',
+-                                            serviceNameForKtv: bi.options?.serviceNamesForKtvs?.[tCode] || ''
++                                            serviceNameForKtv: parsedOptions?.serviceNamesForKtvs?.[tCode] ?? ''
+                                         };
+                                 });
+                             }
+@@ -386,7 +387,8 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                     let segments: WorkSegment[] = parsedSegments.filter((s: any) => s.ktvId === t.employee_id);
+ 
+                                     if (segments.length === 0) {
+-                                        const st = formatTime(t.start_time) || forcedStartTime || b.timeBooking || getCurrentTime();
++                                        const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
++                                        const st = saved ? '' : (formatTime(t.start_time) || forcedStartTime || b.timeBooking || getCurrentTime());
+                                         const dur = parsedOptions?.vipDuration || bi.duration || 0;
+                                         segments = [{
+                                             id: `seg-${genId()}`,
+@@ -394,7 +396,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                             bedId: t.bed_id || bi.bedId || b.bedId,
+                                             startTime: st,
+                                             duration: dur,
+-                                            endTime: formatTime(t.estimated_end_time) || calcEndTime(st, dur)
++                                            endTime: saved ? '' : (formatTime(t.estimated_end_time) || calcEndTime(st, dur))
+                                         }];
+                                     }
+ 
+@@ -404,13 +406,14 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                         ktvName: parsedOptions?.external_technician_name?.[t.employee_id] || staff?.full_name || 'KTV',
+                                         segments: segments,
+                                         noteForKtv: bi.options?.notesForKtvs?.[t.employee_id] || bi.options?.noteForKtv || '',
+-                                        serviceNameForKtv: bi.options?.serviceNamesForKtvs?.[t.employee_id] || ''
++                                        serviceNameForKtv: parsedOptions?.serviceNamesForKtvs?.[t.employee_id] ?? ''
+                                     };
+                                 });
+                             } else if (staffList.length === 0) {
+                                 const dbSeg = parsedSegments.length > 0 ? parsedSegments[0] : null;
+-                                const fallbackStart = dbSeg?.startTime || forcedStartTime || getCurrentTime();
+-                                const fallbackDur = dbSeg?.duration || parsedOptions?.vipDuration || Number(bi.duration) || 0;
++                                const saved = Number(parsedOptions.dispatchRevision || 0) > 0;
++                                const fallbackStart = dbSeg?.startTime ?? (saved ? '' : (forcedStartTime || getCurrentTime()));
++                                const fallbackDur = dbSeg?.duration ?? (saved ? 0 : (parsedOptions?.vipDuration || Number(bi.duration) || 0));
+                                 staffList = [{
+                                     id: `st-${bi.id}`,
+                                     ktvId: '',
+@@ -421,7 +424,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                                         bedId: dbSeg?.bedId || null,
+                                         startTime: fallbackStart,
+                                         duration: fallbackDur,
+-                                        endTime: dbSeg?.endTime || calcEndTime(fallbackStart, fallbackDur)
++                                        endTime: dbSeg?.endTime ?? (saved ? '' : calcEndTime(fallbackStart, fallbackDur))
+                                     }],
+                                     noteForKtv: '',
+                                     serviceNameForKtv: ''
+@@ -531,6 +534,7 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+ 
+         let fetchTimeout: NodeJS.Timeout;
+         const debouncedFetchData = () => {
++            if (selectedOrderIdRef.current) { needsRefreshRef.current = true; return; }
+             clearTimeout(fetchTimeout);
+             fetchTimeout = setTimeout(() => {
+                 fetchData();
+@@ -616,48 +620,13 @@ export function useDispatchBoard(selectedDate: string, selectedOrderId: string |
+                 debouncedFetchData();
+             })
+             .on('postgres_changes', { event: '*', schema: 'public', table: 'BookingItems' }, (payload) => {
+-                const newItem = payload.new as any;
+-                if (newItem?.bookingId && newItem?.status) {
+-                    setOrders(prev => prev.map(o => {
+-                        if (o.id === newItem.bookingId) {
+-                            const updatedServices = o.services.map((svc: any) =>
+-                                svc.id === newItem.id ? { 
+-                                    ...svc, 
+-                                    status: newItem.status,
+-                                    itemRating: newItem.itemRating,
+-                                    ktvRatings: newItem.ktvRatings,
+-                                    // Phải chép cả `options`: dấu tích "KTV đã nhận đơn" đọc
+-                                    // từ options.acceptedByStaff. Thiếu dòng này thì KTV bấm
+-                                    // nhận xong quầy vẫn thấy "CHỜ NHẬN" cho tới khi F5.
+-                                    options: newItem.options ?? svc.options,
+-                                    handover_status: newItem.handover_status ?? svc.handover_status
+-                                } : svc
+-                            );
+-                            return { ...o, services: updatedServices };
+-                        }
+-                        return o;
+-                    }));
+-                }
+                 if (selectedOrderIdRef.current) {
++                    // Keep the form's revision and values together. A stale save is
++                    // rejected by the locked RPC; closing the form refreshes it.
+                     needsRefreshRef.current = true;
+                     return;
+                 }
+-
+-                if (payload.eventType !== 'UPDATE') {
+-                    debouncedFetchData();
+-                } else {
+-                    setOrders(prev => {
+-                        const order = prev.find(o => o.id === newItem.bookingId);
+-                        const svc = order?.services.find((s: any) => s.id === newItem.id);
+-                        if (
+-                            (newItem.status === 'IN_PROGRESS' && svc?.status !== 'IN_PROGRESS') ||
+-                            (newItem.itemRating !== svc?.itemRating)
+-                        ) {
+-                            debouncedFetchData();
+-                        }
+-                        return prev;
+-                    });
+-                }
++                debouncedFetchData();
+             })
+             .on('broadcast', { event: 'KTV_STARTED' }, (payload: any) => {
+                 const { bookingId, ktvId, startTime } = payload.payload;
+diff --git a/lib/dispatch-live-guard.ts b/lib/dispatch-live-guard.ts
+index a48b4e6a..2349f703 100644
+--- a/lib/dispatch-live-guard.ts
++++ b/lib/dispatch-live-guard.ts
+@@ -24,3 +24,12 @@ export function liveDispatchConflict(dbSegments: any[], incomingSegments: any[],
+     }
+     return null;
+ }
++
++/** A follow-up save keeps the acknowledged ISO plan when its clock/minutes match. */
++export function savedPlanFields(current: any, incoming: any) {
++    const samePlan = ['startTime', 'endTime', 'duration'].every(key => current[key] === incoming[key]);
++    return {
++        plannedStartAt: samePlan ? (current.plannedStartAt ?? incoming.plannedStartAt) : undefined,
++        plannedEndAt: samePlan ? (current.plannedEndAt ?? incoming.plannedEndAt) : undefined,
++    };
++}
+diff --git a/scripts/test_dispatch_live_guard.ts b/scripts/test_dispatch_live_guard.ts
+index f5411b34..38652bcd 100644
+--- a/scripts/test_dispatch_live_guard.ts
++++ b/scripts/test_dispatch_live_guard.ts
+@@ -1,5 +1,5 @@
+ import assert from 'node:assert/strict';
+-import { liveDispatchConflict } from '../lib/dispatch-live-guard';
++import { liveDispatchConflict, savedPlanFields } from '../lib/dispatch-live-guard';
+ import { suggestedHandoffMinutes, remainingHandoffMinutes, plannedHandoffStartAt } from '../lib/dispatch-handoff';
+ import { sequentialSlotsComplete } from '../lib/dispatch-status';
+ import { buildOrderTimeline } from '../app/reception/dispatch/_components/dispatch-timeline';
+@@ -49,4 +49,10 @@ for (const segments of [[slotA], [slotA, slotB]]) {
+     assert.equal(cards[0].dispatchStatus, 'IN_PROGRESS');
+ }
+ assert.equal(suggestedHandoffMinutes(60, a, Date.parse('2026-09-25T04:01:00Z')), 0);
++const savedPlan = { startTime: '10:30', endTime: '11:00', duration: 30,
++    plannedStartAt: '2026-09-26T03:30:00Z', plannedEndAt: '2026-09-26T04:00:00Z' };
++assert.deepEqual(savedPlanFields(savedPlan, { ...savedPlan, plannedStartAt: 'old', plannedEndAt: undefined }),
++    { plannedStartAt: savedPlan.plannedStartAt, plannedEndAt: savedPlan.plannedEndAt });
++assert.deepEqual(savedPlanFields(savedPlan, { ...savedPlan, startTime: '10:45' }),
++    { plannedStartAt: undefined, plannedEndAt: undefined });
+ console.log('dispatch live guard: OK');
+diff --git a/scripts/test_sequential_flows.cjs b/scripts/test_sequential_flows.cjs
+index 43ae3284..210ba7eb 100644
+--- a/scripts/test_sequential_flows.cjs
++++ b/scripts/test_sequential_flows.cjs
+@@ -8,6 +8,7 @@ const SequentialDemo = require('../app/reception/dispatch/sequential-demo/Sequen
+ const { QuickDispatchTable } = require('../app/reception/dispatch/_components/QuickDispatchTable');
+ const { KanbanBoard } = require('../app/reception/dispatch/_components/KanbanBoard');
+ const { AccountDemo } = require('../app/reception/dispatch/sequential-demo/AccountDemo');
++const { DispatchEditHistory } = require('../app/reception/dispatch/_components/DispatchEditHistory');
+ const { demoAccountState, segmentOf } = require('../app/reception/dispatch/sequential-demo/demo-account');
+ const key = 'dispatch-sequential-demo-v2';
+ const originalDate = Date;
+@@ -215,4 +216,63 @@ try {
+   finishRoom();
+   console.log('PASS FLOW 5/5: Hoàn thành sau A → hủy B chưa làm → chặn handler cũ → reload giữ kết quả → DONE');
+   console.log('PASS TÊN RIÊNG: sửa/xóa A không đổi B; sửa B không đổi A; B mới không kế thừa tên; giữ tên sau gửi/reload, không đổi giờ');
++  // Audit continuity and stale edits through actual demo handlers/components.
++  reset(); chooseA(); name('DEMO-A','Tên A lần 1');
++  app = hooks(SequentialDemo); quick = card = null; flush();
++  assertName('DEMO-A','Tên A lần 1'); name('DEMO-A','Tên A lần 2');
++  const named = service().options.dispatchHistory.at(-1).changes.find(c=>c.field==='serviceNameForKtv');
++  assert.equal(named.before,'Tên A lần 1'); assert.equal(named.after,'Tên A lần 2');
++  assert.equal(service().options.dispatchHistory.at(-1).actor.id,'DEMO-ADMIN');
++  const historyMarkup = renderToStaticMarkup(React.createElement(DispatchEditHistory,{services:[service()]}));
++  assert.ok(historyMarkup.includes('Tên A lần 1') && historyMarkup.includes('Tên A lần 2') && historyMarkup.includes('Quầy demo'));
++  console.log('PASS HISTORY UI 1/5: Reload → sửa lần 2 dựa trên lần 1; lưu người sửa và trước/sau');
++
++  minutes(0,30); sequential(); send(); assignLiveB('DEMO-B','2026-09-26T10:45',25);
++  click(app.tree,'Gán / sửa B');
++  let form = elements(app.tree,e=>e.props.role==='dialog')[0];
++  assert.equal(elements(form,e=>e.props.type==='datetime-local')[0].props.value,'2026-09-26T10:45');
++  assert.equal(elements(form,e=>e.props.type==='number')[0].props.value,25);
++  changeInput(elements(form,e=>e.props.type==='datetime-local')[0],'2026-09-26T10:50');
++  click(app.tree,'Lưu B');
++  const latestB = service().options.dispatchHistory.at(-1);
++  assert.equal(latestB.action,'ASSIGN_B');
++  assert.equal(latestB.changes.find(c=>c.field==='startTime').before,'10:45');
++  checkPlan('DEMO-B','10:50',25); checkPlan('DEMO-A','10:00',30);
++  console.log('PASS HISTORY UI 2/5: Modal B lần 2 mở đúng giờ/phút lần 1, không quay về mốc A');
++
++  click(app.tree,'Gán / sửa B');
++  const oldSave = elements(app.tree,e=>e.type==='button' && textOf(e)==='Lưu B')[0];
++  const oldTable = elements(app.tree,e=>e.type===QuickDispatchTable)[0];
++  const oldServices = structuredClone(oldTable.props.services);
++  name('DEMO-A','Tên A mới nhất'); const beforeStale=order();
++  oldSave.props.onClick(); flush();
++  assert.match(alerts.at(-1),/bản lưu mới/); assert.deepEqual(order(),beforeStale);
++  oldTable.props.onUpdateServices(oldServices); flush();
++  assert.match(alerts.at(-1),/bản lưu mới/); assert.deepEqual(order(),beforeStale);
++  console.log('PASS HISTORY UI 3/5: Modal / callback tab cũ bị chặn, không xóa bản mới hoặc nhật ký');
++
++  // Exercise reinitialization where ONLY endTime changes (no revision/start/duration change).
++  const props = elements(app.tree,e=>e.type===QuickDispatchTable)[0].props;
++  const independent = hooks(QuickDispatchTable);
++  independent.render(props); independent.render(props);
++  const changedServices = structuredClone(props.services);
++  changedServices[0].staffList[0].segments[0].endTime='11:15';
++  const newProps={...props,services:changedServices};
++  independent.render(newProps);
++  const tree=independent.render(newProps);
++  let group=elements(tree,e=>typeof e.type==='function' && e.type.name==='ServiceGroupCard')[0];
++  assert.equal(group.props.state.ktvEndTimes[0],'11:15');
++  console.log('PASS HISTORY UI 4/5: Chỉ đổi giờ kết thúc vẫn cập nhật bảng, không giữ giá trị cũ');
++
++  const missingServices=structuredClone(props.services);
++  missingServices[0].options.sequentialSlots=undefined;
++  missingServices[0].staffList=missingServices[0].staffList.slice(0,1);
++  missingServices[0].staffList[0].segments[0].startTime='';
++  delete missingServices[0].staffList[0].segments[0].endTime;
++  const missingProps={...props,services:missingServices};
++  independent.render(missingProps);
++  group=elements(independent.render(missingProps),e=>typeof e.type==='function' && e.type.name==='ServiceGroupCard')[0];
++  assert.equal(group.props.state.ktvStartTimes[0],''); assert.equal(group.props.state.ktvEndTimes[0],'');
++  console.log('PASS HISTORY UI 5/5: Chặng đã lưu thiếu giờ không tự lấy giờ hiện tại / tính giờ kết thúc');
++
+ } finally { global.Date = originalDate; console.log = originalLog; }
+diff --git a/scripts/test_sequential_sql.cjs b/scripts/test_sequential_sql.cjs
+index 84ab32a4..5f334616 100644
+--- a/scripts/test_sequential_sql.cjs
++++ b/scripts/test_sequential_sql.cjs
+@@ -343,6 +343,129 @@ async function main() {
+     await assert.rejects(db.query('UPDATE "BookingItems" SET segments = $1::jsonb WHERE id = $2', [JSON.stringify(completed.segments), id.item]));
+     log(12, 'FLOW 5: Hoàn thành sau A giữ công A, hủy B chưa làm; chặn bắt đầu/gán lại');
+   }
++  // Five persistence/audit cases use the actual new migration and locked RPC.
++  await db.exec('ALTER TABLE "BookingItems" ADD COLUMN guest_id text');
++  await db.exec(readFileSync(join(__dirname, '../supabase/migrations/20260926120000_dispatch_edit_history.sql'), 'utf8'));
++  const actor = { id: 'ADMIN', name: 'Quầy test', verified: true };
++  const apply = async (id, action, payload) => (await db.query('SELECT dispatch_apply_edit($1,$2,$3::jsonb,$4::jsonb) AS result',
++    [id.booking, action, JSON.stringify(payload), JSON.stringify(actor)])).rows[0].result;
++  const updateOf = row => structuredClone({ id: row.id, segments: row.segments, options: row.options,
++    technicianCodes: row.technicianCodes || row.segments.map(s => s.ktvId), roomName: 'R', bedId: 'X' });
++  const historyLog = (n, label) => console.log(`PASS HISTORY ${n}/5: ${label}`);
++  const id = await businessFixture('history');
++  let updated = { id: id.item, segments: [planned(id,id.a,1,'10:00',40), planned(id,id.b,2,'10:40',20)],
++    technicianCodes: [id.a,id.b], options: { sequentialSlots: 2, displayName: 'Gói 60', serviceNamesForKtvs: { [id.a]: 'Tên A lần 1', [id.b]: 'Tên B' } } };
++  await apply(id, 'DRAFT', { notes: 'Bản 1', itemUpdates: [updated] });
++  const first = await item(id);
++  updated = updateOf(first);
++  updated.segments[0].duration = 30; updated.segments[0].endTime = '10:30';
++  updated.segments[1].startTime = '10:30'; updated.segments[1].duration = 30;
++  updated.options.serviceNamesForKtvs[id.a] = 'Tên A lần 2';
++  await apply(id,'DRAFT',{ notes: 'Bản 2', itemUpdates:[updated] });
++  let saved = await item(id);
++  assert.equal(saved.options.dispatchRevision, 2);
++  assert.equal(saved.segments[0].duration,30);
++  assert.equal(saved.options.serviceNamesForKtvs[id.b],'Tên B');
++  const second = saved.options.dispatchHistory[1];
++  assert.equal(second.actor.id,'ADMIN'); assert.equal(second.action,'DRAFT');
++  assert.deepEqual(second.changes.find(c=>c.field==='serviceNameForKtv' && c.employeeId===id.a),
++    { employeeId:id.a, field:'serviceNameForKtv', before:'Tên A lần 1', after:'Tên A lần 2' });
++  assert.equal(second.changes.find(c=>c.field==='duration' && c.employeeId===id.a).before,40);
++  historyLog(1,'Lưu lần 2 lấy trước/sau từ lần 1; tên B và lịch sử lần 1 giữ nguyên');
++
++  updated = updateOf(saved); updated.status = 'PREPARING';
++  await apply(id,'DISPATCH',{ date:'2026-09-26', status:'PREPARING', itemUpdates:[updated],
++    staffAssignments:saved.segments.map(s=>({ktvId:s.ktvId,bookingItemId:id.item,segmentId:s.id,sequenceNo:s.sequenceSlot,
++      roomId:s.roomId,bedId:s.bedId,startTime:s.startTime,endTime:s.endTime})) });
++  saved = await item(id);
++  assert.equal(saved.options.dispatchHistory.at(-1).action,'DISPATCH');
++  assert.equal(saved.options.serviceNamesForKtvs[id.a],'Tên A lần 2');
++  assert.equal((await assignment(id,id.b)).planned_start_time.toISOString(),'2026-09-26T03:30:00.000Z');
++
++  const fullA = await businessFixture('history-full');
++  await apply(fullA,'DISPATCH',{date:'2026-09-26',status:'PREPARING',
++    itemUpdates:[{id:fullA.item,status:'PREPARING',options:{},segments:[planned(fullA,fullA.a,undefined,'10:00',60)],technicianCodes:[fullA.a]}],
++    staffAssignments:[{ktvId:fullA.a,bookingItemId:fullA.item,segmentId:`s-${fullA.a}`,roomId:'R',bedId:'X',startTime:'10:00',endTime:'11:00'}]});
++  const fullSaved=await item(fullA), half=updateOf(fullSaved);
++  half.segments[0].duration=30; half.segments[0].endTime='10:30';
++  await apply(fullA,'DRAFT',{date:'2026-09-26',itemUpdates:[half]});
++  assert.equal((await assignment(fullA,fullA.a)).planned_end_time.toISOString(),'2026-09-26T03:30:00.000Z');
++  let halfSaved=await item(fullA);
++  assert.equal(halfSaved.segments[0].plannedEndAt,'2026-09-26T03:30:00+00:00');
++  const enabled=await apply(fullA,'ENABLE_SEQUENTIAL',{itemId:fullA.item,expectedRevision:halfSaved.options.dispatchRevision});
++  const added=await apply(fullA,'ASSIGN_B',{itemId:fullA.item,expectedRevision:enabled.revisions[fullA.item],
++    toKtvId:fullA.b,plannedStartAt:'2026-09-26T03:30:00Z',durationMinutes:30,confirmOverlap:false});
++  assert.equal(added.success,true); // Must not ask for overlap against the old 11:00 end.
++  historyLog(2,'Nháp → điều phối tiếp tục đúng bản lưu và giữ tên riêng A/B');
++
++  await apply(id,'ASSIGN_B',{itemId:id.item,expectedRevision:saved.options.dispatchRevision,
++    toKtvId:id.b,plannedStartAt:'2026-09-26T03:45:00Z',durationMinutes:25,confirmOverlap:false});
++  saved = await item(id);
++  const staleBRevision = saved.options.dispatchRevision;
++  await apply(id,'ASSIGN_B',{itemId:id.item,expectedRevision:staleBRevision,
++    toKtvId:id.b,plannedStartAt:'2026-09-26T03:50:00Z',durationMinutes:20,confirmOverlap:false});
++  saved = await item(id);
++  const bEdit = saved.options.dispatchHistory.at(-1);
++  assert.equal(bEdit.action,'ASSIGN_B');
++  assert.equal(bEdit.changes.find(c=>c.field==='startTime').before,'10:45');
++  assert.equal(bEdit.changes.find(c=>c.field==='startTime').after,'10:50');
++  assert.equal(saved.segments[1].duration,20);
++  assert.equal(saved.segments[0].duration,30);
++  await assert.rejects(apply(id,'ASSIGN_B',{itemId:id.item,expectedRevision:staleBRevision,
++    toKtvId:id.b,plannedStartAt:'2026-09-26T04:00:00Z',durationMinutes:10}),/bản lưu mới/);
++  assert.deepEqual(await item(id),saved);
++  historyLog(3,'Sửa B lần 2 từ giờ B lần 1; modal B cũ bị chặn, A giữ nguyên');
++
++  const other = { item: 'history-other' };
++  await db.query('INSERT INTO "BookingItems" (id,"bookingId",status,options,segments) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb)',
++    [other.item,id.booking,'NEW','{}','[]']);
++  const current = updateOf(saved); current.options.serviceNamesForKtvs[id.a]='Không được lưu';
++  const beforeBooking = (await db.query('SELECT * FROM "Bookings" WHERE id=$1',[id.booking])).rows[0];
++  await assert.rejects(apply(id,'DRAFT',{notes:'Không được lưu',itemUpdates:[current,
++    {id:other.item,options:{dispatchRevision:99},segments:[],technicianCodes:[]}]}),/bản lưu mới/);
++  assert.deepEqual(await item(id),saved);
++  assert.deepEqual((await db.query('SELECT * FROM "Bookings" WHERE id=$1',[id.booking])).rows[0],beforeBooking);
++  await assert.rejects(apply(id,'DRAFT',{notes:'Cũ',itemUpdates:[updateOf(first)]}),/bản lưu mới/);
++  assert.deepEqual(await item(id),saved);
++  historyLog(4,'Tab cũ / một dòng xung đột: cả lô và Booking không đổi, không thêm lịch sử giả');
++
++  const logEntry={action:'PAUSE',by:'ADMIN',at:'2026-09-26T04:00:00Z'};
++  await db.query('UPDATE "BookingItems" SET options=options || $1::jsonb WHERE id=$2',
++    [JSON.stringify({counterLog:[logEntry]}),id.item]);
++  await db.query('UPDATE "BookingItems" SET options=$1::jsonb WHERE id=$2',[JSON.stringify(first.options),id.item]);
++  saved=await item(id);
++  assert.equal(saved.options.serviceNamesForKtvs[id.a],'Tên A lần 2');
++  assert.equal(saved.options.serviceNamesForKtvs[id.b],'Tên B');
++  assert.deepEqual(saved.options.counterLog,[logEntry]);
++  assert.equal(saved.options.dispatchHistory.length,5);
++  assert.equal(saved.options.dispatchRevision,5);
++
++  await actual(id,id.a,'actualStartTime',startA);
++  const actualBefore=await item(id), actualEdit=updateOf(actualBefore);
++  actualEdit.segments[0].actualStartTime='2026-09-26T03:01:00Z';
++  await apply(id,'EDIT_ACTUAL_TIME',{itemUpdates:[actualEdit]});
++  const corrected=await item(id);
++  assert.equal(corrected.segments[0].actualStartTime,'2026-09-26T03:01:00Z');
++  assert.equal(corrected.segments[0].startTime,actualBefore.segments[0].startTime);
++  assert.deepEqual(corrected.segments[1],actualBefore.segments[1]);
++  assert.equal(corrected.options.dispatchHistory.at(-1).action,'EDIT_ACTUAL_TIME');
++  assert.equal(corrected.options.dispatchHistory.at(-1).actor.id,'ADMIN');
++  const correctedAgain=updateOf(corrected); correctedAgain.segments[0].actualStartTime='2026-09-26T03:02:00Z';
++  await apply(id,'EDIT_ACTUAL_TIME',{itemUpdates:[correctedAgain]});
++  assert.equal((await item(id)).options.dispatchHistory.at(-1).changes.find(c=>c.field==='actualStartTime').before,'2026-09-26T03:01:00Z');
++  await assert.rejects(apply(id,'EDIT_ACTUAL_TIME',{itemUpdates:[actualEdit]}),/bản lưu mới/);
++  const finalActual=await item(id);
++  for (const invalidPatch of [
++    {duration:99}, {actualStartTime:null,actualEndTime:null},
++    {actualEndTime:'2026-09-26T02:00:00Z'}
++  ]) {
++    const invalid=updateOf(finalActual); Object.assign(invalid.segments[0],invalidPatch);
++    await assert.rejects(apply(id,'EDIT_ACTUAL_TIME',{itemUpdates:[invalid]}));
++    assert.deepEqual(await item(id),finalActual);
++  }
++
++  historyLog(5,'Background options cũ không xóa tên mới, lịch sử hoặc nhật ký quầy');
++
+   await db.close();
+ }
+ 
+diff --git a/app/reception/dispatch/_components/DispatchEditHistory.tsx b/app/reception/dispatch/_components/DispatchEditHistory.tsx
+new file mode 100644
+index 00000000..41d4411a
+--- /dev/null
++++ b/app/reception/dispatch/_components/DispatchEditHistory.tsx
+@@ -0,0 +1,30 @@
++import type { ServiceBlock } from '../types';
++import type { DispatchEditEntry } from '@/lib/dispatch-edit-history';
++
++const fields: Record<string, string> = { startTime: 'Giờ bắt đầu', endTime: 'Giờ kết thúc', duration: 'Số phút',
++  plannedStartAt: 'Bắt đầu dự kiến', plannedEndAt: 'Kết thúc dự kiến', actualStartTime: 'Bắt đầu thực tế',
++  actualEndTime: 'Kết thúc thực tế', serviceNameForKtv: 'Tên dịch vụ riêng', displayName: 'Tên dịch vụ chung',
++  ktvId: 'Nhân viên', sequenceSlot: 'Lượt', voided: 'Hủy lượt' };
++const actions: Record<string, string> = { DRAFT: 'Lưu nháp', DISPATCH: 'Điều phối', ASSIGN_B: 'Gán / sửa B',
++  EDIT_ACTUAL_TIME: 'Sửa giờ thực tế', ENABLE_SEQUENTIAL: 'Thêm lượt nối tiếp', FINISH_AFTER_A: 'Hoàn thành', UPDATE: 'Cập nhật' };
++const valueText = (value: unknown) => {
++  if (value === null || value === undefined || value === '') return 'Trống';
++  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value)))
++    return new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
++  return String(value);
++};
++export function DispatchEditHistory({ services }: { services: ServiceBlock[] }) {
++  const entries = services.flatMap(service => ((service.options?.dispatchHistory || []) as DispatchEditEntry[])
++    .map(entry => ({ ...entry, serviceId: service.id, serviceName: service.options?.displayName || service.serviceName })));
++  return <details className="rounded-xl border bg-white p-3 text-sm">
++    <summary className="cursor-pointer font-semibold">Lịch sử sửa giờ / tên dịch vụ ({entries.length})</summary>
++    {entries.length ? <ol className="mt-3 space-y-3">{entries.sort((a, b) => b.at.localeCompare(a.at)).map((entry, index) =>
++      <li key={`${entry.serviceId}-${entry.revision}-${index}`} className="rounded border p-2">
++        <p className="font-medium">{entry.serviceName} · Bản {entry.revision} · {actions[entry.action] || entry.action}</p>
++        <p className="text-xs text-gray-500">{new Date(entry.at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} · {entry.actor?.name || entry.actor?.id || 'Không rõ người sửa'}</p>
++        <ul className="mt-1 space-y-1">{entry.changes.map((change, i) => <li key={i}>
++          {change.employeeId && <strong>{change.employeeId} · </strong>}{fields[change.field] || change.field}: {valueText(change.before)} → {valueText(change.after)}
++        </li>)}</ul>
++      </li>)}</ol> : <p className="mt-2 text-gray-500">Chưa có lịch sử thay đổi được ghi nhận.</p>}
++  </details>;
++}
+diff --git a/lib/dispatch-edit-history.ts b/lib/dispatch-edit-history.ts
+new file mode 100644
+index 00000000..5e6f87d0
+--- /dev/null
++++ b/lib/dispatch-edit-history.ts
+@@ -0,0 +1,44 @@
++import type { ServiceBlock } from '@/app/reception/dispatch/types';
++
++export interface DispatchFieldChange {
++  employeeId?: string | null;
++  segmentId?: string;
++  field: string;
++  before: unknown;
++  after: unknown;
++}
++export interface DispatchEditEntry {
++  revision: number;
++  at: string;
++  action: string;
++  actor: { id?: string | null; name?: string | null } | null;
++  changes: DispatchFieldChange[];
++}
++export const dispatchRevision = (options: any): number => Number(options?.dispatchRevision ?? 0);
++export const dispatchTimeFields = ['startTime', 'endTime', 'duration', 'plannedStartAt', 'plannedEndAt', 'actualStartTime', 'actualEndTime'] as const;
++
++/** Local demo audit, with the same entry shape as the database trigger. */
++export function recordDispatchEdit(before: ServiceBlock, after: ServiceBlock, action: string, actor: DispatchEditEntry['actor']): void {
++  const oldSegments = before.staffList.flatMap(row => row.segments.map(segment => ({ ...segment, ktvId: row.ktvId })));
++  const newSegments = after.staffList.flatMap(row => row.segments.map(segment => ({ ...segment, ktvId: row.ktvId })));
++  const changes: DispatchFieldChange[] = [];
++  for (const id of new Set([...oldSegments, ...newSegments].map(segment => segment.id))) {
++    const oldSeg = oldSegments.find(segment => segment.id === id) as any;
++    const newSeg = newSegments.find(segment => segment.id === id) as any;
++    for (const field of ['ktvId', 'sequenceSlot', ...dispatchTimeFields, 'voided']) {
++      if ((oldSeg?.[field] ?? null) !== (newSeg?.[field] ?? null)) changes.push({ segmentId: id,
++        employeeId: newSeg?.ktvId || oldSeg?.ktvId || null, field, before: oldSeg?.[field] ?? null, after: newSeg?.[field] ?? null });
++    }
++  }
++  const names = (service: ServiceBlock) => Object.fromEntries(service.staffList.filter(row => row.ktvId && row.serviceNameForKtv).map(row => [row.ktvId, row.serviceNameForKtv]));
++  const oldNames = names(before), newNames = names(after);
++  for (const id of new Set([...Object.keys(oldNames), ...Object.keys(newNames)])) {
++    if ((oldNames[id] ?? null) !== (newNames[id] ?? null)) changes.push({ employeeId: id,
++      field: 'serviceNameForKtv', before: oldNames[id] ?? null, after: newNames[id] ?? null });
++  }
++  if ((before.options?.displayName ?? null) !== (after.options?.displayName ?? null)) changes.push({ field: 'displayName', before: before.options?.displayName ?? null, after: after.options?.displayName ?? null });
++  const previous = before.options?.dispatchHistory || [];
++  const revision = dispatchRevision(before.options) + (changes.length || action === 'DISPATCH' ? 1 : 0);
++  after.options = { ...after.options, dispatchRevision: revision, dispatchHistory: changes.length || action === 'DISPATCH'
++    ? [...previous, { revision, at: new Date().toISOString(), action, actor, changes }] : previous };
++}
+diff --git a/supabase/migrations/20260926120000_dispatch_edit_history.sql b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+new file mode 100644
+index 00000000..d318561d
+--- /dev/null
++++ b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+@@ -0,0 +1,226 @@
++-- Latest saved plan is the edit baseline; audit and optimistic locking are atomic.
++-- Requires jsonb_unwrap_string and the sequential RPCs. No shared DB application here.
++CREATE OR REPLACE FUNCTION dispatch_edit_snapshot(p_segments jsonb, p_options jsonb)
++RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
++  SELECT jsonb_build_object(
++    'segments', COALESCE((SELECT jsonb_object_agg(s->>'id', jsonb_strip_nulls(jsonb_build_object(
++      'ktvId', s->'ktvId', 'sequenceSlot', s->'sequenceSlot', 'startTime', s->'startTime',
++      'endTime', s->'endTime', 'duration', s->'duration', 'plannedStartAt', s->'plannedStartAt',
++      'plannedEndAt', s->'plannedEndAt', 'actualStartTime', s->'actualStartTime',
++      'actualEndTime', s->'actualEndTime', 'voided', s->'voided')))
++      FROM jsonb_array_elements(COALESCE(jsonb_unwrap_string(p_segments), '[]')) s WHERE s->>'id' IS NOT NULL), '{}'),
++    'names', COALESCE(NULLIF(jsonb_unwrap_string(p_options)->'serviceNamesForKtvs', 'null'), '{}'),
++    'displayName', jsonb_unwrap_string(p_options)->'displayName');
++$$;
++
++CREATE OR REPLACE FUNCTION keep_dispatch_edit_history()
++RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE
++  old_opts jsonb := COALESCE(jsonb_unwrap_string(OLD.options), '{}');
++  new_opts jsonb := COALESCE(jsonb_unwrap_string(NEW.options), '{}');
++  before_state jsonb;
++  after_state jsonb;
++  changes jsonb := '[]';
++  old_seg jsonb;
++  new_seg jsonb;
++  segment_id text;
++  field_name text;
++  employee_id text;
++  revision bigint := COALESCE((old_opts->>'dispatchRevision')::bigint, 0);
++  action_name text := NULLIF(current_setting('app.dispatch_action', true), '');
++  actor jsonb := COALESCE(NULLIF(current_setting('app.dispatch_actor', true), '')::jsonb, 'null');
++BEGIN
++  -- A background writer holding old options must not undo a saved service name.
++  IF action_name IS NULL AND COALESCE((new_opts->>'dispatchRevision')::bigint, 0) < revision THEN
++    new_opts := (new_opts - 'serviceNamesForKtvs' - 'displayName') ||
++      jsonb_build_object('serviceNamesForKtvs', COALESCE(old_opts->'serviceNamesForKtvs', '{}'),
++                         'displayName', old_opts->'displayName');
++  END IF;
++  before_state := dispatch_edit_snapshot(OLD.segments, old_opts);
++  after_state := dispatch_edit_snapshot(NEW.segments, new_opts);
++  FOR segment_id IN SELECT jsonb_object_keys(before_state->'segments') UNION SELECT jsonb_object_keys(after_state->'segments') LOOP
++    old_seg := before_state->'segments'->segment_id;
++    new_seg := after_state->'segments'->segment_id;
++    FOR field_name IN SELECT unnest(ARRAY['ktvId','sequenceSlot','startTime','endTime','duration','plannedStartAt','plannedEndAt','actualStartTime','actualEndTime','voided']) LOOP
++      IF old_seg->field_name IS DISTINCT FROM new_seg->field_name THEN
++        changes := changes || jsonb_build_array(jsonb_build_object('segmentId', segment_id,
++          'employeeId', COALESCE(new_seg->>'ktvId', old_seg->>'ktvId'), 'field', field_name,
++          'before', old_seg->field_name, 'after', new_seg->field_name));
++      END IF;
++    END LOOP;
++  END LOOP;
++  FOR employee_id IN SELECT jsonb_object_keys(before_state->'names') UNION SELECT jsonb_object_keys(after_state->'names') LOOP
++    IF before_state->'names'->employee_id IS DISTINCT FROM after_state->'names'->employee_id THEN
++      changes := changes || jsonb_build_array(jsonb_build_object('employeeId', employee_id,
++        'field', 'serviceNameForKtv', 'before', before_state->'names'->employee_id, 'after', after_state->'names'->employee_id));
++    END IF;
++  END LOOP;
++  IF before_state->'displayName' IS DISTINCT FROM after_state->'displayName' THEN
++    changes := changes || jsonb_build_array(jsonb_build_object('field', 'displayName',
++      'before', before_state->'displayName', 'after', after_state->'displayName'));
++  END IF;
++  new_opts := new_opts || jsonb_build_object('dispatchRevision', revision,
++    'dispatchHistory', COALESCE(old_opts->'dispatchHistory', '[]'));
++  -- Preserve counter entries that arrived while the form was open, plus new entries.
++  IF old_opts ? 'counterLog' OR new_opts ? 'counterLog' THEN
++    new_opts := jsonb_set(new_opts, '{counterLog}', COALESCE((SELECT jsonb_agg(value ORDER BY first_pos)
++      FROM (SELECT value, min(ord) first_pos FROM jsonb_array_elements(
++        COALESCE(old_opts->'counterLog', '[]') || COALESCE(new_opts->'counterLog', '[]')) WITH ORDINALITY a(value, ord)
++        GROUP BY value) unique_entries), '[]'));
++  END IF;
++  IF changes <> '[]' OR action_name IS NOT NULL THEN
++    revision := revision + 1;
++    new_opts := new_opts || jsonb_build_object('dispatchRevision', revision,
++      'dispatchHistory', COALESCE(old_opts->'dispatchHistory', '[]') || jsonb_build_array(jsonb_build_object(
++        'revision', revision, 'at', clock_timestamp(), 'action', COALESCE(action_name, 'UPDATE'),
++        'actor', actor, 'changes', changes)));
++  END IF;
++  NEW.options := new_opts;
++  RETURN NEW;
++END;
++$$;
++
++-- Runs after the existing sequential guard so the audit describes what was saved.
++DROP TRIGGER IF EXISTS zz_dispatch_edit_history ON "BookingItems";
++CREATE TRIGGER zz_dispatch_edit_history BEFORE UPDATE OF segments, options ON "BookingItems"
++FOR EACH ROW EXECUTE FUNCTION keep_dispatch_edit_history();
++
++CREATE OR REPLACE FUNCTION dispatch_apply_edit(p_booking_id text, p_action text, p_payload jsonb, p_actor jsonb)
++RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
++DECLARE
++  edit jsonb;
++  item_row "BookingItems"%ROWTYPE;
++  result jsonb;
++  item_updates jsonb := COALESCE(p_payload->'itemUpdates', '[]');
++  opts jsonb;
++  segment jsonb;
++  old_segment jsonb;
++  segment_list jsonb;
++  plan_day date;
++  plan_start timestamptz;
++BEGIN
++  IF p_action NOT IN ('DRAFT','DISPATCH','ENABLE_SEQUENTIAL','ASSIGN_B','FINISH_AFTER_A','EDIT_ACTUAL_TIME') THEN
++    RAISE EXCEPTION 'Thao tác lưu không hợp lệ';
++  END IF;
++  PERFORM 1 FROM "Bookings" WHERE id = p_booking_id FOR UPDATE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'Không tìm thấy đơn; tải lại bảng'; END IF;
++  IF p_action IN ('ENABLE_SEQUENTIAL','ASSIGN_B','FINISH_AFTER_A') THEN
++    item_updates := jsonb_build_array(jsonb_build_object('id', p_payload->>'itemId',
++      'options', jsonb_build_object('dispatchRevision', p_payload->'expectedRevision')));
++  END IF;
++  FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) ORDER BY value->>'id' LOOP
++    SELECT * INTO item_row FROM "BookingItems" WHERE id = edit->>'id' AND "bookingId" = p_booking_id FOR UPDATE;
++    IF NOT FOUND THEN RAISE EXCEPTION 'Dịch vụ không thuộc đơn; tải lại bảng'; END IF;
++    IF COALESCE((jsonb_unwrap_string(item_row.options)->>'dispatchRevision')::bigint, 0)
++       <> COALESCE((jsonb_unwrap_string(edit->'options')->>'dispatchRevision')::bigint, 0) THEN
++      RAISE EXCEPTION 'Dịch vụ đã có bản lưu mới. Tải lại đơn trước khi chỉnh tiếp; bản cũ chưa được lưu.';
++    END IF;
++  END LOOP;
++  PERFORM set_config('app.dispatch_action', p_action, true);
++  PERFORM set_config('app.dispatch_actor', COALESCE(p_actor, 'null')::text, true);
++  IF p_action = 'DISPATCH' THEN
++    result := dispatch_confirm_booking(p_booking_id, (p_payload->>'date')::date,
++      COALESCE(p_payload->>'status', 'PREPARING'), p_payload->>'technicianCode', p_payload->>'bedId',
++      p_payload->>'roomName', p_payload->>'notes', COALESCE(p_payload->'staffAssignments', '[]'), item_updates);
++    IF COALESCE((result->>'success')::boolean, false) = false THEN RAISE EXCEPTION '%', COALESCE(result->>'error', 'Điều phối chưa được lưu'); END IF;
++  ELSIF p_action = 'EDIT_ACTUAL_TIME' THEN
++    FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
++      SELECT * INTO item_row FROM "BookingItems" WHERE id = edit->>'id';
++      IF jsonb_array_length(edit->'segments') <> jsonb_array_length(jsonb_unwrap_string(item_row.segments))
++         OR (SELECT count(DISTINCT value->>'id') FROM jsonb_array_elements(edit->'segments')) <> jsonb_array_length(edit->'segments') THEN
++        RAISE EXCEPTION 'Chặng đã thay đổi; tải lại đơn';
++      END IF;
++      FOR segment IN SELECT value FROM jsonb_array_elements(edit->'segments') LOOP
++        SELECT value INTO old_segment FROM jsonb_array_elements(jsonb_unwrap_string(item_row.segments))
++        WHERE value->>'id' = segment->>'id';
++        IF old_segment IS NULL OR (old_segment - 'actualStartTime' - 'actualEndTime')
++           IS DISTINCT FROM (segment - 'actualStartTime' - 'actualEndTime')
++           OR (old_segment->>'voided' = 'true' AND old_segment IS DISTINCT FROM segment)
++           OR (COALESCE(old_segment->>'actualStartTime', '') <> '' AND COALESCE(segment->>'actualStartTime', '') = '')
++           OR (COALESCE(old_segment->>'actualEndTime', '') <> '' AND COALESCE(segment->>'actualEndTime', '') = '') THEN
++          RAISE EXCEPTION 'Chỉ chỉnh giờ thực tế, không xóa mốc hoặc đổi chặng đã lưu';
++        END IF;
++        IF COALESCE(segment->>'actualEndTime', '') <> '' AND
++           (COALESCE(segment->>'actualStartTime', '') = '' OR
++            (segment->>'actualEndTime')::timestamptz < (segment->>'actualStartTime')::timestamptz) THEN
++          RAISE EXCEPTION 'Giờ kết thúc phải sau giờ bắt đầu';
++        END IF;
++      END LOOP;
++      -- The payload now matches the locked row apart from validated actual stamps.
++      PERFORM set_config('app.sequential_rpc', '1', true);
++      UPDATE "BookingItems" SET segments = edit->'segments' WHERE id = edit->>'id';
++      PERFORM set_config('app.sequential_rpc', '', true);
++    END LOOP;
++    result := '{"success":true}';
++  ELSIF p_action = 'DRAFT' THEN
++    UPDATE "Bookings" SET "technicianCode" = CASE WHEN p_payload ? 'technicianCode' THEN p_payload->>'technicianCode' ELSE "technicianCode" END,
++      "bedId" = p_payload->>'bedId', "roomName" = p_payload->>'roomName',
++      notes = p_payload->>'notes', "updatedAt" = clock_timestamp() WHERE id = p_booking_id;
++    FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
++      SELECT COALESCE(jsonb_unwrap_string(options), '{}') INTO opts FROM "BookingItems" WHERE id = edit->>'id';
++      segment_list := COALESCE(edit->'segments', (SELECT segments FROM "BookingItems" WHERE id = edit->>'id'));
++      IF opts->>'sequentialSlots' IS DISTINCT FROM '2' THEN
++        FOR segment IN SELECT value FROM jsonb_array_elements(segment_list) LOOP
++          SELECT value INTO old_segment FROM "BookingItems" bi, jsonb_array_elements(COALESCE(bi.segments, '[]'))
++          WHERE bi.id = edit->>'id' AND value->>'id' = segment->>'id' LIMIT 1;
++          IF COALESCE(segment->>'startTime', '') <> '' AND COALESCE(segment->>'duration', '') <> ''
++             AND COALESCE(segment->>'actualStartTime', '') = ''
++             AND (old_segment->'startTime' IS DISTINCT FROM segment->'startTime'
++                  OR old_segment->'duration' IS DISTINCT FROM segment->'duration'
++                  OR old_segment->'endTime' IS DISTINCT FROM segment->'endTime') THEN
++            SELECT COALESCE(NULLIF(p_payload->>'date', '')::date,
++              (NULLIF(old_segment->>'plannedStartAt', '')::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh')::date,
++              (SELECT business_date FROM "KtvAssignments" WHERE booking_item_id = edit->>'id'
++               AND segment_id = segment->>'id' LIMIT 1)) INTO plan_day;
++            IF plan_day IS NOT NULL THEN
++              plan_start := (plan_day + (segment->>'startTime')::time) AT TIME ZONE 'Asia/Ho_Chi_Minh';
++              segment_list := (SELECT jsonb_agg(CASE WHEN value->>'id' = segment->>'id' THEN value ||
++                jsonb_build_object('plannedStartAt', plan_start, 'plannedEndAt',
++                  plan_start + make_interval(mins => (segment->>'duration')::integer)) ELSE value END ORDER BY ord)
++                FROM jsonb_array_elements(segment_list) WITH ORDINALITY a(value, ord));
++            END IF;
++          END IF;
++        END LOOP;
++      END IF;
++      UPDATE "BookingItems" SET "roomName" = edit->>'roomName', "bedId" = edit->>'bedId',
++        "technicianCodes" = ARRAY(SELECT jsonb_array_elements_text(COALESCE(edit->'technicianCodes', '[]'))),
++        segments = segment_list, options = opts || COALESCE(jsonb_unwrap_string(edit->'options'), '{}'),
++        guest_id = CASE WHEN edit ? 'guest_id' THEN edit->>'guest_id' ELSE guest_id END
++      WHERE id = edit->>'id';
++      IF opts->>'sequentialSlots' IS DISTINCT FROM '2' AND jsonb_unwrap_string(edit->'options')->>'sequentialSlots' IS DISTINCT FROM '2'
++         AND COALESCE(jsonb_unwrap_string(edit->'options')->>'mergedIntoId', '') = '' THEN
++        FOR segment IN SELECT value FROM jsonb_array_elements(segment_list) LOOP
++          IF COALESCE(segment->>'ktvId', '') <> '' AND COALESCE(segment->>'startTime', '') <> '' THEN
++            UPDATE "KtvAssignments" SET
++              planned_start_time = (business_date + (segment->>'startTime')::time) AT TIME ZONE 'Asia/Ho_Chi_Minh',
++              planned_end_time = ((business_date + (segment->>'startTime')::time) AT TIME ZONE 'Asia/Ho_Chi_Minh')
++                + make_interval(mins => (segment->>'duration')::integer)
++            WHERE booking_id = p_booking_id AND booking_item_id = edit->>'id'
++              AND segment_id = segment->>'id' AND status IN ('ACTIVE','QUEUED','READY')
++              AND COALESCE(segment->>'actualStartTime', '') = '';
++            UPDATE "TurnQueue" SET start_time = (segment->>'startTime')::time,
++              estimated_end_time = COALESCE(NULLIF(segment->>'endTime', '')::time, estimated_end_time)
++            WHERE employee_id = segment->>'ktvId' AND current_order_id = p_booking_id AND status = 'assigned';
++          END IF;
++        END LOOP;
++      END IF;
++    END LOOP;
++    result := '{"success":true}';
++  ELSIF p_action = 'ENABLE_SEQUENTIAL' THEN
++    result := dispatch_enable_sequential_item(p_booking_id, p_payload->>'itemId');
++  ELSIF p_action = 'ASSIGN_B' THEN
++    result := dispatch_assign_sequential_slot_b(p_booking_id, p_payload->>'itemId', p_payload->>'toKtvId',
++      (p_payload->>'plannedStartAt')::timestamptz, (p_payload->>'durationMinutes')::integer,
++      COALESCE((p_payload->>'confirmOverlap')::boolean, false));
++  ELSE
++    result := dispatch_finish_sequential_after_a(p_booking_id, p_payload->>'itemId');
++  END IF;
++  PERFORM set_config('app.dispatch_action', '', true);
++  PERFORM set_config('app.dispatch_actor', '', true);
++  RETURN result || jsonb_build_object('revisions', (SELECT jsonb_object_agg(id,
++    COALESCE((jsonb_unwrap_string(options)->>'dispatchRevision')::bigint, 0)) FROM "BookingItems"
++    WHERE "bookingId" = p_booking_id AND id IN (SELECT value->>'id' FROM jsonb_array_elements(item_updates))));
++END;
++$$;
++REVOKE ALL ON FUNCTION dispatch_apply_edit(text,text,jsonb,jsonb) FROM PUBLIC, anon, authenticated;
++GRANT EXECUTE ON FUNCTION dispatch_apply_edit(text,text,jsonb,jsonb) TO service_role;
+diff --git a/scripts/test_dispatch_actual_time.cjs b/scripts/test_dispatch_actual_time.cjs
+new file mode 100644
+index 00000000..aa81214b
+--- /dev/null
++++ b/scripts/test_dispatch_actual_time.cjs
+@@ -0,0 +1,39 @@
++const assert = require('node:assert/strict');
++const { readFileSync } = require('node:fs');
++const { join } = require('node:path');
++const ts = require('typescript');
++// Run the actual action body with read-only DB/auth stubs; SQL locking is covered separately.
++const source = readFileSync(join(__dirname, '../app/reception/dispatch/actions.ts'), 'utf8');
++const body = source.slice(source.indexOf('export async function editDispatchActualTimes('), source.indexOf('/** Ghi ý định nối tiếp'));
++const compiled = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
++const before = [{ id: 'a', ktvId: 'A', startTime: '10:00', duration: 30, actualStartTime: '2026-09-26T03:00:00Z' },
++  { id: 'b', ktvId: 'B', startTime: '10:45', duration: 30 }];
++let stored = { segments: before, options: { dispatchRevision: 99 } }, writes = [];
++const db = { from(table) { assert.equal(table, 'BookingItems'); return {
++  select() { return this; }, eq() { return this; }, async single() { return { data: structuredClone(stored) }; }
++}; } };
++const exportsStub = {};
++new Function('requirePermission', 'getSupabaseAdmin', 'applyDispatchEdit', 'exports', compiled)(
++  async permission => assert.equal(permission, 'dispatch_board'), () => db,
++  async (_db, booking, action, payload) => { writes.push({ booking, action, payload }); return { data: { success: true } }; }, exportsStub);
++const edit = (times, revision = 5) => exportsStub.editDispatchActualTimes('booking', 'item', revision, times);
++async function main() {
++  assert.equal((await edit([{ segmentId: 'a', actualStartTime: '2026-09-26T10:01:00+07:00', actualEndTime: null }])).success, true);
++  assert.equal(writes[0].payload.itemUpdates[0].options.dispatchRevision, 5); // Never replace the form's version with DB revision 99.
++  assert.equal(writes[0].action, 'EDIT_ACTUAL_TIME');
++  assert.equal(writes[0].payload.itemUpdates[0].segments[0].actualStartTime, '2026-09-26T03:01:00.000Z');
++  assert.deepEqual(writes[0].payload.itemUpdates[0].segments[1], before[1]);
++  assert.deepEqual(stored.segments, before);
++  for (const times of [
++    [{ segmentId: 'a', actualStartTime: '2026-09-26T10:01:00', actualEndTime: null }],
++    [{ segmentId: 'a', actualStartTime: null, actualEndTime: null }],
++    [{ segmentId: 'a', actualStartTime: '2026-09-26T03:00:00Z', actualEndTime: '2026-09-26T02:59:00Z' }],
++    [{ segmentId: 'unknown', actualStartTime: null, actualEndTime: null }],
++  ]) assert.equal((await edit(times)).success, false);
++  assert.equal(writes.length, 1);
++  stored = { segments: [{ ...before[0], voided: true }], options: { dispatchRevision: 5 } };
++  assert.equal((await edit([{ segmentId: 'a', actualStartTime: '2026-09-26T03:02:00Z', actualEndTime: null }])).success, false);
++  assert.equal(writes.length, 1);
++  console.log('PASS actual-time action: ISO validation, time order, no erasing/reviving, own segment, form revision preserved');
++}
++main().catch(error => { console.error(error); process.exitCode = 1; });

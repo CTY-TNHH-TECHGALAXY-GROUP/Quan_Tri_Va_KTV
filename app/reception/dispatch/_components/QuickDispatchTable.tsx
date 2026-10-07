@@ -1,16 +1,24 @@
 'use client';
+import { isLiveKtvSegment, ktvMetadataMap, parseKtvOptions } from '@/lib/ktvUtils';
+import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
 import { displayBookingCode } from '@/lib/booking-display-code';
 import { isPromotionItem, isUtilityService } from '@/lib/booking.logic';
-import { mergeServicesIntoParent } from './QuickDispatchTable.logic';
+import { mergeServicesIntoParent, ktvsRemovedByMerge, unmergeFromLeading, hasStartedWork, hasFinishedWork } from './QuickDispatchTable.logic';
+import { pickLeadingService, originalMergedMinutes } from '@/lib/dispatch/merged-service';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2 } from 'lucide-react';
+import { Printer, X, ChevronDown, ChevronUp, Clock, AlertCircle, CheckCircle2, Send, Trash2, ArrowLeftRight, Save, Layers, Users, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment } from '../types';
+import { ReminderData, ServiceBlock, StaffData, TurnQueueData, WorkSegment, isTempServiceId } from '../types';
 import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
 import { fmtHours } from '@/lib/hours-format';
 import { ktvDisplayLabel, isPlaceholderStaffId, findExternalKtvByName, externalKtvNameProblem, externalKtvNameKey, newExternalKtvToken, normalizeExternalKtvName } from '@/lib/constants/staff.constants';
 import { t as tCheckin } from '../CheckinConfirm.i18n';
+import { t as tConfirm } from '../DispatchConfirm.i18n';
 import { isVisibleInKtvPicker } from '@/lib/attendance/dispatchCheckinGate';
+import { KtvPickerCombo } from './KtvPickerCombo';
+import { pickKtvByExactInput } from './KtvPickerCombo.logic';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
+import { remainingHandoffMinutes } from '@/lib/dispatch-handoff';
 
 // 🛠 UI CONFIGURATION
 const MAX_EXTERNAL_SUGGESTIONS = 8;
@@ -52,9 +60,18 @@ interface QuickDispatchTableProps {
   billCode?: string;
   customerName?: string;
   isVipSource?: boolean;
+  onSaveStaffRow?: (item: ServiceBlock, ktvId: string, sequential: boolean, savePair: boolean) => Promise<boolean>;
   onDispatchGroup?: (group: ServiceGroup, specificSvcId?: string) => void;
   onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
+  onLiveHandoff?: (itemId: string, fromKtvId: string, toKtvId: string, plannedStartTime?: string) => void;
+  onEnableSequential?: (itemId: string) => void;
   onRemoveSvc?: (orderId: string, svcId: string) => void;
+  /** Popup xác nhận (modal tiếng Việt của trang). Không truyền thì dùng window.confirm. */
+  confirmAction?: (message: string) => Promise<boolean>;
+  /** Close an empty, already-saved slot B (admin turned "Nối tiếp" on by mistake). */
+  onCloseEmptySlotB?: (itemId: string) => Promise<boolean>;
+  /** Hủy gộp dịch vụ ghép ĐANG LÀM: popup xác nhận + lý do → unmergeRunningService. */
+  onUnmergeRunning?: (leading: ServiceBlock) => Promise<void>;
   subOrderCodeProp?: string;
 }
 
@@ -76,30 +93,20 @@ const getCurrentTime = () => {
 
 const genId = () => Math.random().toString(36).substring(2, 9);
 
-/**
- * Gõ ĐÚNG mã hoặc ĐÚNG tên rồi Enter (chốt 14/09/2026): ưu tiên người đang có trong
- * sổ tua; không có (hoặc đang tắt) thì tra toàn bộ KTV đang làm — kể cả CHƯA điểm
- * danh. Gõ một phần thì dropdown vẫn chỉ hiện người đã có trong sổ tua.
- * `processDispatch` sẽ hỏi xác nhận "chưa điểm danh" khi gửi đơn.
- */
-const pickKtvByExactInput = (term: string, turns: (TurnQueueData & { staff?: StaffData })[], staffs: StaffData[]): string | null => {
-  const same = (v?: string | null) => (v || '').toLowerCase().trim() === term;
-  const hit = turns.find(t => t.status !== 'off' && (same(t.employee_id) || same(t.staff?.full_name)));
-  if (hit) return hit.employee_id;
-  const staff = staffs.find(st => st.status === 'ĐANG LÀM' && !isPlaceholderStaffId(st.id) && (same(st.id) || same(st.full_name)));
-  if (staff) return staff.id;
-  // KTV ngoài không tài khoản đã có (15/09/2026), so không dấu — kể cả ĐÃ NGHỈ:
-  // gửi đơn sẽ bật lại, không sinh thêm dòng trùng tên.
-  return findExternalKtvByName(term, staffs)?.id ?? null;
-};
+// `pickKtvByExactInput` chuyển sang KtvPickerCombo.logic.ts (05/10/2026) để ô chọn B dùng chung.
 
 /** Loại KTV để hiện nhãn: sổ tua → danh sách KTV → mã placeholder cũ coi như loại C. */
 const staffWorkTypeOf = (ktvId: string, turn: (TurnQueueData & { staff?: StaffData }) | undefined, staffs: StaffData[]) =>
   turn?.staff?.work_type ?? staffs.find(st => st.id === ktvId)?.work_type ?? (isPlaceholderStaffId(ktvId) ? 'TYPE_C' : null);
 
+/** Turning "Nối tiếp" off must send null: JSON drops `undefined`, and the server merges options
+ *  with `||`, so a saved draft kept sequentialSlots=2 (feedback 02/10/2026). */
+const sequentialSlotsFor = (state: { confirmedSequential?: boolean }, itemCount: number, options: any) =>
+  state.confirmedSequential && itemCount === 1 ? 2 : (Number(options?.sequentialSlots) === 2 ? null : undefined);
+
 export const QuickDispatchTable = ({
   services, orderId, rooms, beds, availableTurns, staffs = [], busyBedIds, isVipSource = false,
-  onUpdateServices, onPrintGroup, reminders = [], onDispatchGroup, onTriggerMergePrompt, onRemoveSvc, billCode, subOrderCodeProp
+  onUpdateServices, onPrintGroup, reminders = [], onSaveStaffRow, onTriggerMergePrompt, onLiveHandoff, onRemoveSvc, billCode, subOrderCodeProp, confirmAction, onCloseEmptySlotB, onUnmergeRunning
 }: QuickDispatchTableProps) => {
 
   const isVipOrder = useMemo(() => {
@@ -173,6 +180,7 @@ export const QuickDispatchTable = ({
     isUtility?: boolean;
     isMergedGroup?: boolean;
     workMode?: 'parallel' | 'sequential';
+    confirmedSequential?: boolean;
   };
   const [groupStates, setGroupStates] = useState<Map<string, GroupState>>(new Map());
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
@@ -185,14 +193,13 @@ export const QuickDispatchTable = ({
     
     if (selectedItems.length < 2) return;
     
-    // The parent names the group (and the KTV app): never a promotion item, prefer a main service.
-    const parent =
-      selectedItems.find(s => !isPromotionItem(s) && !isUtilityService(s)) ??
-      selectedItems.find(s => !isPromotionItem(s)) ??
-      selectedItems[0];
+    // GHÉP DỊCH VỤ: không có chính/con, chỉ có TRƯỚC/SAU — dịch vụ đứng trước trên đơn giữ chặng
+    // (tiện ích như Phòng riêng không đứng trước). KTV của dịch vụ trước làm luôn phút của dịch vụ sau.
+    const parent = pickLeadingService(selectedItems, services, s => isUtilityService(s));
     const children = selectedItems.filter(s => s.id !== parent.id);
-    // KTVs already on the parent also work the children's minutes (VIP 90 + KM 30 → 120p).
+    const removedKtvs = ktvsRemovedByMerge(services, parent.id, children.map(c => c.id));
     const updatedServices = mergeServicesIntoParent(services, parent.id, children);
+    if (removedKtvs.length) alert(tConfirm.mergeRemovedKtvs(removedKtvs));
     
     onUpdateServices(updatedServices);
     onUpdateServices(updatedServices);
@@ -255,6 +262,13 @@ export const QuickDispatchTable = ({
     if (selectedItems.length === 0) return;
     
     let updatedServices = [...services];
+    // Tách khách mà nhóm đang ghép: hủy gộp trước (trừ phút, trả tên) — cùng điều kiện chưa bắt đầu.
+    if (selectedItems.some(p => (p.mergedServiceIds || []).length && (hasStartedWork(p)
+        || services.some(s => (p.mergedServiceIds || []).includes(s.id) && hasStartedWork(s))))) {
+      alert(tConfirm.unmergeStarted);
+      return;
+    }
+    selectedItems.forEach(p => { if ((p.mergedServiceIds || []).length) updatedServices = unmergeFromLeading(updatedServices, p.id); });
     
     selectedItems.forEach(parent => {
         const childrenIds = parent.mergedServiceIds || [];
@@ -314,13 +328,21 @@ export const QuickDispatchTable = ({
     const parent = groupItems[0];
     const childrenIds = parent.mergedServiceIds || [];
     if (childrenIds.length === 0) return;
+    // Đã bắt đầu thì tiền/tua/giờ đang chạy theo chặng ghép — không cho hủy gộp (đổi KTV / kết thúc sớm thay thế).
+    if (hasStartedWork(parent) || services.some(s => childrenIds.includes(s.id) && hasStartedWork(s))) {
+      // Đã xong → chặn cứng (tiền đã chốt). Đang làm → popup xác nhận + lý do, server xử lý (unmergeRunningService).
+      if (hasFinishedWork(parent) || !onUnmergeRunning) { alert(tConfirm.unmergeFinished); return; }
+      void onUnmergeRunning(parent);
+      return;
+    }
 
-    const updatedServices = services.map(svc => {
+    // Trừ lại phút, trả tên gốc, xoá dấu ghép ở dịch vụ sau (lib: unmergeFromLeading).
+    const updatedServices = unmergeFromLeading(services, parent.id).map(svc => {
         if (svc.id === parent.id) {
-            return { ...svc, mergedServiceIds: [], customerGroupId: undefined };
+            return { ...svc, customerGroupId: undefined };
         }
         if (childrenIds.includes(svc.id)) {
-            return { ...svc, mergedIntoId: undefined, customerGroupId: undefined };
+            return { ...svc, customerGroupId: undefined };
         }
         if (svc.customerGroupId === parent.customerGroupId || svc.customerGroupId === parent.id) {
             return { ...svc, customerGroupId: undefined };
@@ -342,8 +364,13 @@ export const QuickDispatchTable = ({
   };
 
   // Build fingerprint from current services data
-  const buildFingerprint = (svcs: ServiceBlock[]) =>
-    svcs.map(s => `${s.id}|${s.mergedIntoId || ''}|${s.mergedServiceIds?.join(',') || ''}|${s.staffList?.map(st => `${st.ktvId}:${st.segments?.[0]?.roomId || ''}:${st.segments?.[0]?.startTime || ''}:${st.segments?.[0]?.duration || ''}`).join(',')}`).join(';');
+  const buildFingerprint = (svcs: ServiceBlock[]) => JSON.stringify(svcs.map(s => ({
+    id: s.id, mergedIntoId: s.mergedIntoId, mergedServiceIds: s.mergedServiceIds,
+    sequential: isTwoSlotSequential(s.options), revision: s.options?.dispatchRevision,
+    displayName: s.options?.displayName,
+    staff: s.staffList.map(st => ({ ktvId: st.ktvId, segments: st.segments,
+      name: st.serviceNameForKtv ?? s.options?.serviceNamesForKtvs?.[st.ktvId] ?? '', note: st.noteForKtv }))
+  })));
 
   // Initialize / re-initialize group states when services change
   useEffect(() => {
@@ -370,29 +397,35 @@ export const QuickDispatchTable = ({
         const ktvDisplayNames: Record<string, string> = {};
         items.forEach(item => {
           if (item.staffList.length > 0) {
-            item.staffList.forEach(staff => {
-              if (staff.ktvId) {
+            const orderedStaff = isTwoSlotSequential(item.options) ? [...item.staffList].sort((a,b) => {
+              const slot=(row:typeof a)=>Number(row.segments.find(seg=>isLiveKtvSegment({...seg,ktvId:(seg as any).ktvId || row.ktvId},row.ktvId))?.sequenceSlot || 99);
+              return slot(a)-slot(b);
+            }) : item.staffList;
+            orderedStaff.forEach(staff => {
+              if (staff.ktvId && staff.segments.some(seg => isLiveKtvSegment({ ...seg, ktvId: (seg as any).ktvId || staff.ktvId }, staff.ktvId))) {
+                const firstSegment = staff.segments?.find(seg => isLiveKtvSegment({ ...seg, ktvId: (seg as any).ktvId || staff.ktvId }, staff.ktvId));
                 ktvIds.push(staff.ktvId);
                 if (staff.ktvName && staff.ktvName !== staff.ktvId) {
                   ktvDisplayNames[staff.ktvId] = staff.ktvName;
                 }
-                roomIds.push(staff.segments?.[0]?.roomId || '');
-                startTimes.push(staff.segments?.[0]?.startTime || defaultTime);
+                roomIds.push(firstSegment?.roomId || '');
+                const saved = Number(item.options?.dispatchRevision || 0) > 0 || !['NEW', 'WAITING'].includes(item.status || 'NEW');
+                startTimes.push(firstSegment?.startTime ?? (saved ? '' : defaultTime));
                 
-                let totalStaffDur = (staff.segments?.[0]?.duration !== undefined && staff.segments?.[0]?.duration !== null) ? staff.segments[0].duration : duration;
-                let finalEndTime = staff.segments?.[0]?.endTime;
+                let totalStaffDur = (firstSegment?.duration !== undefined && firstSegment?.duration !== null) ? firstSegment!.duration : (saved ? 0 : duration);
+                let finalEndTime = firstSegment?.endTime;
                 
                 // Parent segment duration already contains the TOTAL merged duration
                 // Do NOT add child durations here — it would double-count
                 if (!finalEndTime) {
-                   finalEndTime = calcEndTime(staff.segments?.[0]?.startTime || defaultTime, totalStaffDur);
+                   finalEndTime = saved ? '' : calcEndTime(firstSegment?.startTime ?? defaultTime, totalStaffDur);
                 }
                 
                 endTimes.push(finalEndTime);
                 ktvDurationsList.push(totalStaffDur);
                 ktvNotesList.push(staff.noteForKtv || '');
-                ktvServiceNamesList.push(staff.serviceNameForKtv || '');
-                bedIdsList.push(staff.segments?.[0]?.bedId || '');
+                ktvServiceNamesList.push(staff.serviceNameForKtv ?? item.options?.serviceNamesForKtvs?.[staff.ktvId] ?? '');
+                bedIdsList.push(firstSegment?.bedId || '');
               }
             });
           }
@@ -404,7 +437,9 @@ export const QuickDispatchTable = ({
         }
           let initialWorkMode: 'parallel' | 'sequential' = 'parallel';
           const prevMode = prevStates.get(groupKey)?.workMode;
-          if (prevMode) {
+          if (items.some(item => isTwoSlotSequential(item.options))) {
+              initialWorkMode = 'sequential';
+          } else if (prevMode) {
               initialWorkMode = prevMode;
           } else if (ktvIds.length > 1 && startTimes.length > 1) {
               const allSame = startTimes.every(st => st === startTimes[0]);
@@ -426,7 +461,8 @@ export const QuickDispatchTable = ({
             duration,
             isUtility: isUtilityService(items[0]),
             isMergedGroup,
-            workMode: initialWorkMode
+            workMode: initialWorkMode,
+            confirmedSequential: items.length === 1 && isTwoSlotSequential(items[0].options)
           });
       });
       return newStates.size > 0 ? newStates : prevStates;
@@ -451,13 +487,39 @@ export const QuickDispatchTable = ({
   };
 
   // Sync group states back to parent services
-  const syncToServices = (nextStates: Map<string, GroupState>) => {
+  const syncToServices = (nextStates: Map<string, GroupState>, publish = true) => {
     const updatedServices = [...services];
     const globalUsedBedIds: string[] = [];
 
     nextStates.forEach((state, groupKey) => {
       const items = initialGroups.get(groupKey);
       if (!items) return;
+      if (items.length === 1 && state.confirmedSequential) {
+        const item = items[0];
+        const svcIdx = updatedServices.findIndex(s => s.id === item.id);
+        const history = item.staffList.filter(row => row.segments.every(seg => !isLiveKtvSegment({ ...seg, ktvId: (seg as any).ktvId || row.ktvId }, row.ktvId)));
+        updatedServices[svcIdx] = { ...updatedServices[svcIdx],
+          staffList: [...history, ...state.selectedKtvIds.map((ktvId, idx) => {
+            const oldRow = item.staffList.find(row => row.ktvId === ktvId && row.segments.some(seg => isLiveKtvSegment({ ...seg, ktvId: (seg as any).ktvId || ktvId }, ktvId)));
+            const old = oldRow?.segments.find(seg => isLiveKtvSegment({ ...seg, ktvId: (seg as any).ktvId || ktvId }, ktvId));
+            const startTime = state.ktvStartTimes[idx] || '';
+            const duration = state.ktvDurations[idx] || 0;
+            const segment = old?.actualStartTime ? { ...old, sequenceSlot: old.sequenceSlot ?? idx + 1,
+              ...(!old.actualEndTime && idx === 0 && !item.staffList.some(row=>row.segments.some(seg=>Number(seg.sequenceSlot)===2 && (seg as any).voided!==true && (seg as any).voided!=='true' && seg.actualStartTime))
+                ? { duration, endTime: state.ktvEndTimes[idx] || calcEndTime(startTime, duration) } : {}) } : { ...old, id: old?.id || `seg-${genId()}`,
+              roomId: state.selectedRoomIds[idx] || null, bedId: state.ktvBedIds[idx] || null,
+              sequenceSlot: idx + 1, startTime, endTime: state.ktvEndTimes[idx] || calcEndTime(startTime, duration), duration };
+            return { id: oldRow?.id || `st-${item.id}-${ktvId}`, ktvId,
+              ktvName: oldRow?.ktvName || staffs.find(st => st.id === ktvId)?.full_name || ktvId,
+              segments: [segment, ...(oldRow?.segments.filter(seg => !isLiveKtvSegment({ ...seg, ktvId: (seg as any).ktvId || ktvId }, ktvId)) || [])],
+              noteForKtv: state.ktvNotes[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' };
+          })],
+          // Bật "Nối tiếp" trong form chỉ là bản nháp cho tới khi Lưu (xem dispatch-timeline isSavedSequential).
+          options: { ...updatedServices[svcIdx].options, sequentialSlots: 2, displayName: state.displayName,
+            _draftSequential: !isTwoSlotSequential(item.options) || item.options?._draftSequential === true },
+        };
+        return;
+      }
       const ktvCount = state.selectedKtvIds.length;
       const itemCount = items.length;
 
@@ -479,7 +541,7 @@ export const QuickDispatchTable = ({
           let bedId: string | null = state.ktvBedIds?.[idx] || null;
           if (roomId && !bedId) { bedId = getAvailableBedInRoom(roomId, globalUsedBedIds); if (bedId) globalUsedBedIds.push(bedId); }
           else if (bedId) { globalUsedBedIds.push(bedId); }
-          const st = state.ktvStartTimes?.[idx] || getCurrentTime();
+          const st = state.ktvStartTimes?.[idx] ?? getCurrentTime();
           
           const originalDur = (updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration !== undefined && updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.duration !== null) ? updatedServices[svcIdx].staffList[0].segments[0].duration : updatedServices[svcIdx].duration;
           
@@ -495,15 +557,18 @@ export const QuickDispatchTable = ({
               ktvDur = (state.ktvDurations?.[idx] !== undefined && state.ktvDurations?.[idx] !== null) ? state.ktvDurations[idx] : originalDur;
           }
           
+          const existingSeg = updatedServices[svcIdx].staffList?.find(r => r.ktvId === ktvId)?.segments?.[0];
           const segment: WorkSegment = {
-            id: updatedServices[svcIdx].staffList?.[0]?.segments?.[0]?.id || `seg-${genId()}`,
+            ...existingSeg,
+            id: existingSeg?.id || `seg-${genId()}`,
             roomId, bedId, startTime: st, duration: ktvDur,
-            endTime: state.ktvEndTimes?.[idx] || calcEndTime(st, ktvDur),
+            sequenceSlot: state.confirmedSequential && items.length === 1 ? 1 : undefined,
+            endTime: state.ktvEndTimes?.[idx] ?? calcEndTime(st, ktvDur),
           };
           updatedServices[svcIdx] = {
             ...updatedServices[svcIdx],
-            staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
-            options: { ...updatedServices[svcIdx].options, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
+            staffList: [{ id: updatedServices[svcIdx].staffList?.[0]?.id || `st-${item.id}-${ktvId}`, ktvId, ktvName, segments: [segment, ...(updatedServices[svcIdx].staffList.find(r => r.ktvId === ktvId)?.segments.slice(1) || [])], noteForKtv: state.ktvNotes?.[idx] || '', serviceNameForKtv: state.ktvServiceNames?.[idx] || '' }],
+            options: { ...updatedServices[svcIdx].options, sequentialSlots: sequentialSlotsFor(state, items.length, updatedServices[svcIdx].options), displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
           };
         });
       } else {
@@ -547,7 +612,7 @@ export const QuickDispatchTable = ({
                     baseIdxToBedId.set(baseIdx, bedId);
                 }
             }
-            const st = state.ktvStartTimes?.[ki] || getCurrentTime();
+            const st = state.ktvStartTimes?.[ki] ?? getCurrentTime();
             const originalDur = (updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration !== undefined && updatedServices[svcIdx].staffList?.[ki]?.segments?.[0]?.duration !== null) ? updatedServices[svcIdx].staffList[ki].segments[0].duration : updatedServices[svcIdx].duration;
             
             // For merged services, ktvDurations[0] already contains the TOTAL merged duration from the UI
@@ -558,7 +623,7 @@ export const QuickDispatchTable = ({
                 kd = (state.ktvDurations?.[ki] !== undefined && state.ktvDurations?.[ki] !== null) ? state.ktvDurations[ki] : originalDur;
             }
             
-            const finalEndTime = state.ktvEndTimes?.[ki] || calcEndTime(st, kd);
+            const finalEndTime = state.ktvEndTimes?.[ki] ?? calcEndTime(st, kd);
             
             staffEntries.push({ ktvId, ktvName, roomId, bedId, startTime: st, endTime: finalEndTime, duration: kd });
           }
@@ -567,16 +632,21 @@ export const QuickDispatchTable = ({
             staffList: staffEntries.map((e, si) => ({
               id: updatedServices[svcIdx].staffList?.[si]?.id || `st-${item.id}-${e.ktvId}`,
               ktvId: e.ktvId, ktvName: e.ktvName,
-              segments: [{ id: updatedServices[svcIdx].staffList?.[si]?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime }],
+              segments: [{ ...updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0], id: updatedServices[svcIdx].staffList?.find(r => r.ktvId === e.ktvId)?.segments?.[0]?.id || `seg-${genId()}`, roomId: e.roomId, bedId: e.bedId, startTime: e.startTime, duration: e.duration, endTime: e.endTime, sequenceSlot: state.confirmedSequential && items.length === 1 ? si + 1 : undefined }, ...(updatedServices[svcIdx].staffList.find(r => r.ktvId === e.ktvId)?.segments.slice(1) || [])],
               noteForKtv: (state.ktvNotes && state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] !== undefined) ? state.ktvNotes[state.selectedKtvIds.indexOf(e.ktvId)] : '',
               serviceNameForKtv: state.ktvServiceNames?.[state.selectedKtvIds.indexOf(e.ktvId)] || '',
             })),
-            options: { ...updatedServices[svcIdx].options, displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
+            options: { ...updatedServices[svcIdx].options, sequentialSlots: sequentialSlotsFor(state, items.length, updatedServices[svcIdx].options), displayName: state.displayName ? state.displayName : updatedServices[svcIdx].options?.displayName },
           };
         });
       }
     });
-    onUpdateServices(updatedServices);
+    const result = updatedServices.map(svc => ({ ...svc, options: { ...svc.options,
+      serviceNamesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).serviceNamesForKtvs, svc.staffList, 'serviceNameForKtv'),
+      notesForKtvs: ktvMetadataMap(parseKtvOptions(svc.options).notesForKtvs, svc.staffList, 'noteForKtv')
+    } }));
+    if (publish) onUpdateServices(result);
+    return result;
   };
 
   // Track user-driven changes for deferred sync
@@ -668,28 +738,51 @@ export const QuickDispatchTable = ({
   return (
     <div className="space-y-5">
       {/* 🚀 TOOLBAR SUB-BOOKING */}
-      <div className="sticky top-0 z-20 px-6 py-4 bg-white/80 backdrop-blur-md border border-slate-200/80 rounded-3xl flex flex-wrap gap-2.5 items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2">
-              <input type="checkbox" id="selectAllCheckbox" checked={isAllSelected} onChange={toggleSelectAll} className="w-5 h-5 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
-              <label htmlFor="selectAllCheckbox" className="text-xs font-black text-slate-700 uppercase tracking-wider cursor-pointer mt-0.5">
-                  ĐÃ CHỌN ({selectedGroupKeys.length}/{initialGroups.size})
+      <div className="sticky top-0 z-20 px-3 sm:px-6 py-2.5 sm:py-3.5 bg-white/90 backdrop-blur-md border border-slate-200/90 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between shadow-sm">
+          <div className="flex items-center justify-between sm:justify-start gap-2">
+              <label htmlFor="selectAllCheckbox" className="flex items-center gap-2 cursor-pointer select-none py-1">
+                  <input type="checkbox" id="selectAllCheckbox" checked={isAllSelected} onChange={toggleSelectAll} className="w-4 h-4 sm:w-5 sm:h-5 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider mt-0.5">
+                      ĐÃ CHỌN ({selectedGroupKeys.length}/{initialGroups.size})
+                  </span>
               </label>
           </div>
           
-          <div className="flex items-center gap-2">
-              <button onClick={handleMergeServices} disabled={selectedGroupKeys.length < 2} className="flex items-center gap-1.5 bg-white border-2 border-indigo-200 text-indigo-700 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none" title="Gộp 2 hoặc nhiều dịch vụ thành 1 đơn con chung, DÙNG CHUNG KTV">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
-                  GỘP CHUNG KTV
+          <div className="grid grid-cols-3 gap-1.5 sm:flex sm:items-center sm:gap-2">
+              <button
+                  type="button"
+                  onClick={handleMergeServices}
+                  disabled={selectedGroupKeys.length < 2}
+                  className="flex items-center justify-center gap-1 sm:gap-1.5 bg-white border-2 border-indigo-200 text-indigo-700 px-2 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs font-black hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-xs active:scale-95 disabled:opacity-40 disabled:pointer-events-none min-h-[40px] text-center"
+                  title="Gộp 2 hoặc nhiều dịch vụ thành 1 đơn con chung, DÙNG CHUNG KTV"
+              >
+                  <Layers size={14} className="shrink-0 text-indigo-600" />
+                  <span className="sm:hidden">Chung KTV</span>
+                  <span className="hidden sm:inline">GỘP CHUNG KTV</span>
               </button>
 
-              <button onClick={handleGroupServices} disabled={selectedGroupKeys.length < 2} className="flex items-center gap-1.5 bg-white border-2 border-emerald-200 text-emerald-700 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-emerald-50 hover:border-emerald-300 transition-all shadow-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none" title="Gộp dịch vụ vào chung 1 Đơn Con (1 người khách) nhưng KHÁC KTV">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                  GỘP ĐƠN KHÁC KTV
+              <button
+                  type="button"
+                  onClick={handleGroupServices}
+                  disabled={selectedGroupKeys.length < 2}
+                  className="flex items-center justify-center gap-1 sm:gap-1.5 bg-white border-2 border-emerald-200 text-emerald-700 px-2 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs font-black hover:bg-emerald-50 hover:border-emerald-300 transition-all shadow-xs active:scale-95 disabled:opacity-40 disabled:pointer-events-none min-h-[40px] text-center"
+                  title="Gộp dịch vụ vào chung 1 Đơn Con (1 người khách) nhưng KHÁC KTV"
+              >
+                  <Users size={14} className="shrink-0 text-emerald-600" />
+                  <span className="sm:hidden">Khác KTV</span>
+                  <span className="hidden sm:inline">GỘP ĐƠN KHÁC KTV</span>
               </button>
 
-              <button onClick={handleSplitServices} disabled={selectedGroupKeys.length < 1} className="flex items-center gap-1.5 bg-white border-2 border-amber-200 text-amber-800 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none" title="Xé lẻ các dịch vụ đã gộp thành từng khách riêng biệt">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
-                  ✂ TÁCH KHÁCH (HỦY GỘP)
+              <button
+                  type="button"
+                  onClick={handleSplitServices}
+                  disabled={selectedGroupKeys.length < 1}
+                  className="flex items-center justify-center gap-1 sm:gap-1.5 bg-white border-2 border-amber-200 text-amber-800 px-2 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs font-black hover:bg-amber-50 hover:border-amber-300 transition-all shadow-xs active:scale-95 disabled:opacity-40 disabled:pointer-events-none min-h-[40px] text-center"
+                  title="Xé lẻ các dịch vụ đã gộp thành từng khách riêng biệt"
+              >
+                  <Scissors size={14} className="shrink-0 text-amber-700" />
+                  <span className="sm:hidden">Tách khách</span>
+                  <span className="hidden sm:inline">TÁCH KHÁCH (HỦY GỘP)</span>
               </button>
           </div>
       </div>
@@ -814,14 +907,11 @@ export const QuickDispatchTable = ({
                           busyBedIds={busyBedIds}
                           onUpdate={(patch) => updateGroup(groupKey, patch)}
                           onPrint={() => onPrintGroup({ serviceName: displayServiceName, items, ...state })}
-                          onDispatch={(ktvIdx?: number) => {
-                            if (!onDispatchGroup) return;
-                            let specificSvcId: string | undefined = undefined;
-                            if (ktvIdx !== undefined && items.length > 0) {
-                                specificSvcId = items[ktvIdx % items.length].id;
-                            }
-                            onDispatchGroup({ serviceName: displayServiceName, items, ...state }, specificSvcId);
-                          }}
+                          onSaveRow={onSaveStaffRow ? async (ktvIdx, savePair) => {
+                            const latest = syncToServices(groupStates, false);
+                            const item = latest.find(service => service.id === items[Math.max(0, ktvIdx) % items.length]?.id);
+                            return item ? onSaveStaffRow(item, state.selectedKtvIds[ktvIdx] || '', !!state.confirmedSequential, savePair) : false;
+                          } : undefined}
                           customerReqs={items[0] ? {
                             genderReq: items[0].genderReq,
                             strength: items[0].strength,
@@ -835,8 +925,11 @@ export const QuickDispatchTable = ({
                           allServices={services}
                           groupItems={items}
                           onTriggerMergePrompt={onTriggerMergePrompt}
+                          onLiveHandoff={onLiveHandoff}
                           onUpdateServices={onUpdateServices}
                           onRemoveSvc={onRemoveSvc}
+                          confirmAction={confirmAction}
+                          onCloseEmptySlotB={onCloseEmptySlotB}
                           orderId={orderId}
                           subOrderCode={subOrderCode}
                           isSelected={isSelected}
@@ -882,6 +975,7 @@ interface ServiceGroupCardProps {
     isUtility?: boolean; 
     isMergedGroup?: boolean; 
     workMode?: 'parallel' | 'sequential'; 
+    confirmedSequential?: boolean;
   };
   availableTurns: (TurnQueueData & { staff?: StaffData })[];
   staffs: StaffData[];
@@ -891,7 +985,7 @@ interface ServiceGroupCardProps {
   busyBedIds: string[];
   onUpdate: (patch: Record<string, unknown>) => void;
   onPrint: () => void;
-  onDispatch?: (ktvIdx?: number) => void;
+  onSaveRow?: (ktvIdx: number, savePair: boolean) => Promise<boolean>;
   customerReqs?: { genderReq?: string; strength?: string; focus?: string; avoid?: string; customerNote?: string; };
   reminders?: { id: string; content: string }[];
   getLatestEndTime: (ktvId: string) => string;
@@ -899,8 +993,13 @@ interface ServiceGroupCardProps {
   allServices: ServiceBlock[];
   groupItems: ServiceBlock[];
   onTriggerMergePrompt?: (sourceSvcId: string, targetSvcId: string, ktvId: string, onConfirm: () => void, onCancel: () => void) => void;
+  onLiveHandoff?: (itemId: string, fromKtvId: string, toKtvId: string, plannedStartTime?: string) => void;
   onUpdateServices?: (services: ServiceBlock[]) => void;
   onRemoveSvc?: (orderId: string, svcId: string) => void;
+  /** Popup xác nhận (modal tiếng Việt của trang). Không truyền thì dùng window.confirm. */
+  confirmAction?: (message: string) => Promise<boolean>;
+  /** Close an empty, already-saved slot B (admin turned "Nối tiếp" on by mistake). */
+  onCloseEmptySlotB?: (itemId: string) => Promise<boolean>;
   orderId?: string | null;
   subOrderCode?: string;
   borderColorClass?: string;
@@ -917,8 +1016,8 @@ const MAX_KTV_PER_GROUP = 10;
 
 const ServiceGroupCard = ({
   serviceName, serviceDescription, count, duration, state,
-  availableTurns, staffs, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onDispatch, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
-  allServices, groupItems, onTriggerMergePrompt, onUpdateServices, onRemoveSvc,
+  availableTurns, staffs, allSelectedKtvIds, rooms, beds, busyBedIds, onUpdate, onPrint, onSaveRow, customerReqs, reminders = [], getLatestEndTime, isVipOrder = false,
+  allServices, groupItems, onTriggerMergePrompt, onLiveHandoff, onUpdateServices, onRemoveSvc, confirmAction, onCloseEmptySlotB,
   orderId,
   subOrderCode,
   borderColorClass,
@@ -929,10 +1028,20 @@ const ServiceGroupCard = ({
   isChildOfBlock = false
 }: ServiceGroupCardProps) => {
   const [isKtvDropdownOpen, setIsKtvDropdownOpen] = useState(false);
+  const hasHandoff = groupItems.some(item => isTwoSlotSequential(item.options));
+  const isDraft = groupItems.every(item => ['NEW', 'WAITING'].includes(item.status || 'NEW'));
+  const canAddSequential = groupItems.length === 1 && !state.isMergedGroup && state.selectedKtvIds.length === 1
+    && !sequentialSlotClosed(groupItems[0].options, 2)
+    && !FOURHAND_SERVICES.includes(groupItems[0].serviceId || '')
+    && (isDraft || ['PREPARING', 'READY', 'IN_PROGRESS'].includes(groupItems[0].status || ''));
+  const remainingMinutes = remainingHandoffMinutes(duration, state.ktvDurations?.[0] ?? duration);
+  const waitingForB = !!state.confirmedSequential && state.selectedKtvIds.length === 1 && !groupItems.some(item => item.options?.finishedAfterA || sequentialSlotClosed(item.options, 2));
   const [ktvSearch, setKtvSearch] = useState('');
   const [showTicketForIdx, setShowTicketForIdx] = useState<number | null>(null);
   const [openDurationIdx, setOpenDurationIdx] = useState<number | null>(null);
   const [showRemindersIdx, setShowRemindersIdx] = useState<number | null>(null);
+  const [savingRow, setSavingRow] = useState<number | null>(null);
+  const [closingSlotB, setClosingSlotB] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const reminderRef = useRef<HTMLDivElement>(null);
 
@@ -945,20 +1054,32 @@ const ServiceGroupCard = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [isKtvDropdownOpen, showRemindersIdx]);
 
-  const removeKtv = (ktvId: string) => {
+  const singleKtvName = groupItems.length === 1 && !state.isUtility && state.selectedKtvIds.length === 1;
+
+  const removeKtv = async (ktvId: string) => {
+    // Bỏ KTV cuối cùng = dịch vụ không còn ai làm → hỏi trước, Lưu sẽ đưa về "Chờ điều phối".
+    if (state.selectedKtvIds.length === 1 && state.selectedKtvIds[0] === ktvId) {
+      const message = tConfirm.removeLastKtv(state.displayName || groupItems[0]?.serviceName || 'dịch vụ');
+      const ok = confirmAction ? await confirmAction(message) : window.confirm(message);
+      if (!ok) return;
+    }
     const idx = state.selectedKtvIds.indexOf(ktvId);
     const newRoomIds = [...(state.selectedRoomIds || [])];
     const newStarts = [...(state.ktvStartTimes || [])];
     const newEnds = [...(state.ktvEndTimes || [])];
     const newDurs = [...(state.ktvDurations || [])];
     const newNotes = [...(state.ktvNotes || [])];
+    const newNames = [...(state.ktvServiceNames || [])];
     const newBeds = [...(state.ktvBedIds || [])];
-    if (idx >= 0) { newRoomIds.splice(idx, 1); newStarts.splice(idx, 1); newEnds.splice(idx, 1); newDurs.splice(idx, 1); newNotes.splice(idx, 1); newBeds.splice(idx, 1); }
-    onUpdate({ selectedKtvIds: state.selectedKtvIds.filter(id => id !== ktvId), selectedRoomIds: newRoomIds, ktvStartTimes: newStarts, ktvEndTimes: newEnds, ktvDurations: newDurs, ktvNotes: newNotes, ktvBedIds: newBeds });
+    if (idx >= 0) { newRoomIds.splice(idx, 1); newStarts.splice(idx, 1); newEnds.splice(idx, 1); newDurs.splice(idx, 1); newNotes.splice(idx, 1); newNames.splice(idx, 1); newBeds.splice(idx, 1); }
+    onUpdate({ selectedKtvIds: state.selectedKtvIds.filter(id => id !== ktvId), selectedRoomIds: newRoomIds, ktvStartTimes: newStarts, ktvEndTimes: newEnds, ktvDurations: newDurs, ktvNotes: newNotes, ktvServiceNames: newNames, ktvBedIds: newBeds });
   };
 
+  const canReorder = groupItems.every(item => !['CLEANING', 'FEEDBACK', 'DONE', 'CANCELLED'].includes(item.status || '')
+    && item.staffList.every(row => row.segments.every(seg => !isLiveKtvSegment({ ...seg, ktvId: row.ktvId }, row.ktvId) || !seg.actualStartTime)));
+
   const moveKtv = (fromIdx: number, toIdx: number) => {
-    if (toIdx < 0 || toIdx >= state.selectedKtvIds.length) return;
+    if (!canReorder || fromIdx < 0 || fromIdx >= state.selectedKtvIds.length || toIdx < 0 || toIdx >= state.selectedKtvIds.length) return;
     const swap = <T,>(arr: T[] | undefined): T[] => {
       if (!arr) return [];
       const copy = [...arr];
@@ -973,10 +1094,10 @@ const ServiceGroupCard = ({
     if (state.workMode === 'sequential') {
         newStarts = [...(state.ktvStartTimes || [])];
         newEnds = [...(state.ktvEndTimes || [])];
-        let currentStart = newStarts[0] || getCurrentTime();
+        let currentStart = newStarts[0] ?? getCurrentTime();
         for (let i = 0; i < state.selectedKtvIds.length; i++) {
             newStarts[i] = currentStart;
-            newEnds[i] = calcEndTime(currentStart, newDurations[i] || duration);
+            newEnds[i] = calcEndTime(currentStart, newDurations[i] ?? duration);
             currentStart = newEnds[i];
         }
     }
@@ -988,12 +1109,27 @@ const ServiceGroupCard = ({
       ktvEndTimes: newEnds,
       ktvDurations: newDurations,
       ktvNotes: swap(state.ktvNotes),
+      ktvServiceNames: swap(state.ktvServiceNames),
       ktvBedIds: swap(state.ktvBedIds),
     });
   };
 
   const addKtv = (ktvId: string) => {
+    if (state.selectedKtvIds.includes(ktvId)) return;
+    if (state.confirmedSequential && state.selectedKtvIds.length >= 2) return;
     if (state.selectedKtvIds.length >= MAX_KTV_PER_GROUP) return;
+    const liveItem = groupItems.find(item => item.staffList.some(row => row.segments.some(seg => seg.actualStartTime && !seg.actualEndTime)));
+    if (liveItem && !state.confirmedSequential) {
+      if (groupItems.length !== 1) {
+        alert('Nhóm đang có nhiều dịch vụ. Mở từng dịch vụ ở chế độ chi tiết để bàn giao.');
+        return;
+      }
+      const fromKtvId = liveItem.staffList.find(row => row.segments.some(seg => seg.actualStartTime && !seg.actualEndTime))?.ktvId;
+      if (fromKtvId && onLiveHandoff) onLiveHandoff(liveItem.id, fromKtvId, ktvId);
+      setKtvSearch('');
+      setIsKtvDropdownOpen(false);
+      return;
+    }
 
     const proceedAdd = () => {
       // Tính thời gian kết thúc trễ nhất của KTV này ở các dịch vụ khác trong cùng đơn
@@ -1001,12 +1137,13 @@ const ServiceGroupCard = ({
 
       const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
 
-      let defaultStart = latestEndTime || (state.ktvStartTimes || [])[0] || getCurrentTime();
+      let defaultStart = latestEndTime || ((state.ktvStartTimes || [])[0] ?? getCurrentTime());
       let defaultDur = duration;
 
       if (state.workMode === 'sequential' && state.selectedKtvIds.length > 0) {
           const lastIdx = state.selectedKtvIds.length - 1;
           defaultStart = state.ktvEndTimes?.[lastIdx] || defaultStart;
+          if (state.confirmedSequential) defaultDur = remainingMinutes;
       } else if (state.workMode === 'parallel' && state.selectedKtvIds.length > 0) {
           defaultStart = (state.ktvStartTimes || [])[0] || defaultStart;
       }
@@ -1021,11 +1158,13 @@ const ServiceGroupCard = ({
         ktvStartTimes: [...(state.ktvStartTimes || []), defaultStart], 
         ktvEndTimes: [...(state.ktvEndTimes || []), defaultEnd], 
         ktvDurations: [...(state.ktvDurations || []), defaultDur], 
-        ktvNotes: [...(state.ktvNotes || []), ''], 
+        ktvNotes: [...(state.ktvNotes || []), ''],
+        ktvServiceNames: [...(state.ktvServiceNames || []), ''],
         ktvBedIds: [...(state.ktvBedIds || []), defaultBed],
         selectedRoomIds: [...(state.selectedRoomIds || []), defaultRoom]
       });
       setKtvSearch('');
+      setIsKtvDropdownOpen(false);
     };
 
     /*
@@ -1138,6 +1277,9 @@ const ServiceGroupCard = ({
 
   // Duration presets — không giới hạn theo duration dịch vụ, cho phép chọn linh hoạt
   const DURATION_PRESETS = [30, 45, 60, 70, 90, 120, 180, 200, 240, 300];
+  // Server nhận thời lượng 1–600 phút (dispatch_commit_form_base).
+  const MIN_DURATION = 1;
+  const MAX_DURATION = 600;
 
   const isSequentialMode = state.selectedKtvIds.length > count;
 
@@ -1259,11 +1401,15 @@ const ServiceGroupCard = ({
                        <span className="text-xs text-slate-500 font-bold">Mã chính: <span className="text-slate-800 font-black">{billCode}</span></span>
                      </>
                    )}
-                   
+                   {groupItems.some(item => isTempServiceId(item.id)) && (
+                     <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg animate-pulse">
+                         Đang lưu…
+                     </span>
+                   )}
                 </div>
             </div>
             
-            {onRemoveSvc && groupItems.length === 1 && orderId && (
+            {onRemoveSvc && groupItems.length === 1 && orderId && !isTempServiceId(groupItems[0].id) && (
               <button onClick={() => onRemoveSvc(orderId, groupItems[0].id)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border border-rose-100 bg-white" title="Xóa dịch vụ">
                   <Trash2 size={14} />
               </button>
@@ -1284,8 +1430,10 @@ const ServiceGroupCard = ({
               {state.isUtility && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">[Tiện ích]</span>}
               <input 
                 type="text" 
-                value={state.displayName} 
-                onChange={e => onUpdate({ displayName: e.target.value })} 
+                aria-label={singleKtvName ? `Tên dịch vụ riêng của ${state.selectedKtvIds[0]}` : 'Tên dịch vụ chung'}
+                readOnly={hasHandoff && !singleKtvName}
+                value={singleKtvName ? state.ktvServiceNames?.[0] || state.displayName : state.displayName}
+                onChange={e => singleKtvName ? updateServiceNameForIdx(0, e.target.value) : onUpdate({ displayName: e.target.value })}
                 placeholder={serviceName}
                 className={`font-black text-base bg-transparent border-b border-dashed hover:border-indigo-300 focus:border-indigo-500 outline-none w-full truncate ${state.isUtility ? 'text-amber-700 italic border-amber-300/50' : 'text-gray-900 border-gray-300/50'}`} 
               />
@@ -1294,7 +1442,7 @@ const ServiceGroupCard = ({
                    {state.duration || duration}p
                  </span>
               )}
-              {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">+{state.selectedKtvIds.length - count} nối tiếp</span>}
+              {state.selectedKtvIds.length > count && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">{hasHandoff ? 'A → B' : `+${state.selectedKtvIds.length - count} ${state.workMode === 'sequential' ? 'nối tiếp' : 'song song'}`}</span>}
             </div>
             {state.isMergedGroup && groupItems.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 mt-0.5">
@@ -1365,7 +1513,7 @@ const ServiceGroupCard = ({
              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                  Nhân viên ({state.selectedKtvIds.length}{count > 1 ? `/${count}` : ''})
              </label>
-             {state.selectedKtvIds.length > 1 && (
+             {state.selectedKtvIds.length > 1 && !state.confirmedSequential && (
                  <select 
                      className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
                      value={state.workMode || 'parallel'}
@@ -1377,7 +1525,7 @@ const ServiceGroupCard = ({
                          const newStarts: string[] = [];
                          const newEnds: string[] = [];
                          
-                         let currentStart = (state.ktvStartTimes || [])[0] || getCurrentTime();
+                         let currentStart = (state.ktvStartTimes || [])[0] ?? getCurrentTime();
                          
                          for (let i = 0; i < numKtvs; i++) {
                              const partDur = mode === 'sequential' ? Math.round(duration / numKtvs) : duration;
@@ -1390,7 +1538,7 @@ const ServiceGroupCard = ({
                              }
                          }
                          
-                         onUpdate({ workMode: mode, ktvDurations: newDurs, ktvStartTimes: newStarts, ktvEndTimes: newEnds });
+                         onUpdate({ workMode: mode, confirmedSequential: mode === 'sequential' && groupItems.length === 1, ktvDurations: newDurs, ktvStartTimes: newStarts, ktvEndTimes: newEnds });
                      }}
                  >
                      <option value="parallel">Song song (Cùng làm)</option>
@@ -1399,19 +1547,19 @@ const ServiceGroupCard = ({
              )}
           </div>
           <div className="relative mb-2" ref={dropdownRef}>
-            <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => setIsKtvDropdownOpen(true)}>
-              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); return (
+            <div className="min-h-[56px] w-full px-3 py-2 border-2 border-indigo-100 rounded-2xl bg-indigo-50/20 flex flex-wrap gap-2 items-center cursor-text transition-colors hover:border-indigo-300 hover:bg-indigo-50/50" onClick={() => { if (!state.confirmedSequential || !state.selectedKtvIds.length) setIsKtvDropdownOpen(true); }}>
+              {state.selectedKtvIds.map((ktvId, idx) => { const t = availableTurns.find(t => t.employee_id === ktvId); const n = ktvDisplayLabel(staffWorkTypeOf(ktvId, t, staffs), ktvId, t?.staff?.full_name || staffs.find(st => st.id === ktvId)?.full_name || state.ktvDisplayNames?.[ktvId]); const slot = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => (seg as any).sequenceSlot && (seg as any).voided !== true && (seg as any).voided !== 'true') as any; return (
                 <span key={`${ktvId}-${idx}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black ${TAG_COLORS[idx % TAG_COLORS.length]} border shadow-sm`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{n}
-                  {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">Ca {idx + 1}</span>}
-                  <button onClick={(e) => { e.stopPropagation(); removeKtv(ktvId); }} className="ml-1 hover:opacity-60 bg-black/10 p-0.5 rounded-md"><X size={12} /></button>
+                  {state.workMode === 'sequential' && <span className="ml-1 text-[9px] uppercase tracking-widest opacity-80 border-l pl-1 border-current">{Number(slot?.sequenceSlot || idx + 1) === 1 ? 'A · Làm trước' : 'B · Làm tiếp'}</span>}
+
                 </span>); })}
-              <input type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
+              <input hidden={state.confirmedSequential && state.selectedKtvIds.length > 0} type="text" value={ktvSearch} onChange={e => { setKtvSearch(e.target.value); if (!isKtvDropdownOpen) setIsKtvDropdownOpen(true); }} onFocus={() => setIsKtvDropdownOpen(true)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && ktvSearch.trim()) { e.preventDefault(); const term = ktvSearch.toLowerCase().trim(); const picked = pickKtvByExactInput(term, availableTurns, staffs); if (picked) { addKtv(picked); setKtvSearch(''); } else if (!externalKtvNameProblem(ktvSearch, staffs)) { addKtv(newExternalKtvToken(ktvSearch)); setKtvSearch(''); } } }}
                 placeholder={(() => {
                     const isFourhand = groupItems && groupItems.length > 0 && FOURHAND_SERVICES.includes(groupItems[0].serviceId || '');
                     if (isFourhand && state.selectedKtvIds.length < 2) return `⚠️ Dịch vụ 4 tay: Chọn KTV ${state.selectedKtvIds.length + 1}...`;
-                    return state.selectedKtvIds.length === 0 ? '+ Chọn KTV...' : '+ Thêm (Ghép sô/Nối tiếp)...';
+                    return state.selectedKtvIds.length === 0 ? '+ Chọn KTV...' : state.confirmedSequential ? '+ Chọn KTV B...' : '+ Thêm KTV cùng làm...';
                 })()} 
                 className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-sm font-bold placeholder:text-gray-400 placeholder:italic py-1" />
             </div>
@@ -1495,6 +1643,9 @@ const ServiceGroupCard = ({
         </div>
         )}
 
+        {state.selectedKtvIds.length === 0 && onSaveRow && <button type="button" aria-label="Lưu thay đổi dịch vụ"
+          disabled={savingRow !== null} onClick={async () => { setSavingRow(-1); try { await onSaveRow(-1, true); } finally { setSavingRow(null); } }}
+          className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-600">Lưu thay đổi</button>}
         {state.selectedKtvIds.length > 0 && (
           <div className="space-y-2">
             <div className="space-y-2">
@@ -1505,12 +1656,32 @@ const ServiceGroupCard = ({
                 const selBed = (state.ktvBedIds || [])[idx] || '';
                 const startT = (state.ktvStartTimes || [])[idx] || '';
                 const endT = (state.ktvEndTimes || [])[idx] || '';
-                const ktvDur = (state.ktvDurations || [])[idx] || duration;
+                const ktvDur = state.ktvDurations?.[idx] ?? duration;
+                // Ghép dịch vụ: quầy được rút ngắn, nhưng phải thấy là đang ngắn hơn tổng 2 dịch vụ.
+                const leadingItem = groupItems[0];
+                const followingItems = (leadingItem?.mergedServiceIds || [])
+                  .map(id => allServices.find(s => s.id === id)).filter((s): s is ServiceBlock => !!s);
+                const mergedTotal = followingItems.length && leadingItem
+                  ? originalMergedMinutes(leadingItem, followingItems, s => isUtilityService(s)) : 0;
+                const shorterThanMerged = mergedTotal > 0 && !!ktvDur && ktvDur < mergedTotal;
                 const ktvNote = (state.ktvNotes || [])[idx] || '';
+                const ownSegment = groupItems.flatMap(item => item.staffList.filter(row => row.ktvId === ktvId).flatMap(row => row.segments)).find(seg => isLiveKtvSegment({ ...seg, ktvId }, ktvId));
+                const timeLocked = !!ownSegment?.actualStartTime || (Number(ownSegment?.sequenceSlot) === 1 && groupItems.some(item => item.staffList.some(row => row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true' && seg.actualStartTime)))) || groupItems.some(item => ['CLEANING', 'FEEDBACK', 'DONE', 'CANCELLED'].includes(item.status || ''));
+                const canEditRunningADuration = idx === 0 && !!ownSegment?.actualStartTime && !ownSegment?.actualEndTime
+                  && ['IN_PROGRESS', 'PAUSED'].includes(groupItems[0]?.status || '')
+                  && !groupItems[0]?.staffList.some(row => row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true' && seg.actualStartTime));
+                const slotBItem = groupItems.find(item => isTwoSlotSequential(item.options) && !item.options?.finishedAfterA && !sequentialSlotClosed(item.options, 2)
+                  && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(item.status || '')
+                  && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime)));
+                const slotAKtvId = slotBItem?.staffList.find(row => row.segments.some(seg => Number(seg.sequenceSlot) === 1))?.ktvId;
+                const canEditBStart = !isDraft && !!slotBItem && !!slotAKtvId;
+                const savesPair = !!state.confirmedSequential && state.selectedKtvIds.length > 1;
+                const saveLabel = `Lưu dịch vụ ${serviceName}${savesPair ? ' (A và B)' : ''}`;
+                const replacedB = !groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && (seg as any).voided !== 'true'))) && groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided === true)));
                 const roomBedsList = selRoom ? beds.filter(b => b.roomId === selRoom) : [];
                 return (
                 <div key={`${ktvId}-${idx}`} 
-                  draggable={true}
+                  draggable={canReorder}
                   onDragStart={(e) => { e.dataTransfer.setData('text/plain', idx.toString()); e.dataTransfer.effectAllowed = 'move'; }}
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={(e) => {
@@ -1522,9 +1693,33 @@ const ServiceGroupCard = ({
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white shrink-0 ${getBadgeBg(idx)}`}>{idx + 1}</span>
                     <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{name}</span>
+                    {state.selectedKtvIds.length > 1 && <div className="flex gap-0.5">
+                      <button type="button" aria-label={`Đưa ${ktvId} lên trước`} disabled={!canReorder || idx === 0} onClick={() => moveKtv(idx, idx - 1)}
+                        className="rounded border border-gray-200 p-1 text-gray-500 hover:bg-white disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"><ChevronUp size={14} /></button>
+                      <button type="button" aria-label={`Đưa ${ktvId} xuống sau`} disabled={!canReorder || idx === state.selectedKtvIds.length - 1} onClick={() => moveKtv(idx, idx + 1)}
+                        className="rounded border border-gray-200 p-1 text-gray-500 hover:bg-white disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"><ChevronDown size={14} /></button>
+                    </div>}
+                    {replacedB && <span className="text-[9px] font-bold text-rose-600">Đã đổi · chưa làm</span>}
+                    {/* Đổi nhân viên làm tiếp: cùng luật ô chọn A — sổ tua, KTV ngoài, gõ tên mới */}
+                    {state.confirmedSequential && idx === 1 && !timeLocked && <KtvPickerCombo ariaLabel="Nhân viên làm tiếp" className="w-full sm:w-[160px]"
+                      turns={availableTurns} staffs={staffs} value={ktvId} placeholder="Đổi nhân viên làm tiếp..."
+                      excludeIds={state.selectedKtvIds.filter(id => id !== ktvId)}
+                      onPick={picked => {
+                        if (picked === ktvId) return;
+                        const ids = [...state.selectedKtvIds]; ids[idx] = picked;
+                        const names = [...(state.ktvServiceNames || [])];
+                        const notes = [...(state.ktvNotes || [])];
+                        names[idx] = groupItems[0]?.options?.serviceNamesForKtvs?.[picked] || '';
+                        notes[idx] = groupItems[0]?.options?.notesForKtvs?.[picked] || '';
+                        onUpdate({ selectedKtvIds: ids, ktvServiceNames: names, ktvNotes: notes });
+                      }} />}
+                    <button type="button" title={timeLocked ? 'Nhân viên đã bắt đầu/ca đã đóng; dùng Dừng hoặc Đổi KTV để giữ giờ thực tế' : 'Bỏ nhân viên khỏi bản nháp'}
+                      aria-label={`Bỏ nhân viên hàng ${idx + 1} khỏi bản nháp`} disabled={timeLocked || savingRow !== null}
+                      className="rounded-lg border border-rose-200 bg-white p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-500"
+                      onClick={() => removeKtv(ktvId)}><Trash2 size={15} /></button>
                     {idx < (count || 1) ? (
                         <>
-                            <select value={selRoom} onChange={e => updateRoomForIdx(idx, e.target.value)} className="w-[70px] px-1.5 py-1 border border-gray-200 rounded-lg text-[11px] font-bold bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none">
+                            <select aria-label={`Phòng của ${ktvId}`} disabled={timeLocked} value={selRoom} onChange={e => updateRoomForIdx(idx, e.target.value)} className="w-[70px] px-1.5 py-1 border border-gray-200 rounded-lg text-[11px] font-bold bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none">
                               <option value="">P.</option>
                               {rooms.filter((r: any) => !r.name?.toLowerCase().includes('vệ sinh') && !r.name?.toLowerCase().includes('tắm')).map((r: any) => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
                             </select>
@@ -1533,6 +1728,7 @@ const ServiceGroupCard = ({
                             )}
                             {selRoom && !((rooms as any[]).find(r => r.id === selRoom)?.has_guests) && (
                               <select 
+                                aria-label={`Giường của ${ktvId}`} disabled={timeLocked}
                                 value={selBed} 
                                 onChange={e => updateBedForIdx(idx, e.target.value)} 
                                 className="w-[55px] px-1 py-1 border border-emerald-200 text-emerald-700 bg-emerald-50 rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-emerald-500/20 outline-none"
@@ -1555,15 +1751,29 @@ const ServiceGroupCard = ({
                     <div className="relative">
                         <input
                             type="number"
-                            min={0.1} max={300} step={0.1}
+                            disabled={timeLocked && !canEditRunningADuration}
+                            aria-label={`Thời lượng nhân viên ${ktvId}`} min={1} max={600} step={1}
                             value={ktvDur || ''}
-                            onChange={e => updateDurationForIdx(idx, e.target.value ? Number(e.target.value) : 0)}
-                            onFocus={() => setOpenDurationIdx(idx)}
-                            className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400`}
+                            onChange={e => {
+                                const minutes = e.target.value ? Number(e.target.value) : 0;
+                                updateDurationForIdx(idx, minutes);
+                                // Gõ số ngoài danh sách gợi ý thì đóng danh sách, không che ô nhập.
+                                if (!DURATION_PRESETS.includes(minutes)) setOpenDurationIdx(null);
+                            }}
+                            onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') setOpenDurationIdx(null); }}
+                            // Chọn sẵn số cũ: gõ là thay, không nối thành 6077 phút.
+                            onFocus={e => { setOpenDurationIdx(idx); e.currentTarget.select(); }}
+                            aria-invalid={!!ktvDur && (ktvDur < MIN_DURATION || ktvDur > MAX_DURATION)}
+                            className={`w-[75px] px-2 py-1.5 border-2 rounded-xl text-[11px] font-black text-center outline-none transition-all pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${ktvDur && (ktvDur < MIN_DURATION || ktvDur > MAX_DURATION) ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-amber-100 text-amber-700 bg-amber-50 focus:border-amber-400'}`}
                             placeholder="Phút"
                         />
+                        {!!ktvDur && (ktvDur < MIN_DURATION || ktvDur > MAX_DURATION) && (
+                            <p role="alert" className="absolute left-0 top-full mt-0.5 whitespace-nowrap text-[10px] font-bold text-rose-600">{tConfirm.durationOutOfRange(MIN_DURATION, MAX_DURATION)}</p>
+                        )}
                         <button 
                             type="button"
+                            aria-label={`Chọn thời lượng của ${ktvId}`} aria-expanded={openDurationIdx === idx}
+                            disabled={timeLocked && !canEditRunningADuration}
                             onClick={() => setOpenDurationIdx(openDurationIdx === idx ? null : idx)}
                             className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 transition-colors text-amber-500 hover:text-amber-700`}
                         >
@@ -1580,47 +1790,67 @@ const ServiceGroupCard = ({
                                 >
                                     <div className="max-h-40 overflow-y-auto p-1 space-y-0.5 custom-scrollbar">
                                         {DURATION_PRESETS.map(min => (
-                                            <div
+                                            <button type="button"
                                                 key={min}
                                                 onClick={() => {
                                                     updateDurationForIdx(idx, min);
                                                     setOpenDurationIdx(null);
                                                 }}
-                                                className={`px-3 py-2 text-center text-[11px] font-black rounded-lg cursor-pointer transition-colors ${
+                                                className={`w-full px-3 py-2 text-center text-[11px] font-black rounded-lg cursor-pointer transition-colors ${
                                                     ktvDur === min 
                                                     ? 'bg-amber-100 text-amber-800' 
                                                     : 'hover:bg-amber-50 text-amber-700'
                                                 }`}
                                             >
                                                 {min}
-                                            </div>
+                                            </button>
                                         ))}
                                     </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
+                        {shorterThanMerged && (
+                            <span className="absolute left-0 top-full mt-0.5 whitespace-nowrap text-[9px] font-bold text-amber-600" role="status">
+                                {tConfirm.mergeShorterThanTotal(ktvDur, mergedTotal)}
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <input type="time" value={startT} onChange={e => updateTimeForIdx(idx, 'start', e.target.value)} className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none w-[82px]" />
+                      <input type="time" aria-label={canEditBStart || (state.confirmedSequential && idx === 1) ? 'Giờ bắt đầu B' : `Giờ bắt đầu KTV ${idx + 1}`}
+                        disabled={timeLocked} value={startT}
+                        onChange={e => {
+                          const minutes = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
+                          if (canEditBStart && Math.abs(minutes(e.target.value) - minutes(startT)) >= 720) {
+                            alert('Giờ B có thể chuyển ngày. Bấm icon đổi nhân viên để kiểm tra giờ trước khi lưu.');
+                            onLiveHandoff?.(slotBItem!.id, slotAKtvId!, ktvId);
+                            return;
+                          }
+                          updateTimeForIdx(idx, 'start', e.target.value);
+                        }}
+                        className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none w-[82px]" />
                       <span className="text-indigo-300 text-[10px]">&rarr;</span>
                       <span className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-indigo-50/50 w-[60px] text-center">{endT || '--:--'}</span>
                     </div>
-                    <button onClick={() => setShowTicketForIdx(idx)} className="p-2.5 bg-indigo-50 text-indigo-500 hover:bg-indigo-100 border border-indigo-100 rounded-xl transition-all active:scale-90 shrink-0" title="In phiếu"><Printer size={15} strokeWidth={2.5} /></button>
+                    {onSaveRow && !replacedB && <button type="button" aria-label={saveLabel} title={saveLabel}
+                      disabled={savingRow !== null || !startT || !ktvDur}
+                      onClick={async () => { setSavingRow(idx); try { await onSaveRow(idx, !!state.confirmedSequential); } catch (error) { alert('Không lưu được dịch vụ: ' + String(error)); } finally { setSavingRow(null); } }}
+                      className="p-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"><Save size={15} /></button>}
+                    <button type="button" aria-label={`In phiếu cho ${ktvId}`} onClick={() => setShowTicketForIdx(idx)} className="p-2.5 bg-indigo-50 text-indigo-500 hover:bg-indigo-100 border border-indigo-100 rounded-xl transition-all active:scale-90 shrink-0" title="In phiếu"><Printer size={15} strokeWidth={2.5} /></button>
                   </div>
-                  {/* Row 2: Per-KTV Note | Reminder Button | Dispatch button */}
+                  {/* Row 2: Per-KTV name, note and reminders */}
                   <div className="flex items-center gap-2 ml-6">
                     {(state.isMergedGroup || groupItems?.some((item: any) => item._splitTime !== undefined) || state.selectedKtvIds.length > 1) && (
                         <div className="flex-1 relative">
-                            <input type="text" value={state.ktvServiceNames?.[idx] || ''} onChange={e => updateServiceNameForIdx(idx, e.target.value)} placeholder={groupItems?.[0]?.serviceName || "Tên DV..."} className="w-full px-2.5 py-1.5 border border-indigo-100 rounded-xl text-[11px] font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/10 outline-none bg-indigo-50/30 placeholder:text-indigo-300 pr-8" />
+                            <input type="text" aria-label={`Tên dịch vụ riêng của ${ktvId}`} value={state.ktvServiceNames?.[idx] || ''} onChange={e => updateServiceNameForIdx(idx, e.target.value)} placeholder={groupItems?.[0]?.serviceName || "Tên DV..."} className="w-full px-2.5 py-1.5 border border-indigo-100 rounded-xl text-[11px] font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/10 outline-none bg-indigo-50/30 placeholder:text-indigo-300 pr-8" />
                             {state.ktvServiceNames?.[idx] && (
-                                <button onClick={() => updateServiceNameForIdx(idx, '')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-indigo-300 hover:text-indigo-500"><X size={12} /></button>
+                                <button aria-label={`Xóa tên dịch vụ riêng của ${ktvId}`} onClick={() => updateServiceNameForIdx(idx, '')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-indigo-300 hover:text-indigo-500"><X size={12} /></button>
                             )}
                         </div>
                     )}
                     <div className="flex-[2] relative">
-                        <input type="text" value={ktvNote} onChange={e => updateNoteForIdx(idx, e.target.value)} placeholder="Ghi chú riêng..." className="w-full px-2.5 py-1.5 border border-gray-100 rounded-xl text-[11px] font-medium focus:ring-2 focus:ring-indigo-500/10 outline-none bg-white placeholder:text-gray-300 pr-8" />
+                        <input type="text" aria-label={`Ghi chú riêng của ${ktvId}`} value={ktvNote} onChange={e => updateNoteForIdx(idx, e.target.value)} placeholder="Ghi chú riêng..." className="w-full px-2.5 py-1.5 border border-gray-100 rounded-xl text-[11px] font-medium focus:ring-2 focus:ring-indigo-500/10 outline-none bg-white placeholder:text-gray-300 pr-8" />
                         {ktvNote && (
-                            <button onClick={() => updateNoteForIdx(idx, '')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-300 hover:text-gray-500"><X size={12} /></button>
+                            <button type="button" aria-label={`Xóa ghi chú riêng của ${ktvId}`} onClick={() => updateNoteForIdx(idx, '')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-300 hover:text-gray-500"><X size={12} /></button>
                         )}
                     </div>
                     
@@ -1686,6 +1916,57 @@ const ServiceGroupCard = ({
                   </div>
                 </div>
               ); })}
+              {canAddSequential && !state.confirmedSequential && <button type="button"
+                className={`w-full rounded-xl border-2 border-dashed px-3 py-3 text-left text-xs font-bold ${remainingMinutes > 0 ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'}`}
+                onClick={() => {
+                  setIsKtvDropdownOpen(false);
+                  setKtvSearch('');
+                  onUpdate({ workMode: 'sequential', confirmedSequential: true });
+                }}>
+                {remainingMinutes > 0 ? `Còn ${remainingMinutes} phút · + Nối tiếp` : '+ Nối tiếp'}
+              </button>}
+              {waitingForB && (
+                <div className="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 p-3 sm:p-4 space-y-3 transition-all">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-xs">
+                        +
+                      </span>
+                      <span className="text-xs sm:text-sm font-black text-indigo-900">
+                        Thêm nhân viên làm tiếp
+                      </span>
+                    </div>
+                    {(isDraft || onCloseEmptySlotB) && (
+                      <button type="button" aria-label={tConfirm.turnOffSequential}
+                        title={tConfirm.turnOffSequential} disabled={closingSlotB}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold text-rose-600 hover:bg-white border border-rose-200 transition-all active:scale-95 disabled:opacity-40"
+                        onClick={async () => {
+                          if (isDraft) { onUpdate({ workMode: 'parallel', confirmedSequential: false }); return; }
+                          const ok = confirmAction ? await confirmAction(tConfirm.turnOffSequentialConfirm) : window.confirm(tConfirm.turnOffSequentialConfirm);
+                          if (!ok || !onCloseEmptySlotB) return;
+                          setClosingSlotB(true);
+                          try { await onCloseEmptySlotB(groupItems[0].id); } finally { setClosingSlotB(false); }
+                        }}>
+                        <span>✕</span>
+                        <span>Hủy</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white/90 rounded-xl p-2.5 border border-indigo-100 shadow-2xs space-y-0.5">
+                      <span className="font-bold text-indigo-800">🕒 Bắt đầu dự kiến: <strong>{state.ktvEndTimes?.[0] || 'sau nhân viên trước'}</strong></span>
+                      <p className="text-[11px] text-slate-500">{remainingMinutes > 0 ? `Thời lượng còn lại: ${remainingMinutes} phút` : 'Nhập thời lượng khi chọn KTV'}</p>
+                    </div>
+                    <div className="bg-white/90 rounded-xl p-2.5 border border-indigo-100 shadow-2xs space-y-0.5">
+                      <span className="font-bold text-slate-700">📍 Kế thừa vị trí: <strong>Cùng phòng & giường</strong></span>
+                      <p className="text-[11px] text-slate-500">Giữ nguyên vị trí của nhân viên trước</p>
+                    </div>
+                  </div>
+                  <KtvPickerCombo ariaLabel="Chọn nhân viên làm tiếp" turns={availableTurns} staffs={staffs}
+                    excludeIds={state.selectedKtvIds} placeholder="+ Chọn nhân viên làm tiếp hoặc gõ tên KTV ngoài..."
+                    onPick={picked => addKtv(picked)} />
+                </div>
+              )}
             </div>
           </div>
         )}

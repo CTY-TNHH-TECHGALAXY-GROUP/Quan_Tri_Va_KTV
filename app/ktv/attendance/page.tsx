@@ -54,6 +54,7 @@ const KTVAttendancePage = () => {
         incompleteTasksCount,
         guestArrivalLock,
         todayRegistration,
+        unlockedToday,
         dayCutoffHours,
         canRequestWithdraw,
         withdrawShowsMaintenance,
@@ -427,9 +428,11 @@ const KTVAttendancePage = () => {
 
     const handleSubmitForm = () => {
         setFormError(null);
+        // Loại D phải chọn giờ về khi điểm danh: ngày OFF mà vẫn đi làm, HOẶC ngày
+        // vừa được mở khoá mà chưa có lịch (quyết định 07/10/2026).
         const isTypeDOffCheckIn =
             workType === 'TYPE_D'
-            && todayRegistration?.status === 'OFF_REGISTERED'
+            && (todayRegistration?.status === 'OFF_REGISTERED' || (!todayRegistration && unlockedToday))
             && (formType === 'CHECK_IN' || formType === 'LATE_CHECKIN');
 
         if (isTypeDOffCheckIn && !/^([01]\d|2[0-3]):[0-5]\d$/.test(estimatedEndTime)) {
@@ -518,6 +521,7 @@ const KTVAttendancePage = () => {
                                 shiftExtension={shiftExtension}
                                 onOpenShiftExtensionModal={() => setIsExtensionModalOpen(true)}
                                 showOvertimeFeature={showOvertimeFeature}
+                                onSuddenOff={(lyDo: string) => handleAttendance('SUDDEN_OFF', null, lyDo || null, null)}
                             />
                         </div>
                     ) : (
@@ -949,7 +953,7 @@ const KTVAttendancePage = () => {
                             {(() => {
                                 const isTypeDOffCheckIn =
                                     workType === 'TYPE_D'
-                                    && todayRegistration?.status === 'OFF_REGISTERED'
+                                    && (todayRegistration?.status === 'OFF_REGISTERED' || (!todayRegistration && unlockedToday))
                                     && (formType === 'CHECK_IN' || formType === 'LATE_CHECKIN');
                                 return (isTypeDOffCheckIn || (formType === 'CHECK_IN' && !isOffToday && (activeShiftType || workType === 'TYPE_C') && (isTypeBFlow || selectedShiftType === 'FREE' || selectedShiftType === 'VIP'))) && (
                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2">

@@ -153,9 +153,10 @@ interface SidebarProps {
   onClose: () => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  onBeforeNavigate?: () => boolean;
 }
 
-export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand, onBeforeNavigate }: SidebarProps) {
   // 🔒 KTV đang trong một đơn → khoá điều hướng, không cho rời đi giữa chừng.
   const { ktvScreen, ktvOrderLocked } = useNotifications();
   const isServingLocked = ktvOrderLocked || isServingLockedScreen(ktvScreen);
@@ -230,7 +231,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
       <Link
         key={module.id}
         href={path}
-        onClick={() => { if (window.innerWidth < 1024) onClose(); }}
+        onClick={event => { if (!isActive && onBeforeNavigate && !onBeforeNavigate()) { event.preventDefault(); return; } if (window.innerWidth < 1024) onClose(); }}
         title={!showLabel ? module.name : undefined}
         className={`flex items-center ${showLabel ? 'gap-3 px-3' : 'justify-center px-0'} py-2 rounded-xl transition-all duration-200 ${isActive
           ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm border border-indigo-100/50'
@@ -276,7 +277,7 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
                 <p className="text-[10px] text-gray-500 font-medium truncate">{role?.name}</p>
               </div>
               <div className="flex items-center gap-0.5 shrink-0">
-                <button onClick={logout} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Đăng xuất">
+                <button onClick={() => { if (!onBeforeNavigate || onBeforeNavigate()) logout(); }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Đăng xuất">
                   <LogOut size={16} />
                 </button>
                 <button onClick={onClose} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg lg:hidden">
@@ -395,7 +396,8 @@ export function Sidebar({ isOpen, onClose, isExpanded = true, onToggleExpand }: 
           <div className={`p-4 pt-2 pb-0 w-full ${!isExpanded && 'px-3'}`}>
             <Link
               href={PATHS.settings}
-              onClick={() => {
+              onClick={event => {
+                if (pathname !== PATHS.settings && onBeforeNavigate && !onBeforeNavigate()) { event.preventDefault(); return; }
                 if (window.innerWidth < 1024) onClose();
               }}
               title={!isExpanded ? "Cài đặt" : undefined}

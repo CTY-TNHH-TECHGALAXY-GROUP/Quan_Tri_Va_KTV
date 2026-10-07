@@ -221,9 +221,47 @@ export async function POST(request: Request) {
 
         let wasOffRegistered = false;
         let typeDRegistrationId: string | null = null;
+        /** Ngày làm việc cần TẠO lịch sau khi điểm danh (ngày vừa được mở khoá). */
+        let unlockRegisterDate: string | null = null;
+
+        // ─── Step 0.55: "Báo off đột xuất" — TYPE_D (quyết định 07/10/2026) ───
+        // Chỉ cho báo khi: đã qua 07:00, hôm nay đã đăng ký ĐI LÀM, chưa vào ca,
+        // không đang ở tiệm, chưa báo lần nào. Trước 07:00 thì đổi lịch sang OFF
+        // ở màn Lịch (trừ 5 giờ) — luồng cũ.
+        let suddenOffRegistrationId: string | null = null;
+        if (isTypeD && checkType === 'SUDDEN_OFF') {
+            const { vnHour } = await import('@/lib/vn-time');
+            const { getBusinessToday } = await import('@/lib/business-date');
+            if (vnHour() < 7) {
+                return NextResponse.json({ success: false, error: 'Trước 07:00 hãy vào màn Lịch để đổi hôm nay sang OFF (trừ 5 giờ).' }, { status: 400 });
+            }
+            const ngayLam = await getBusinessToday(supabase);
+            const [{ data: reg, error: regErr }, { data: staffOnline }, { data: daVaoCa }] = await Promise.all([
+                supabase.from('KTVTypeDDailyRegistration')
+                    .select('id, status, penalty_applied')
+                    .eq('staff_id', staffCode).eq('work_date', ngayLam).maybeSingle(),
+                supabase.from('Staff').select('online_status').eq('id', staffCode).maybeSingle(),
+                supabase.from('KTVAttendance').select('id')
+                    .eq('employeeId', staffCode).eq('date', ngayLam)
+                    .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']).limit(1),
+            ]);
+            if (regErr) {
+                return NextResponse.json({ success: false, error: 'Lỗi kiểm tra lịch đăng ký hôm nay' }, { status: 503 });
+            }
+            if (!reg || (reg.status !== 'REGISTERED' && reg.status !== 'LATE_REPORTED')) {
+                return NextResponse.json({ success: false, error: 'Hôm nay bạn không có lịch đi làm nên không cần báo off.' }, { status: 400 });
+            }
+            if (reg.penalty_applied === 'SUDDEN_OFF_REPORTED') {
+                return NextResponse.json({ success: false, error: 'Bạn đã báo off đột xuất hôm nay rồi.' }, { status: 400 });
+            }
+            if ((daVaoCa || []).length > 0 || (staffOnline as any)?.online_status === 'AT_VENUE') {
+                return NextResponse.json({ success: false, error: 'Bạn đã vào ca. Muốn về sớm hãy dùng nút Tan ca.' }, { status: 400 });
+            }
+            suddenOffRegistrationId = reg.id;
+        }
 
         if (isTypeD && (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN')) {
-            const { vnNow } = await import('@/lib/vn-time');
+            const { vnNow, vnToday } = await import('@/lib/vn-time');
             const { format } = await import('date-fns');
             // Ngày phạt phải theo NGÀY LÀM VIỆC (cutoff), không phải ngày lịch —
             // để khớp với sổ giờ tích lũy khi trừ giờ.
@@ -232,7 +270,7 @@ export async function POST(request: Request) {
             const todayStr = await getBusinessToday(supabase);
             const { data: registration, error: regLookupError } = await supabase
                 .from('KTVTypeDDailyRegistration')
-                .select('id, status, expected_time, late_expected_time')
+                .select('id, status, expected_time, late_expected_time, expected_end_time, penalty_applied')
                 .eq('staff_id', staffCode)
                 .eq('work_date', todayStr)
                 .maybeSingle();
@@ -242,36 +280,43 @@ export async function POST(request: Request) {
                 return NextResponse.json({ success: false, error: 'Lỗi kiểm tra đăng ký ca Loại D' }, { status: 503 });
             }
 
+            // Bắt buộc giờ dự kiến về hợp lệ và sau giờ hiện tại. Trả lỗi hoặc null.
+            const loiGioVe = (): string | null => {
+                const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+                if (!estimatedEndTime || !timeRegex.test(estimatedEndTime)) {
+                    return 'Vui lòng chọn giờ dự kiến tan làm hợp lệ.';
+                }
+                const phutDen = phutTrongNgayLamViec(format(vnNow(), 'HH:mm'), cutoffHoursD) ?? 0;
+                const phutVe = phutTrongNgayLamViec(estimatedEndTime.slice(0, 5), cutoffHoursD) ?? 0;
+                return phutVe <= phutDen ? 'Giờ dự kiến về phải sau giờ hiện tại.' : null;
+            };
+
             if (registration) {
                 typeDRegistrationId = registration.id;
                 if (registration.status === 'OFF_REGISTERED') {
                     wasOffRegistered = true;
                     // Bắt buộc phải có estimatedEndTime khi KTV Type D OFF đi làm lại
-                    const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
-                    if (!estimatedEndTime || !timeRegex.test(estimatedEndTime)) {
-                        return NextResponse.json({
-                            success: false,
-                            error: 'Vui lòng chọn giờ dự kiến tan làm hợp lệ.'
-                        }, { status: 400 });
-                    }
-                    const now = vnNow();
-                    const nowStr = format(now, 'HH:mm');
-                    const phutDen = phutTrongNgayLamViec(nowStr, cutoffHoursD) ?? 0;
-                    const phutVe = phutTrongNgayLamViec(estimatedEndTime.slice(0, 5), cutoffHoursD) ?? 0;
-                    if (phutVe <= phutDen) {
-                        return NextResponse.json({
-                            success: false,
-                            error: 'Giờ dự kiến về phải sau giờ hiện tại.'
-                        }, { status: 400 });
-                    }
+                    const loi = loiGioVe();
+                    if (loi) return NextResponse.json({ success: false, error: loi }, { status: 400 });
                 }
+            } else if (await KtvTypeDDisciplineService.duocMoKhoaHomNay(supabase, staffCode)) {
+                // Ngày vừa được mở khoá, chưa có lịch (quên đăng ký → bị khoá →
+                // admin mở): bấm Oria Xin chào phải chọn giờ về; điểm danh xong tạo
+                // lịch hôm nay để quầy biết KTV làm đến mấy giờ (quyết định 07/10/2026).
+                // Query chỉ chạy khi KHÔNG có lịch; lỗi đọc → false → hành vi cũ.
+                const loi = loiGioVe();
+                if (loi) return NextResponse.json({ success: false, error: loi }, { status: 400 });
+                unlockRegisterDate = todayStr;
             }
 
             // Phạt trễ (§4.4 - đã chốt 2026-09-08):
             //  - LATE_REPORTED: so với late_expected_time (giờ đã báo trễ)
             //  - REGISTERED  : so với expected_time (giờ đăng ký gốc) — đến trễ mà KHÔNG báo
             // KHÔNG phạt trễ nếu wasOffRegistered (người ta tự nguyện đi làm ngày OFF)
-            if (registration && !wasOffRegistered) {
+            // Đã báo off đột xuất (đã trừ 10 giờ) mà vẫn đến làm → không xét trễ
+            // thêm, giống người tự nguyện đi làm ngày OFF.
+            const daBaoOffDotXuat = registration?.penalty_applied === 'SUDDEN_OFF_REPORTED';
+            if (registration && !wasOffRegistered && !daBaoOffDotXuat) {
                 const now = vnNow();
                 let deadline: string | null = null;
                 let noteContext = '';
@@ -289,7 +334,23 @@ export async function POST(request: Request) {
                     // đồng hồ trần sẽ tính oan (23:00 "muộn hơn" 01:50 cùng ca).
                     const expectedMinutes = phutTrongNgayLamViec(String(deadline).slice(0, 5), cutoffHoursD) ?? 0;
                     const phutThucTe = phutTrongNgayLamViec(format(vnNow(), 'HH:mm'), cutoffHoursD) ?? 0;
-                    if (phutThucTe > expectedMinutes) {
+
+                    // Miễn xét trễ khi hôm nay ĐÃ CÓ check-in và check-out (ca đã khép), KTV quay lại
+                    // sau giờ check-out để làm thêm (VD khách yêu cầu 21:00). Chốt 03/10/2026 — không
+                    // đòi check-out phải sau giờ tan ca đăng ký; về sớm có luật riêng xử lý.
+                    const { data: todayAtt } = await supabase
+                        .from('KTVAttendance')
+                        .select('checkType')
+                        .eq('employeeId', staffCode)
+                        .in('date', Array.from(new Set([todayStr, vnToday()])))
+                        .in('checkType', ['CHECK_IN', 'LATE_CHECKIN', 'CHECK_OUT']);
+                    const daVaoCa = (todayAtt || []).some(r => r.checkType === 'CHECK_IN' || r.checkType === 'LATE_CHECKIN');
+                    const daRaCa = (todayAtt || []).some(r => r.checkType === 'CHECK_OUT');
+                    const quayLaiSauCa = daVaoCa && daRaCa;
+
+                    if (quayLaiSauCa) {
+                        console.log(`[Attendance:${reqTraceId}] Bỏ xét trễ cho ${staffCode}: hôm nay đã check-in/check-out, quay lại làm thêm`);
+                    } else if (phutThucTe > expectedMinutes) {
                         await KtvTypeDDisciplineService.deductDailyViolation(
                           supabase, staffCode, todayStr, 'LATE_NO_UPDATE', noteContext
                         );
@@ -614,6 +675,40 @@ export async function POST(request: Request) {
                                 console.error(`❌ [Attendance:${reqTraceId}] Failed to update Staff available_until:`, updateStaffErr);
                             }
                         }
+                    } else if (unlockRegisterDate && estimatedEndTime) {
+                        // Ngày vừa được mở khoá: tạo lịch hôm nay từ lần điểm danh này.
+                        // Lỗi chỉ log — điểm danh đã thành công, không được hỏng theo.
+                        const { vnNow } = await import('@/lib/vn-time');
+                        const { format } = await import('date-fns');
+                        const gioDen = format(vnNow(), 'HH:mm');
+                        const gioVe = estimatedEndTime.slice(0, 5);
+                        const { error: insRegErr } = await supabase
+                            .from('KTVTypeDDailyRegistration')
+                            .upsert({
+                                staff_id: staffCode,
+                                work_date: unlockRegisterDate,
+                                status: 'REGISTERED',
+                                expected_time: gioDen,
+                                expected_end_time: gioVe,
+                                check_in_at: vnNow().toISOString(),
+                                registered_at: new Date().toISOString(),
+                            }, { onConflict: 'staff_id,work_date' });
+                        if (insRegErr) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Failed to create unlock-day registration:`, insRegErr);
+                        }
+                        const { error: updateStaffErr } = await supabase
+                            .from('Staff').update({ available_until: gioVe }).eq('id', staffCode);
+                        if (updateStaffErr) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Failed to update Staff available_until:`, updateStaffErr);
+                        }
+                        try {
+                            await createNotification({
+                                type: 'ATTENDANCE_REQUEST',
+                                message: `🔓 ${staffCode} vừa được mở khoá, vào làm hôm nay từ ${gioDen}, dự kiến về ${gioVe}.`,
+                            });
+                        } catch (e) {
+                            console.error(`❌ [Attendance:${reqTraceId}] Unlock-day notify error:`, e);
+                        }
                     }
                 } else if (checkType === 'CHECK_OUT' || checkType === 'SUDDEN_OFF' || checkType === 'OFF_REQUEST') {
                     // KHÔNG đóng KTVShifts ở đây. Bảng này lưu BẢN PHÂN CA, không lưu buổi làm việc.
@@ -857,7 +952,32 @@ export async function POST(request: Request) {
                 }
 
                 // ⚠️ Sudden Leave Penalty: on SUDDEN_OFF or SUDDEN_OFF_CHECKOUT
-                if ((checkType === 'SUDDEN_OFF' || selectedShiftType === 'SUDDEN_OFF_CHECKOUT') && featureFlags.sudden_leave_penalty === true) {
+                if (workType === 'TYPE_D' && checkType === 'SUDDEN_OFF') {
+                    // Báo off đột xuất Loại D: luật chung, KHÔNG phụ thuộc cờ
+                    // sudden_leave_penalty. Chỉ trừ giờ, không bao giờ khoá
+                    // (case SUDDEN_OFF_REPORTED). Lỗi ở đây không làm hỏng
+                    // request: cron chốt sổ đêm nay sẽ xử dự phòng.
+                    try {
+                        const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');
+                        await KtvTypeDDisciplineService.applyCasePenalty(supabase, {
+                            staffId: staffCode,
+                            staffName: displayName,
+                            workDate: today,
+                            caseKey: 'SUDDEN_OFF_REPORTED',
+                            reason: reason ? `Báo off đột xuất: ${reason}` : 'Báo off đột xuất',
+                            source: 'KTV_SUDDEN_OFF',
+                        });
+                        if (suddenOffRegistrationId) {
+                            const { error: markErr } = await supabase
+                                .from('KTVTypeDDailyRegistration')
+                                .update({ penalty_applied: 'SUDDEN_OFF_REPORTED' })
+                                .eq('id', suddenOffRegistrationId);
+                            if (markErr) console.error('❌ [Sudden Off D] Mark registration error:', markErr);
+                        }
+                    } catch (e) {
+                        console.error('❌ [Sudden Off D] Penalty error:', e);
+                    }
+                } else if ((checkType === 'SUDDEN_OFF' || selectedShiftType === 'SUDDEN_OFF_CHECKOUT') && featureFlags.sudden_leave_penalty === true) {
                     if (workType === 'TYPE_D') {
                         try {
                             const { KtvTypeDDisciplineService } = await import('@/lib/services/KtvTypeDDisciplineService');

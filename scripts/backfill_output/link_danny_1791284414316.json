@@ -1,0 +1,19 @@
+{
+  "before": {
+    "id": "NDK-002-06102026",
+    "customerId": null,
+    "customerName": "Danny",
+    "status": "DONE"
+  },
+  "after": {
+    "id": "NDK-002-06102026",
+    "customerId": "CUS-1791272255378-197",
+    "customerName": "Danny",
+    "status": "DONE"
+  },
+  "customer": {
+    "id": "CUS-1791272255378-197",
+    "fullName": "Danny"
+  },
+  "rollback": "update \"Bookings\" set \"customerId\" = null where id = 'NDK-002-06102026'"
+}

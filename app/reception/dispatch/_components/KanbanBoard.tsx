@@ -3,14 +3,24 @@ import { displayBookingCode } from '@/lib/booking-display-code';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Clock, AlertCircle, ArrowRight, QrCode, Star, Check, Sparkles, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope, Square, Trash2 } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ArrowRight, ArrowLeftRight, QrCode, Star, Check, Banknote, CreditCard, Camera, X, PlayCircle, UserMinus, Crown, Stethoscope, Square, Trash2 } from 'lucide-react';
 import { PendingOrder, ServiceBlock } from '../types';
 import { SubOrder, buildOrderTimeline } from './dispatch-timeline';
 
-import { RawStatus, getNextStatus, canTransition } from '@/lib/dispatch-status';
+import { RawStatus, getNextStatus, canTransition, isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-status';
 import { KtvCommentModal } from './KtvCommentModal';
 import { ktvDisplayLabel, isPlaceholderStaffId } from '@/lib/constants/staff.constants';
 import { buildCounterLog, counterLogLine, UNVERIFIED_ACTOR_TITLE } from './KanbanBoard.counterLog.logic';
+import { sequentialSlotClosed } from '@/lib/sequential-lifecycle';
+import { t as tConfirm } from '../DispatchConfirm.i18n';
+import { expectedEndMs, gioDongHoVN } from '@/lib/segment-time';
+import { useRatingConfig } from '@/lib/useRatingConfig';
+import { normalizeScale, ratingLabelFor, ratingTone } from '@/lib/services/RatingScaleService';
+import { waitingSegmentInfo, SEGMENT_START_ALERT_MIN } from '../dispatch-display';
+import { useToast } from '@/components/ui/Toast';
+
+// 🔧 UI CONFIGURATION
+const RATING_TONE_CLASS = { top: 'text-emerald-600 bg-emerald-50 border-emerald-200', good: 'text-blue-600 bg-blue-50 border-blue-200', mid: 'text-amber-600 bg-amber-50 border-amber-200', low: 'text-red-600 bg-red-50 border-red-200' } as const;
 
 const STATUS_CONFIG = [
     { id: 'PREPARING' as RawStatus, dispatchModeId: ['PREPARING'], label: 'Chuẩn bị', shortLabel: 'Chuẩn bị', color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-600', border: 'border-orange-200', dot: 'bg-orange-500', next: 'IN_PROGRESS' as RawStatus, nextLabel: '▶️ Bắt đầu làm' },
@@ -72,7 +82,7 @@ const coNguoiBiTuoc = (s: any): boolean =>
  * người, nên chỉ được chọn một. Một hàm duy nhất quyết định, hai nơi cùng đọc.
  */
 const veTungNguoi = (s: any): boolean =>
-    !s?.isUtility && (dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s));
+    !s?.isUtility && (isTwoSlotSequential(s.options) || dsKtvHienThi(s).length > 1 || coNguoiBiTuoc(s));
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
 
@@ -196,14 +206,19 @@ interface KanbanBoardProps {
     onReviewClick?: (service: ServiceBlock) => void;
     staffWorkTypeMap?: Record<string, string>;
     staffs?: any[];
-    onSelectOrder?: (orderId: string) => void;
+    onSelectOrder?: (orderId: string, subOrderId?: string) => void;
     onFinishEarlyPaused?: (orderId: string, subOrder: any) => void;
     /** Bấm "Tiếp" trên thẻ tạm dừng: chạy thẳng, không qua popup chọn hành động. */
     onResumeClick?: (orderId: string, subOrder: any) => Promise<void> | void;
     /** Bấm "Huỷ" trên thẻ tạm dừng — huỷ ĐƠN CON của KTV đó, không đụng bill. */
     onCancelClick?: (orderId: string, subOrder: any) => void;
+    onFinishSequentialAfterA?: (orderId: string, itemId: string) => void;
     /** Bấm "Dừng" trên thẻ đang làm: tạm dừng thẳng, không qua popup chọn. */
     onPauseNow?: (orderId: string, subOrder: any) => Promise<void> | void;
+    onAssignSequentialB?: (orderId: string, itemId: string, fromKtvId: string, toKtvId?: string) => void;
+    onCustomerRating?: (orderId: string, rating: number, guestId?: string) => void;
+    onKtvCommentClick?: (order: PendingOrder, subOrder: SubOrder) => void;
+    onOpenRatingLink?: (orderId: string) => void;
 }
 
 const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[] = order.services, subOrder?: any) => {
@@ -287,7 +302,25 @@ const getEstimatedEndTime = (order: PendingOrder, servicesToCheck: ServiceBlock[
     return order.time; 
 };
 
-export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow }: KanbanBoardProps) {
+export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onConfirmAddonPayment, selectedOrderId, onContextMenu, onPauseClick, roomTransitionTime = 5, onUpdateCustomerName, onReviewClick, staffWorkTypeMap, onSelectOrder, onFinishEarlyPaused, onResumeClick, onCancelClick, onPauseNow, onAssignSequentialB, onCustomerRating, onKtvCommentClick, onOpenRatingLink }: KanbanBoardProps) {
+    // Minute clock for "waiting to start segment N" labels; one toast per late segment.
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 30000); return () => clearInterval(id); }, []);
+    const { addToast } = useToast();
+    const alertedSegmentsRef = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        for (const order of orders) for (const svc of order.services) for (const row of svc.staffList || []) for (const seg of row.segments || []) {
+            if (isTwoSlotSequential(svc.options) || ['DONE', 'CANCELLED'].includes(String(svc.status)) || alertedSegmentsRef.current.has(seg.id)) continue;
+            const info = waitingSegmentInfo(order.services, row.ktvId, seg, nowMs);
+            if (!info || info.lateMin < SEGMENT_START_ALERT_MIN) continue;
+            alertedSegmentsRef.current.add(seg.id);
+            addToast(`⏰ KTV ${row.ktvId} chưa bắt đầu chặng ${info.index + 1} đơn ${displayBookingCode(order.billCode)} (trễ ${info.lateMin} phút so với giờ gán).`, 'info');
+        }
+    }, [orders, nowMs]);
+    // Rating scale for NEW ratings (star buttons) + admin labels; saved ratings use their own scale.
+    const ratingConfig = useRatingConfig();
+    const newRatingStars = Array.from({ length: ratingConfig.scale }, (_, i) => i + 1);
+    const ratingText = (rating: number, scale: unknown) => ratingLabelFor(rating, normalizeScale(scale), ratingConfig.labels) || `${rating}`;
     // Khoá nút "Tiếp" của đúng thẻ đang gọi API, tránh bấm hai lần.
     const [resumingSubOrderId, setResumingSubOrderId] = React.useState<string | null>(null);
 
@@ -379,6 +412,8 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                 );
                 
                 if (subOrder.dispatchStatus === 'IN_PROGRESS') {
+                    if (subOrder.services.some(s => isTwoSlotSequential(s.options)
+                        && !sequentialSlotsComplete(s.options, (s as any).segments || s.staffList.flatMap(st => st.segments)))) return;
                     // 🔒 GUARD: KHÔNG auto-finish nếu có bất kỳ service nào đang tạm dừng (pauseStart != null)
                     const isPaused = subOrder.services.some(s => s.pauseStart);
                     if (isPaused) return;
@@ -523,6 +558,13 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                     if (draggedSubOrder.ktvIds && draggedSubOrder.ktvIds.length > 0) {
                                         targetKtvIds = draggedSubOrder.ktvIds;
                                     }
+                                    if (['CLEANING', 'FEEDBACK', 'DONE'].includes(newStatus)
+                                        && draggedSubOrder.services.some(s => isTwoSlotSequential(s.options)
+                                            && !sequentialSlotsComplete(s.options, (s as any).segments || s.staffList.flatMap(st => st.segments)))) {
+                                        alert('Dịch vụ nối tiếp còn chờ lượt B. Chọn hàng KTV hoặc bấm Hoàn thành.');
+                                        setDraggedSubOrderId(null);
+                                        return;
+                                    }
                                     
                                     if (!canTransition(draggedSubOrder.dispatchStatus, newStatus)) {
                                         const { mapDispatchToRawStatus, STATUS_FLOW } = require('@/lib/dispatch-status');
@@ -641,11 +683,19 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                             onDragEnd={() => setDraggedSubOrderId(null)}
                                             onClick={() => {
                                                 const targetId = subOrder.originalOrder?.parentBookingId || subOrder.bookingId;
-                                                onSelectOrder?.(targetId);
+                                                onSelectOrder?.(targetId, subOrder.id);
                                             }}
                                             onDoubleClick={() => {
                                                 const targetId = subOrder.originalOrder?.parentBookingId || subOrder.bookingId;
                                                 onOpenDetail(targetId, subOrder.id, subOrder.dispatchStatus);
+                                            }}
+                                            role="group"
+                                            tabIndex={0}
+                                            aria-label={`Đơn ${displayBookingCode(order.billCode)}; nhấn Enter để mở điều phối`}
+                                            onKeyDown={(event) => {
+                                                if (event.target !== event.currentTarget || event.key !== 'Enter') return;
+                                                event.preventDefault();
+                                                onOpenDetail(subOrder.originalOrder?.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus);
                                             }}
                                             onContextMenu={(e: React.MouseEvent) => {
                                                 if (onContextMenu) {
@@ -691,9 +741,9 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-50 text-rose-600 border border-rose-100" title="Khách xuống sớm — quầy đã chốt đơn tại thời điểm tạm dừng. Dọn phòng xong là hoàn tất, không chờ đánh giá.">RA SỚM</span>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
+                                                    <span className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
                                                         <Clock size={11} className="text-indigo-400" /> ra ca {getEstimatedEndTime(order, services)}
-                                                    </div>
+                                                    </span>
                                                 </div>
 
                                                 <div className="flex items-start justify-between mb-4 gap-2">
@@ -971,7 +1021,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             
                                                                             {['FEEDBACK', 'DONE', 'CLEANING'].includes(subOrder.dispatchStatus) && order && (
                                                                                 <button 
-                                                                                    onClick={(e) => { e.stopPropagation(); setCommentModalData({subOrder, order}); }}
+                                                                                    onClick={(e) => { e.stopPropagation(); if (onKtvCommentClick) onKtvCommentClick(order, subOrder); else setCommentModalData({subOrder, order}); }}
                                                                                     className="text-amber-700 bg-amber-100 border border-amber-300 p-1 rounded-lg shadow-sm shrink-0 flex items-center justify-center hover:bg-red-100 hover:text-red-700 hover:border-red-300 transition-all"
                                                                                     title="Nhận xét KTV"
                                                                                 >
@@ -1001,6 +1051,12 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 )}
                                                             </div>
                                                             
+                                                            {isTwoSlotSequential(s.options) && (
+                                                                <div className="mt-1 flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">
+                                                                    Nối tiếp · A <ArrowRight size={12} aria-hidden="true" /> B
+                                                                    {s.options?.finishedAfterA && <span className="ml-1 text-slate-500">· Hoàn thành sau A</span>}
+                                                                </div>
+                                                            )}
                                                             {/* Danh sách KTV */}
                                                             {!s.isUtility && dsKtvHienThi(s).length > 0 && !veTungNguoi(s) && (
                                                                 <div className="flex flex-wrap gap-1">
@@ -1057,16 +1113,36 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 veTungNguoi(s) ? (
                                                                     <div className="space-y-1 mt-1">
                                                                         {dsKtvHienThi(s).map((st: any, stIdx: number) => {
-                                                                            const seg = st?.segments?.[0];
-                                                                            const ktvStart = seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart;
-                                                                            // 🔥 FIX: Luôn tính dynamic end time từ ktvStart thực tế, không dùng seg.endTime cũ
-                                                                            const ktvEnd = seg?.actualEndTime ? seg.actualEndTime : getDynamicEndTime(ktvStart, Number(seg?.duration) || duration);
+                                                                            const seg = st?.segments?.find((g: any) => g.voided !== true && g.voided !== 'true') || st?.segments?.[0];
+                                                                            const sequential = isTwoSlotSequential(s.options);
+                                                                            const voided = seg?.voided === true || seg?.voided === 'true';
+                                                                            const a = sequential && dsKtvHienThi(s).find((row: any) => row.segments?.some((g: any) => Number(g.sequenceSlot) === 1));
+                                                                            const canReplaceB = sequential && !sequentialSlotClosed(s.options, 2) && Number(seg?.sequenceSlot) === 2 && !voided && !seg?.actualStartTime
+                                                                                && !s.options?.finishedAfterA && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(s.status || subOrder.dispatchStatus) && !!a && !!onAssignSequentialB;
+                                                                            const ktvStart = isTwoSlotSequential(s.options)
+                                                                                ? (seg?.actualStartTime || seg?.startTime || '--:--')
+                                                                                : (seg?.actualStartTime || st._calculatedStartTime || seg?.startTime || subOrder.calculatedStart || displayStart);
+                                                                            const expectedEnd = seg?.actualStartTime ? expectedEndMs(seg, Number(seg?.duration) || duration) : null;
+                                                                            const ktvEnd = seg?.actualEndTime || (expectedEnd !== null ? gioDongHoVN(expectedEnd)
+                                                                                : seg?.endTime || getDynamicEndTime(ktvStart, Number(seg?.duration) || duration));
                                                                             return (
                                                                                 /* flex-wrap: hàng của người bị đổi có thêm nhãn "ĐÃ ĐỔI" nên dài
                                                                                    hơn, không đủ chỗ thì khoảng giờ tự xuống hàng thay vì tràn ra
                                                                                    ngoài thẻ. */
-                                                                                <div key={stIdx} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50">
+                                                                                <div key={stIdx} onClick={e => { if (sequential) { e.stopPropagation(); onOpenDetail(order.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus); } }} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-indigo-50/70 rounded-lg px-2.5 py-1 border border-indigo-100/50 cursor-pointer">
                                                                                     <div className="flex items-center gap-1.5">
+                                                                                        {sequential && <span className="text-[9px] font-black text-indigo-600">{Number(seg?.sequenceSlot) === 2 ? 'Lượt 2' : 'Lượt 1'}</span>}
+                                                                                        {(() => {
+                                                                                            // Any of this KTV's segments in the service (both segments may sit in one item).
+                                                                                            const waiting = !sequential && !voided && !['DONE', 'CANCELLED'].includes(String(s.status))
+                                                                                                ? (st?.segments || []).filter((g: any) => g.voided !== true && g.voided !== 'true')
+                                                                                                    .map((g: any) => waitingSegmentInfo(subOrder.services, st.ktvId, g, nowMs)).find(Boolean) || null
+                                                                                                : null;
+                                                                                            if (!waiting) return null;
+                                                                                            const late = waiting.lateMin >= SEGMENT_START_ALERT_MIN;
+                                                                                            return <span className={`text-[8px] font-black ${late ? 'text-red-600 animate-pulse' : 'text-amber-700'}`}>Chờ bắt đầu chặng {waiting.index + 1}{late ? ` · trễ ${waiting.lateMin}p` : ''}</span>;
+                                                                                        })()}
+                                                                                        {sequential && !voided && <span className={`text-[8px] font-bold ${seg?.actualEndTime ? 'text-emerald-700' : seg?.actualStartTime ? 'text-sky-700' : 'text-amber-700'}`}>{seg?.actualEndTime ? 'Đã xong' : seg?.actualStartTime ? s.status === 'PAUSED' ? 'Tạm dừng' : 'Đang làm' : 'Chờ bắt đầu'}</span>}
                                                                                         <span className={`text-[9px] font-bold flex items-center gap-0.5 ${staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? 'text-red-600 animate-pulse' : 'text-gray-500'}`} title={staffPointsMap[st.ktvId] !== undefined && staffPointsMap[st.ktvId] <= 85 ? `Điểm chuyên cần: ${staffPointsMap[st.ktvId]}đ (Nguy hiểm)` : undefined}>{ktvDisplayLabel(staffWorkTypeMap?.[st.ktvId] ?? (isPlaceholderStaffId(st.ktvId) ? 'TYPE_C' : null), st.ktvId, st.ktvName)} <KtvTypeBadge workType={staffWorkTypeMap?.[st.ktvId]} /></span>
                                                                                         <AcceptTick options={s.options} ktvId={st.ktvId} status={s.status} />
                                                                                         {(() => {
@@ -1127,6 +1203,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                         )}
                                                                                     </div>
                                                                                     <div className="flex items-center gap-1.5">
+                                                                                        {isTwoSlotSequential(s.options) && <span className="text-[8px] text-indigo-500">{seg?.actualStartTime ? 'Thực tế' : 'Dự kiến'}</span>}
                                                                                         {/* KTV bị đổi ra: giữ tên trong đơn để biết ai từng làm cho khách,
                                                                                             kèm số phút đã làm — dù tiền và giờ tích luỹ đều bằng 0. */}
                                                                                         {/* Luôn in khoảng giờ, kể cả người bị đổi ra — quầy cần biết họ
@@ -1136,10 +1213,37 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                         <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvStart)}</span>
                                                                                         <span className="text-indigo-300 text-[8px]">→</span>
                                                                                         <span className="text-[10px] font-black text-indigo-700">{formatToHourMinute(ktvEnd)}</span>
+                                                                                        {canReplaceB && <button type="button" title="Đổi nhân viên làm tiếp hoặc chỉnh giờ" aria-label="Đổi nhân viên B" className="rounded-md border border-indigo-200 bg-white p-1.5 text-indigo-600 hover:bg-indigo-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
+                                                                                            onClick={e => { e.stopPropagation(); onAssignSequentialB?.(subOrder.bookingId, s.id, a.ktvId, st.ktvId); }}><ArrowLeftRight size={14} /></button>}
                                                                                     </div>
                                                                                 </div>
                                                                             );
                                                                         })}
+                                                                        {isTwoSlotSequential(s.options) && !sequentialSlotClosed(s.options, 2) && !s.options?.finishedAfterA && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(s.status || subOrder.dispatchStatus) && !dsKtvHienThi(s).some((st: any) => st.segments?.some((seg: any) => Number(seg.sequenceSlot) === 2 && seg.voided !== true)) && (
+                                                                            <button type="button" title="Mở điều phối để gán nhân viên B" className="w-full rounded-lg border border-dashed border-rose-300 bg-rose-50 px-2.5 py-2 text-left text-[10px] font-bold text-rose-600 hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-500"
+                                                                                onClick={e => {
+                                                                                    e.stopPropagation();
+                                                                                    onOpenDetail(order.parentBookingId || subOrder.bookingId, subOrder.id, subOrder.dispatchStatus);
+                                                                                    const a = dsKtvHienThi(s).find((st: any) => st.segments?.some((seg: any) => Number(seg.sequenceSlot) === 1));
+                                                                                    if (a) onAssignSequentialB?.(subOrder.bookingId, s.id, a.ktvId);
+                                                                                }}>
+                                                                                Chưa gán B · + Điều phối
+                                                                            </button>
+                                                                        )}
+                                                                        {(() => {
+                                                                            // Quầy đã bỏ B (chặng 2 voided UNASSIGNED, lượt 2 đóng): chỉ cảnh báo, không chặn —
+                                                                            // A vẫn được hoàn tất khi hết thời lượng gán.
+                                                                            if (!isTwoSlotSequential(s.options) || !sequentialSlotClosed(s.options, 2) || s.options?.finishedAfterA) return null;
+                                                                            if (!['PREPARING', 'READY', 'IN_PROGRESS', 'PAUSED', 'CLEANING'].includes(s.status || subOrder.dispatchStatus)) return null;
+                                                                            const removedB = ((s as any).segments || dsKtvHienThi(s).flatMap((st: any) => (st.segments || []).map((seg: any) => ({ ...seg, ktvId: seg.ktvId || st.ktvId }))))
+                                                                                .find((seg: any) => Number(seg.sequenceSlot) === 2 && (seg.voided === true || seg.voided === 'true') && seg.note === 'UNASSIGNED');
+                                                                            if (!removedB) return null;
+                                                                            return (
+                                                                                <div role="status" className="w-full rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[10px] font-bold text-amber-700">
+                                                                                    {tConfirm.removedBWarning(removedB.ktvId || '')}
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                     </div>
                                                                 ) : (
                                                                     <div className="flex items-center justify-between bg-indigo-50/70 rounded-lg px-2.5 py-1.5 border border-indigo-100/50 mt-1">
@@ -1195,7 +1299,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                         <div className={`flex items-center gap-2 text-[11px] font-bold ${g.rating ? 'text-emerald-700' : 'text-blue-600'}`}>
                                                                             {g.rating ? (
                                                                                 <>
-                                                                                    <Check size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: {g.rating >= 4 ? 'Xuất sắc' : g.rating >= 3 ? 'Tốt' : g.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(g.rating, 4)}/4)
+                                                                                    <Check size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: {ratingText(g.rating, g.ratingScale)} ({g.rating}/{normalizeScale(g.ratingScale)})
                                                                                 </>
                                                                             ) : (
                                                                                 <><Star size={12} /> {g.customerName || g.guestLabel || `Khách ${index + 1}`}: Chờ đánh giá...</>
@@ -1205,17 +1309,18 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             <div className="flex items-center gap-1 w-full justify-between mt-1 pt-1 border-t border-dashed border-gray-200">
                                                                                 <span className="text-[9px] text-gray-500 font-medium">Chấm điểm hộ khách:</span>
                                                                                 <div className="flex items-center gap-1">
-                                                                                    {[1, 2, 3, 4].map((star) => (
+                                                                                    {newRatingStars.map((star) => (
                                                                                         <button
                                                                                             key={star}
                                                                                             onClick={(e) => {
                                                                                                 e.stopPropagation();
-                                                                                                if (confirm(`Xác nhận đánh giá ${star} sao hộ ${g.customerName || `Khách ${index + 1}`}?`)) {
+                                                                                                if (confirm(`Xác nhận đánh giá ${star}/${ratingConfig.scale} sao hộ ${g.customerName || `Khách ${index + 1}`}?`)) {
+                                                                                                    if (onCustomerRating) { onCustomerRating(subOrder.bookingId, star, g.id); return; }
                                                                                                     import('../actions').then(m => {
                                                                                                         if (m.submitGuestRating) {
-                                                                                                            m.submitGuestRating(g.id, star);
+                                                                                                            m.submitGuestRating(g.id, star, undefined, ratingConfig.scale);
                                                                                                         } else {
-                                                                                                            m.submitCustomerRating(subOrder.bookingId, star);
+                                                                                                            m.submitCustomerRating(subOrder.bookingId, star, undefined, ratingConfig.scale);
                                                                                                         }
                                                                                                     });
                                                                                                 }
@@ -1241,7 +1346,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 }`}>
                                                                     {subOrder.rating ? (
                                                                         <>
-                                                                            <Check size={12} /> Đánh giá: {subOrder.rating >= 4 ? 'Xuất sắc' : subOrder.rating >= 3 ? 'Tốt' : subOrder.rating >= 2 ? 'Khá' : 'Tệ'} ({Math.min(subOrder.rating, 4)}/4)
+                                                                            <Check size={12} /> Đánh giá: {ratingText(subOrder.rating, subOrder.ratingScale)} ({subOrder.rating}/{normalizeScale(subOrder.ratingScale)})
                                                                         </>
                                                                     ) : (
                                                                         <><Star size={12} /> Đánh giá: Chờ khách...</>
@@ -1257,7 +1362,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                                     e.stopPropagation();
                                                                                     const sGuestId = subOrder.services[0]?.guestId || subOrder.services[0]?.customerGroupId;
                                                                 const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}${sGuestId ? '?guestId=' + sGuestId : ''}`;
-                                                                                    window.open(ratingUrl, '_blank');
+                                                                                    if (onOpenRatingLink) onOpenRatingLink(order.id); else window.open(ratingUrl, '_blank');
                                                                                 }}
                                                                                 className="text-[9px] text-indigo-500 hover:underline flex items-center gap-0.5 bg-indigo-50 px-1.5 py-0.5 rounded-full"
                                                                             >
@@ -1265,14 +1370,15 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                             </button>
                                                                         </div>
                                                                         <div className="flex items-center gap-1 w-full justify-center">
-                                                                            {[1, 2, 3, 4].map((star) => (
+                                                                            {newRatingStars.map((star) => (
                                                                                 <button
                                                                                     key={star}
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();
-                                                                                        if (confirm(`Xác nhận đánh giá ${star} sao hộ khách?`)) {
+                                                                                        if (confirm(`Xác nhận đánh giá ${star}/${ratingConfig.scale} sao hộ khách?`)) {
+                                                                                            if (onCustomerRating) { onCustomerRating(subOrder.bookingId, star); return; }
                                                                                             import('../actions').then(m => {
-                                                                                                m.submitCustomerRating(subOrder.bookingId, star);
+                                                                                                m.submitCustomerRating(subOrder.bookingId, star, undefined, ratingConfig.scale);
                                                                                             });
                                                                                         }
                                                                                     }}
@@ -1296,16 +1402,17 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex justify-center text-center">Đánh giá chất lượng phục vụ</span>
                                                             <div className="flex flex-col gap-1.5">
                                                                 {subOrder.guests.map((g: any, index: number) => {
-                                                                    const currentRating = Math.min(g.rating || 0, 4);
+                                                                    const guestScale = normalizeScale(g.ratingScale);
+                                                                    const currentRating = Math.min(g.rating || 0, guestScale);
                                                                     if (!currentRating) return null;
-                                                                    const ratingLabel = currentRating >= 4 ? 'Xuất sắc' : currentRating >= 3 ? 'Tốt' : currentRating >= 2 ? 'Khá' : 'Tệ';
-                                                                    const ratingColor = currentRating >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : currentRating >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : currentRating >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
+                                                                    const ratingLabel = ratingText(currentRating, guestScale);
+                                                                    const ratingColor = RATING_TONE_CLASS[ratingTone(currentRating, guestScale)];
                                                                     
                                                                     return (
                                                                         <div key={g.id} className={`rounded-lg px-2 py-1.5 border flex items-center justify-between ${ratingColor}`}>
                                                                             <span className="text-[11px] font-bold opacity-80">{g.customerName || g.guestLabel || `Khách ${index + 1}`}</span>
                                                                             <div className="flex items-center gap-1">
-                                                                                {[1, 2, 3, 4].map((s) => (
+                                                                                {Array.from({ length: guestScale }, (_, i) => i + 1).map((s) => (
                                                                                     <Star key={s} size={12} fill={currentRating >= s ? 'currentColor' : 'none'} strokeWidth={currentRating >= s ? 0 : 2} className={currentRating >= s ? '' : 'opacity-30'} />
                                                                                 ))}
                                                                                 <span className="ml-1 text-[11px] font-black">{ratingLabel}</span>
@@ -1316,26 +1423,21 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        subOrder.rating ? (
-                                                            <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${
-                                                                Math.min(subOrder.rating, 4) >= 4 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 
-                                                                Math.min(subOrder.rating, 4) >= 3 ? 'text-blue-600 bg-blue-50 border-blue-200' : 
-                                                                Math.min(subOrder.rating, 4) >= 2 ? 'text-amber-600 bg-amber-50 border-amber-200' : 
-                                                                'text-red-600 bg-red-50 border-red-200'
-                                                            }`}>
+                                                        subOrder.rating ? (() => {
+                                                            const subScale = normalizeScale(subOrder.ratingScale);
+                                                            const shown = Math.min(subOrder.rating, subScale);
+                                                            return (
+                                                            <div className={`mb-3 rounded-xl px-3 py-2 border flex flex-col items-center justify-center gap-1 ${RATING_TONE_CLASS[ratingTone(shown, subScale)]}`}>
                                                                 <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Đánh giá chất lượng phục vụ</span>
                                                                 <div className="flex items-center gap-1">
-                                                                    {[1, 2, 3, 4].map((s) => (
-                                                                        <Star key={s} size={16} fill={Math.min(subOrder.rating, 4) >= s ? 'currentColor' : 'none'} strokeWidth={Math.min(subOrder.rating, 4) >= s ? 0 : 2} className={Math.min(subOrder.rating, 4) >= s ? '' : 'opacity-30'} />
+                                                                    {Array.from({ length: subScale }, (_, i) => i + 1).map((s) => (
+                                                                        <Star key={s} size={16} fill={shown >= s ? 'currentColor' : 'none'} strokeWidth={shown >= s ? 0 : 2} className={shown >= s ? '' : 'opacity-30'} />
                                                                     ))}
-                                                                    <span className="ml-1.5 text-[12px] font-black">{
-                                                                        Math.min(subOrder.rating, 4) >= 4 ? 'Xuất sắc' : 
-                                                                        Math.min(subOrder.rating, 4) >= 3 ? 'Tốt' : 
-                                                                        Math.min(subOrder.rating, 4) >= 2 ? 'Khá' : 'Tệ'
-                                                                    }</span>
+                                                                    <span className="ml-1.5 text-[12px] font-black">{ratingText(shown, subScale)}</span>
                                                                 </div>
                                                             </div>
-                                                        ) : null
+                                                            );
+                                                        })() : null
                                                     )
                                                 )}
 
@@ -1457,6 +1559,9 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                             );
                                                         }
                                                         const anyPaused = services.some((s: any) => s.status === 'PAUSED');
+                                                        const waitingSequential = services.some((s: any) => isTwoSlotSequential(s.options)
+                                                            && !sequentialSlotsComplete(s.options, (s as any).segments || s.staffList.flatMap((st: any) => st.segments)));
+                                                        if (waitingSequential && nextStatus === 'CLEANING') return null;
                                                         if (nextStatus && !anyPaused) {
                                                             return (
                                                                 <button
@@ -1565,7 +1670,7 @@ export function KanbanBoard({ orders, staffs, onUpdateStatus, onOpenDetail, onCo
                                                                 e.stopPropagation();
                                                                 const sGuestId = subOrder.services[0]?.guestId || subOrder.services[0]?.customerGroupId;
                                                                 const ratingUrl = `https://nganha.vercel.app/${order.customerLang || 'vi'}/journey/${order.accessToken || subOrder.bookingId}${sGuestId ? '?guestId=' + sGuestId : ''}`;
-                                                                window.open(ratingUrl, '_blank');
+                                                                if (onOpenRatingLink) onOpenRatingLink(order.id); else window.open(ratingUrl, '_blank');
                                                             }}
                                                             className={`px-2.5 py-2.5 rounded-xl text-[11px] font-black text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-all border border-indigo-100 flex items-center justify-center gap-1 ${services.some((s: any) => s.status === 'PAUSED') ? 'w-full' : ''}`}
                                                             title="Link đánh giá"

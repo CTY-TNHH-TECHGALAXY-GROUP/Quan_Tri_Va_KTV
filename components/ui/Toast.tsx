@@ -25,7 +25,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         setToasts(prev => [...prev, { id, message, variant }]);
         setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id));
-        }, 3000);
+        }, variant === 'success' ? 8000 : 3000);
     }, []);
 
     const removeToast = useCallback((id: string) => {
@@ -35,7 +35,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     return (
         <ToastContext.Provider value={{ addToast }}>
             {children}
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none items-center">
+            <div role="region" aria-label="Thông báo" aria-live="polite" aria-relevant="additions text" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none items-center">
                 <AnimatePresence>
                     {toasts.map(toast => (
                         <motion.div
@@ -56,10 +56,16 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                             {toast.variant === 'info' && <Info size={20} className="text-blue-600 shrink-0" />}
                             
                             <span className="text-sm font-semibold">{toast.message}</span>
+                            {toast.variant === 'success' && (
+                                <button type="button" onClick={() => { removeToast(toast.id); window.dispatchEvent(new Event('app:refresh')); }}
+                                    className="ml-1 shrink-0 rounded-lg bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-200">
+                                    Đã biết
+                                </button>
+                            )}
                             
-                            <button
+                            <button type="button" aria-label="Đóng thông báo"
                                 onClick={() => removeToast(toast.id)}
-                                className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+                                className="ml-2 text-gray-400 hover:text-gray-600 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
                             >
                                 <X size={16} />
                             </button>

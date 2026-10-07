@@ -1,6 +1,8 @@
 import React from 'react';
 import { useRevenueCustomers } from './RevenueCustomers.logic';
-import { Loader2, Users, Star, UserPlus, Globe } from 'lucide-react';
+import { Loader2, Users, Star, UserPlus, Globe, XCircle } from 'lucide-react';
+import { formatCancelRate } from '@/lib/services/CustomerVisitService';
+import { tVisit } from '@/lib/constants/customer-visit.i18n';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const PIE_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
@@ -21,7 +23,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function RevenueCustomers({ dateFrom, dateTo, langFilter }: { dateFrom: string, dateTo: string, langFilter: string }) {
-    const { newCustomers, topCustomers, languageBreakdown, isLoading, error } = useRevenueCustomers(dateFrom, dateTo, langFilter);
+    const { newCustomers, topCustomers, languageBreakdown, cancelSummary, isLoading, error } = useRevenueCustomers(dateFrom, dateTo, langFilter);
 
     const formatMoney = (val: number) => new Intl.NumberFormat('vi-VN').format(val || 0) + 'đ';
 
@@ -40,6 +42,16 @@ export default function RevenueCustomers({ dateFrom, dateTo, langFilter }: { dat
 
     return (
         <div className="space-y-6">
+            {cancelSummary && (
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
+                    <XCircle size={18} className={(cancelSummary.rate ?? 0) >= 0.3 ? 'text-rose-500' : 'text-gray-400'} />
+                    <span className="text-sm font-semibold text-gray-600">{tVisit.cancelRate}</span>
+                    <span className={`text-base font-bold ${(cancelSummary.rate ?? 0) >= 0.3 ? 'text-rose-600' : 'text-gray-900'}`}>
+                        {formatCancelRate({ cancelledVisits: cancelSummary.cancelled, closedVisits: cancelSummary.closed, cancelRate: cancelSummary.rate })}
+                    </span>
+                    <span className="text-xs text-gray-400">{tVisit.cancelRateHint}</span>
+                </div>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* 1. Ngôn ngữ khách hàng */}
                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm col-span-1">
@@ -108,6 +120,7 @@ export default function RevenueCustomers({ dateFrom, dateTo, langFilter }: { dat
                                     <th className="px-4 py-3 font-semibold text-gray-600">Tên Khách Hàng</th>
                                     <th className="px-4 py-3 font-semibold text-gray-600">SĐT</th>
                                     <th className="px-4 py-3 font-semibold text-gray-600 text-center">Số lượng Đơn</th>
+                                    <th className="px-4 py-3 font-semibold text-gray-600 text-center">{tVisit.cancelRate}</th>
                                     <th className="px-4 py-3 font-semibold text-gray-600 text-right">Tổng Chi Tiêu</th>
                                 </tr>
                             </thead>
@@ -118,6 +131,9 @@ export default function RevenueCustomers({ dateFrom, dateTo, langFilter }: { dat
                                         <td className="px-4 py-3 font-bold text-gray-800">{cus.name}</td>
                                         <td className="px-4 py-3 text-gray-500">{cus.phone || '-'}</td>
                                         <td className="px-4 py-3 text-center font-medium text-indigo-600">{cus.orders}</td>
+                                        <td className={`px-4 py-3 text-center text-xs font-semibold ${(cus.cancelRate ?? 0) >= 0.3 ? 'text-rose-600' : 'text-gray-500'}`}>
+                                            {formatCancelRate({ cancelledVisits: cus.cancelled || 0, closedVisits: cus.closed || 0, cancelRate: cus.cancelRate ?? null })}
+                                        </td>
                                         <td className="px-4 py-3 text-right font-bold text-emerald-600">{formatMoney(cus.revenue)}</td>
                                     </tr>
                                 ))}

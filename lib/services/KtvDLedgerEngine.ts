@@ -1,5 +1,6 @@
 import { isVoidedSegment, workedMsOf, parseTimeMs, endedByCounter } from '../segment-time';
 import { toBusinessDate } from '../business-date';
+import { normalizeScale, qualifiesForBonus, deductionRate, DEFAULT_RATING_SCALE, DEFAULT_TYPE_D_DEDUCTION, type RatingScale } from './RatingScaleService';
 
 /**
  * ================================================================
@@ -29,8 +30,8 @@ const SETTLED_STATUSES = ['DONE', 'COMPLETED'];
 // ("Combo King" là NHS0800 → Phổ thông), và Settings cũng chỉ có 2 đơn giá.
 const VIP_PREFIXES = ['NHP', 'NHT', 'VIP'];
 
-/** Từ mốc sao này trở lên thì khách sinh ra một suất thưởng. */
-const BONUS_MIN_RATING = 4;
+// Ngưỡng thưởng = mức cao nhất của thang của ĐÚNG đánh giá đó (thang 4 → 4★ như trước,
+// thang 5 → 5★): `qualifiesForBonus` trong RatingScaleService.
 
 export type RateCategory = 'VIP' | 'PT';
 export type RatingSource = 'GUEST_KTV' | 'GUEST' | 'ITEM_KTV' | 'ITEM' | 'BOOKING' | 'NONE';
@@ -41,6 +42,8 @@ export interface TypeDConfigs {
     ratePT: number;
     /** { '0':0, '1':0.75, '2':0.5, '3':0.25, '4':0 } — thang 4★ */
     ratingDeductions: Record<string, number>;
+    /** Bảng trừ theo từng thang (thiếu thang 4 → `ratingDeductions`, thiếu thang 5 → mặc định). */
+    ratingDeductionsByScale?: Partial<Record<RatingScale, Record<string, number>>>;
     cutoffHours: number;
     /** 0.1 = 10% */
     taxRate: number;
@@ -55,6 +58,7 @@ export interface TypeDConfigs {
 export interface EngineGuest {
     id: string;
     rating?: number | null;
+    rating_scale?: number | null;
     ktv_ratings?: Record<string, number> | null;
 }
 
@@ -68,6 +72,7 @@ export interface EngineItem {
     tip?: number | null;
     itemRating?: number | null;
     ktvRatings?: Record<string, number> | null;
+    rating_scale?: number | null;
     options?: any;
     handover_status?: string | null;
     handover_comment?: string | null;
@@ -79,6 +84,7 @@ export interface EngineBooking {
     timeStart?: string | null;
     status?: string | null;
     rating?: number | null;
+    rating_scale?: number | null;
     BookingItems?: EngineItem[] | null;
     BookingGuests?: EngineGuest[] | null;
 }
@@ -112,6 +118,8 @@ export interface TurnRow {
     rate_per_60m: number;
     rating_used: number;
     rating_source: RatingSource;
+    /** Thang của `rating_used` (không lưu xuống sổ; dùng để tính trừ / thưởng). */
+    rating_scale: RatingScale;
     deduction_rate: number;
     commission_gross: number;
     commission_net: number;
@@ -178,7 +186,7 @@ export function resolveRating(
     item: EngineItem,
     guest: EngineGuest | undefined,
     staffId: string
-): { rating: number; source: RatingSource } {
+): { rating: number; source: RatingSource; scale: RatingScale } {
     const pick = (map: Record<string, number> | null | undefined): number | null => {
         if (!map) return null;
         for (const [k, v] of Object.entries(map)) {
@@ -188,14 +196,15 @@ export function resolveRating(
     };
 
     const guestKtv = pick(parseJson(guest?.ktv_ratings, null));
-    if (guestKtv != null) return { rating: guestKtv, source: 'GUEST_KTV' };
+    // Thang đi cùng ĐÚNG dòng đã cho ra số sao.
+    if (guestKtv != null) return { rating: guestKtv, source: 'GUEST_KTV', scale: normalizeScale(guest?.rating_scale) };
 
-    if (guest?.rating != null) return { rating: Number(guest.rating), source: 'GUEST' };
+    if (guest?.rating != null) return { rating: Number(guest.rating), source: 'GUEST', scale: normalizeScale(guest.rating_scale) };
 
     const itemKtv = pick(parseJson(item.ktvRatings, null));
-    if (itemKtv != null) return { rating: itemKtv, source: 'ITEM_KTV' };
+    if (itemKtv != null) return { rating: itemKtv, source: 'ITEM_KTV', scale: normalizeScale(item.rating_scale) };
 
-    if (item.itemRating != null) return { rating: Number(item.itemRating), source: 'ITEM' };
+    if (item.itemRating != null) return { rating: Number(item.itemRating), source: 'ITEM', scale: normalizeScale(item.rating_scale) };
 
     // ⚠️ CHỈ lùi về sao CẤP BILL khi đơn KHÔNG có bản ghi khách nào.
     //
@@ -209,9 +218,9 @@ export function resolveRating(
     //
     // Đơn cũ chưa có `BookingGuests` thì `guest` là undefined, đường lùi này vẫn
     // giữ nguyên để dữ liệu cũ không mất sao.
-    if (!guest && booking.rating != null) return { rating: Number(booking.rating), source: 'BOOKING' };
+    if (!guest && booking.rating != null) return { rating: Number(booking.rating), source: 'BOOKING', scale: normalizeScale(booking.rating_scale) };
 
-    return { rating: 0, source: 'NONE' };
+    return { rating: 0, source: 'NONE', scale: DEFAULT_RATING_SCALE };
 }
 
 /**
@@ -288,6 +297,11 @@ export function computeMinutes(segs: any[]): {
  * Suất thưởng ghi lên ĐÚNG MỘT dòng của mỗi (KTV, khách). Rải lên mọi dòng thì
  * tổng theo ngày và theo tháng bị nhân lên theo số dịch vụ.
  *
+ * "Khách" = `guest_id`, KHÔNG phải `group_id`. Dịch vụ thêm (addon) không gộp
+ * có `group_id` riêng dù cùng một khách — ca thật 005-02102026: T021 và T027
+ * mỗi người nhận 2 suất vì khách làm dịch vụ chính + một dịch vụ thêm.
+ * Đơn cũ chưa có `BookingGuests` thì lùi về `group_id`.
+ *
  * ⚠️ Giữ nguyên luật loại trừ cũ: bill có bất kỳ KTV KHÔNG thuộc loại D thì cả
  * bill mất thưởng. Đây là luật sẵn có của phần thưởng, chuyển vào tiền tua
  * không phải lý do để nới nó ra.
@@ -299,23 +313,24 @@ export function applyBonusAndTax(
     configs: TypeDConfigs
 ): void {
     const canBonus = configs.bonusEnabled && !hasOtherType && configs.bonusPerGuest > 0;
+    const guestKey = (r: TurnRow) => r.guest_id || r.group_id;
 
     if (canBonus) {
         // Mỗi khách có mấy KTV loại D? Đếm trên chính các dòng của bill này.
         const staffPerGuest = new Map<string, Set<string>>();
         for (const r of bookingRows) {
-            if (Number(r.rating_used) < BONUS_MIN_RATING) continue;
-            const set = staffPerGuest.get(r.group_id) || new Set<string>();
+            if (!qualifiesForBonus(r.rating_used, r.rating_scale)) continue;
+            const set = staffPerGuest.get(guestKey(r)) || new Set<string>();
             set.add(r.staff_id);
-            staffPerGuest.set(r.group_id, set);
+            staffPerGuest.set(guestKey(r), set);
         }
 
         const paid = new Set<string>();
         for (const r of bookingRows) {
-            if (Number(r.rating_used) < BONUS_MIN_RATING) continue;
-            const key = `${r.staff_id}|${r.group_id}`;
+            if (!qualifiesForBonus(r.rating_used, r.rating_scale)) continue;
+            const key = `${r.staff_id}|${guestKey(r)}`;
             if (paid.has(key)) continue;          // suất này đã ghi ở dòng trước
-            const dCount = staffPerGuest.get(r.group_id)?.size || 1;
+            const dCount = staffPerGuest.get(guestKey(r))?.size || 1;
             r.bonus_amount = configs.bonusPerGuest / dCount;
             paid.add(key);
         }
@@ -402,11 +417,13 @@ export function computeRows(
                 if (paid <= 0 && actual <= 0) continue;
 
                 const guest = item.guest_id ? guestById.get(String(item.guest_id)) : undefined;
-                const { rating, source } = resolveRating(booking, item, guest, staffId);
+                const { rating, source, scale } = resolveRating(booking, item, guest, staffId);
 
                 const category = rateCategoryOf(item.serviceId);
                 const rate = category === 'VIP' ? configs.rateVIP : configs.ratePT;
-                const deduction = Number(configs.ratingDeductions[String(rating)] ?? 0);
+                const deductionMap = configs.ratingDeductionsByScale?.[scale]
+                    ?? (scale === 4 ? configs.ratingDeductions : DEFAULT_TYPE_D_DEDUCTION[scale]);
+                const deduction = deductionRate(deductionMap, rating);
 
                 // KHÔNG làm tròn — xem ghi chú về thuế bên dưới. Cùng một lý do:
                 // chỉ cần làm tròn ở một cấp là tổng theo khách, theo ngày và theo
@@ -461,6 +478,7 @@ export function computeRows(
                     rate_per_60m: rate,
                     rating_used: rating,
                     rating_source: source,
+                    rating_scale: scale,
                     deduction_rate: deduction,
                     commission_gross: gross,
                     commission_net: net,

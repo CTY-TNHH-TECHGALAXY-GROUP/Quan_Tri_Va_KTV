@@ -8,6 +8,7 @@ import { WalletAccessService } from '@/lib/services/WalletAccessService';
 import { getDayCutoffHours, toBusinessDate } from '@/lib/business-date';
 import { attachRunningBalance } from '@/lib/services/KtvWalletBalanceRules';
 import { requireStaffOrPermission } from '@/lib/auth-server';
+import { DEFAULT_TYPE_D_DEDUCTION, buildRatingConfig, normalizeScale } from '@/lib/services/RatingScaleService';
 
 export const dynamic = 'force-dynamic';
 
@@ -165,9 +166,13 @@ export async function GET(request: Request) {
         }
 
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
+        // A/B/C per-star deduction tables (0% by default → commission unchanged).
+        const abcTables = await KtvCommissionService.getAbcRatingTables(supabase);
         let rateVIP = 180000;
         let ratePT = 100000;
-        let ratingDeductions: Record<string, number> = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
+        let ratingDeductions: Record<string, number> = { ...DEFAULT_TYPE_D_DEDUCTION[4] };
+        // Per-scale tables: a rating is read on the scale it was given on (rating_scale).
+        let ratingTables = buildRatingConfig({}).typeD;
         let taxEffectiveDate = '2099-01-01';
 
         if (workType === 'TYPE_D') {
@@ -179,13 +184,8 @@ export async function GET(request: Request) {
 
             rateVIP = Number(configs['ktv_type_d_vip_rate_per_60m']) || 180000;
             ratePT = Number(configs['ktv_type_d_pt_rate_per_60m']) || 100000;
-            try {
-                if (configs['ktv_type_d_rating_deduction']) {
-                    ratingDeductions = typeof configs['ktv_type_d_rating_deduction'] === 'string' 
-                        ? JSON.parse(configs['ktv_type_d_rating_deduction']) 
-                        : configs['ktv_type_d_rating_deduction'];
-                }
-            } catch (e) {}
+            ratingTables = buildRatingConfig(configs).typeD;
+            ratingDeductions = ratingTables[4];
         }
 
         const GLOBAL_START_DATE_STR = '2026-05-04';
@@ -240,7 +240,7 @@ export async function GET(request: Request) {
                      * và màn Lịch Sử đọc ra cùng một chữ.
                      */
                     const ketQuaDanhGia = (() => {
-                        const ten = ratingLabel(g.rating);
+                        const ten = ratingLabel(g.rating, g.rating_scale);
                         if (!ten) return '';
                         if (g.bonus_amount > 0) {
                             return ` · ${ten} +${Math.round(g.bonus_amount).toLocaleString('vi-VN')}đ`;
@@ -367,7 +367,7 @@ export async function GET(request: Request) {
             const { data, error } = await supabase
                 .from('BookingItems')
                 .select(`
-                    id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment,
+                    id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, rating_scale, options, handover_status, handover_comment,
                     Bookings!inner ( id, timeStart, timeEnd, status, technicianCode, billCode, createdAt )
                 `)
                 .contains('technicianCodes', [techCode])
@@ -441,8 +441,9 @@ export async function GET(request: Request) {
                     return !(svcId.startsWith('NHP') || svcId.startsWith('NHT') || svcId.startsWith('VIP'));
                 });
                 
-                passedCommission = KtvTypeDCommissionService.calculateGuestCommission(vipItems, techCode, b.rating, rateVIP, ratingDeductions) + 
-                                   KtvTypeDCommissionService.calculateGuestCommission(ptItems, techCode, b.rating, ratePT, ratingDeductions);
+                const bookingTable = ratingTables[normalizeScale(b.rating_scale)];
+                passedCommission = KtvTypeDCommissionService.calculateGuestCommission(vipItems, techCode, b.rating, rateVIP, bookingTable) + 
+                                   KtvTypeDCommissionService.calculateGuestCommission(ptItems, techCode, b.rating, ratePT, bookingTable);
                 
                 // For TYPE_D, we don't hold commission (no HOLD logic defined in requirements)
                 heldCommission = 0;
@@ -475,7 +476,8 @@ export async function GET(request: Request) {
 
                     const commissionForItem = biTuoc
                         ? 0
-                        : KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                        : KtvCommissionService.applyAbcRatingDeduction(
+                            KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId), item, b, techCode, abcTables, workType);
 
                     const { isPassed, reasons } = KtvCommissionService.checkIsItemPassed(item, b, techCode);
 
@@ -493,10 +495,12 @@ export async function GET(request: Request) {
                 // Fallback for TYPE_A if total passed commission is 0 but they did work.
                 // Chừa đơn bị tước ra, nếu không nó trả lại đúng 60 phút vừa chặn ở trên.
                 if (passedCommission === 0 && passedCount > 0 && coItemConQuyenLoi) {
-                    passedCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                    passedCommission = KtvCommissionService.applyAbcRatingDeduction(
+                        KtvCommissionService.calcCommission(60, commConfigs, workType, ''), null, { ...b, BookingItems: relevantItems }, techCode, abcTables, workType);
                 }
                 if (heldCommission === 0 && relevantItems.length > passedCount && passedCount === 0 && coItemConQuyenLoi) {
-                    heldCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                    heldCommission = KtvCommissionService.applyAbcRatingDeduction(
+                        KtvCommissionService.calcCommission(60, commConfigs, workType, ''), null, { ...b, BookingItems: relevantItems }, techCode, abcTables, workType);
                 }
             }
 

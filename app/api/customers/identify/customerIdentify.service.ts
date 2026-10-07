@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
+import { isDummyPhone, isDummyEmail, COMPLETED_STATUSES } from '@/lib/customer.logic';
+import { computeProfileVisit, type VisitStatus } from '@/lib/services/CustomerVisitService';
 
 interface CustomerIdentifyParams {
     phone?: string;
@@ -9,6 +10,7 @@ interface CustomerIdentifyParams {
 interface CustomerIdentifyResult {
     isReturning: boolean;
     visitCount: number;
+    visitStatus: VisitStatus;
     customer: {
         name: string;
         phone: string;
@@ -41,13 +43,13 @@ export class CustomerIdentifyService {
         let customerError: any = null;
 
         if (validPhone) {
-            const { data, error } = await supabase.from('Customers').select('id, fullName, notes, phone, email').eq('phone', validPhone).maybeSingle();
+            const { data, error } = await supabase.from('Customers').select('id, fullName, notes, phone, email, createdAt').eq('phone', validPhone).maybeSingle();
             customerData = data;
             customerError = error;
         }
 
         if (!customerData && validEmail) {
-            const { data, error } = await supabase.from('Customers').select('id, fullName, notes, phone, email').eq('email', validEmail).maybeSingle();
+            const { data, error } = await supabase.from('Customers').select('id, fullName, notes, phone, email, createdAt').eq('email', validEmail).maybeSingle();
             customerData = data;
             customerError = error;
         }
@@ -57,7 +59,7 @@ export class CustomerIdentifyService {
         }
 
         // 2. Tra cứu lịch sử Bookings
-        let bookingQuery = supabase.from('Bookings').select('id');
+        let bookingQuery = supabase.from('Bookings').select('id, status, source, parent_booking_id, bookingDate, createdAt');
         
         if (customerData) {
             // Nếu đã tìm thấy khách, dùng ID của khách để tìm toàn bộ lịch sử
@@ -70,17 +72,17 @@ export class CustomerIdentifyService {
             bookingQuery = bookingQuery.eq('id', 'DO_NOT_MATCH_ANYTHING');
         }
         
-        // Cân nhắc các trạng thái đã phục vụ xong (COMPLETED, FEEDBACK, CLEANING, DONE)
-        bookingQuery = bookingQuery.in('status', ['COMPLETED', 'FEEDBACK', 'CLEANING', 'DONE']);
+        // Lấy mọi trạng thái — nhãn và số lượt tính bằng CustomerVisitService (một công thức với CRM/Dispatch).
 
         const { data: bookingsData, error: bookingsError } = await bookingQuery;
         if (bookingsError) {
             console.error('Error fetching bookings:', bookingsError.message, bookingsError.code);
         }
 
-        const visitCount = bookingsData ? bookingsData.length : 0;
-        const isReturning = visitCount > 1;
-        const bookingIds = bookingsData?.map(b => b.id) || [];
+        const visit = computeProfileVisit(bookingsData || [], customerData?.createdAt || null);
+        const visitCount = visit.completedVisits;
+        const isReturning = visit.status === 'RETURNING';
+        const bookingIds = (bookingsData || []).filter(b => COMPLETED_STATUSES.includes(String(b.status))).map(b => b.id);
 
         // 3. Trích xuất thói quen (nếu là khách cũ)
         let topService = '';
@@ -159,7 +161,10 @@ export class CustomerIdentifyService {
         let wowMessage = '';
         let greetingSuggestion = '';
 
-        if (!isReturning) {
+        if (visit.status === 'VISITED') {
+            wowMessage = `Ting! ${customerName} đã từng tới (có hồ sơ) nhưng chưa hoàn tất lượt nào. Xác nhận lại nhu cầu giúp khách nhé!`;
+            greetingSuggestion = `Dạ Oria Spa xin chào ${customerName}! Rất vui được gặp lại anh/chị, hôm nay anh/chị muốn dùng dịch vụ gì ạ?`;
+        } else if (!isReturning) {
             wowMessage = `Ting! Khách mới tinh chưa có lịch sử (${customerName}). Cố gắng chốt sale và phục vụ thật tốt nhé!`;
             greetingSuggestion = `Dạ Oria Spa xin chào! Đây là lần đầu tiên ${customerName} đến với Spa đúng không ạ?`;
         } else {
@@ -189,6 +194,7 @@ export class CustomerIdentifyService {
         return {
             isReturning,
             visitCount,
+            visitStatus: visit.status,
             customer: customerData ? {
                 name: customerData.fullName || '',
                 phone: customerData.phone || phone || '',

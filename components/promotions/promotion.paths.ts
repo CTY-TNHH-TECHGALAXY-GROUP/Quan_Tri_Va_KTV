@@ -10,6 +10,8 @@ export const PROMOTION_PATHS = {
   scan: '/admin/promotions/scan',
   /** Printable A5 voucher; auto=1 opens the print dialog (Save as PDF). */
   printPass: (id: string) => `/admin/promotions/passes/${encodeURIComponent(id)}/print?auto=1`,
+  /** Printable 2-sided Namecard (5.5 x 9 cm); auto=1 opens the print dialog (Save as PDF). */
+  printCard: (id: string) => `/admin/promotions/passes/${encodeURIComponent(id)}/print-card?auto=1`,
   /** Scanner pre-loaded with this voucher: staff only picks the open order (no QR needed). */
   applyToOrder: (voucherCode: string) => `/admin/promotions/scan?code=${encodeURIComponent(voucherCode)}`,
   /** Existing dispatch board — where reception sees the order with the KM item (no per-order deep link yet). */

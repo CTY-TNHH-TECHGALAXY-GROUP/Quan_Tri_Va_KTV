@@ -44,6 +44,13 @@ export interface EmailConfig {
     email_bank_bin: string;
     email_bank_account_no: string;
     email_bank_account_name: string;
+
+    // --- E-Voucher Web Booking Guidance (5 thứ tiếng) ---
+    voucher_webbooking_instruction_vi: string;
+    voucher_webbooking_instruction_en: string;
+    voucher_webbooking_instruction_cn: string;
+    voucher_webbooking_instruction_jp: string;
+    voucher_webbooking_instruction_kr: string;
 }
 
 export const EMAIL_CONFIG_DEFAULTS: EmailConfig = {
@@ -54,7 +61,7 @@ export const EMAIL_CONFIG_DEFAULTS: EmailConfig = {
     email_website_url: 'https://oria-spa.vercel.app',
     email_hotline: '+84 964 090 277',
     email_branch_name: 'ORIA SPA',
-    email_branch_address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh',
+    email_branch_address: '11 Ngô Đức Kế, P. Sài Gòn, TP. Hồ Chí Minh, Việt Nam',
     email_manage_booking_url: '', // Chưa có trang cho khách tự đổi lịch
     email_grace_minutes: 5,
     email_company_name: 'TECHGALAXY GROUP',
@@ -66,6 +73,12 @@ export const EMAIL_CONFIG_DEFAULTS: EmailConfig = {
     email_bank_bin: '970422', // MB Bank
     email_bank_account_no: '8600289999',
     email_bank_account_name: 'CTY TNHH TECHGALAXY GROUP',
+
+    voucher_webbooking_instruction_vi: 'Vui lòng đặt lịch qua website để áp dụng voucher này.',
+    voucher_webbooking_instruction_en: 'Please book through our website to apply this voucher.',
+    voucher_webbooking_instruction_cn: '请通过我们的网站预约以使用此优惠券。',
+    voucher_webbooking_instruction_jp: '当クーポンをご利用の際は、ウェブサイトよりご予約ください。',
+    voucher_webbooking_instruction_kr: '이 바우처를 사용하시려면 웹사이트를 통해 예약해 주세요.',
 };
 
 export const EMAIL_CONFIG_KEYS = Object.keys(EMAIL_CONFIG_DEFAULTS) as (keyof EmailConfig)[];

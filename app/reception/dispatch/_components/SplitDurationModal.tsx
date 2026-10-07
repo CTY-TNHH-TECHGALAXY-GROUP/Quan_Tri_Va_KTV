@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, Plus, Sparkles } from 'lucide-react';
+import { AlertTriangle, Plus, Users } from 'lucide-react';
 
 export interface SplitDurationConfig {
   duration: number;
@@ -137,7 +137,7 @@ export function SplitDurationModal({
               
               {config.ktv1Dur === config.duration && config.ktv2Dur === config.duration && (
                 <div className="mb-6 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-2">
-                  <Sparkles size={16} className="text-emerald-500 shrink-0 mt-0.5" />
+                  <Users size={16} className="text-emerald-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-emerald-700 font-medium">
                     <span className="font-bold block mb-1">Làm Chung (Song song)</span>
                     Hai KTV sẽ cùng dùng chung 1 khung giờ. 1 người bấm sẽ cập nhật cho người kia.

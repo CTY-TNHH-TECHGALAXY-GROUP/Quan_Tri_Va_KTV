@@ -109,9 +109,10 @@ export const KtvBookingPatchSchema = z.object({
   status: z.string().min(1, "status is required"),
   action: z.string().optional(),
   techCode: z.string().optional(),
-  photoBase64: z.string().max(7_000_000).optional(),
-  startPhotoBase64: z.string().max(7_000_000).optional(),
-  guestSlipperPhotoBase64: z.string().max(7_000_000).optional()
+  // nullish: clients send null when a photo is not captured (e.g. slipper photo reused from the order).
+  photoBase64: z.string().max(7_000_000).nullish(),
+  startPhotoBase64: z.string().max(7_000_000).nullish(),
+  guestSlipperPhotoBase64: z.string().max(7_000_000).nullish()
 });
 
 // Schema cho API Interaction (POST /api/ktv/interaction)

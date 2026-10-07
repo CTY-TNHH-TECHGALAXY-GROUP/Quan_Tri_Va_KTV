@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Clock, Save, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { editDispatchActualTimes } from '../actions';
+import { dispatchRevision } from '@/lib/dispatch-edit-history';
 
 interface TimeEditorModalProps {
     isOpen: boolean;
@@ -15,6 +17,7 @@ export function TimeEditorModal({ isOpen, onClose, orderId, itemId, onSuccess }:
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [segments, setSegments] = useState<any[]>([]);
+    const [expectedRevision, setExpectedRevision] = useState(0);
     
     // Lưu dưới dạng mảng các object thời gian theo từng KTV (từng segment)
     const [segmentTimes, setSegmentTimes] = useState<{ktvId: string, actualStartTime: string, actualEndTime: string}[]>([]);
@@ -28,12 +31,14 @@ export function TimeEditorModal({ isOpen, onClose, orderId, itemId, onSuccess }:
     const loadItemData = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase.from('BookingItems').select('segments').eq('id', itemId).single();
+            const { data, error } = await supabase.from('BookingItems').select('segments, options').eq('id', itemId).single();
             if (error) throw error;
             if (data && data.segments) {
                 let segs = typeof data.segments === 'string' ? JSON.parse(data.segments) : data.segments;
                 if (!Array.isArray(segs)) segs = [];
                 setSegments(segs);
+                const opts = typeof data.options === 'string' ? JSON.parse(data.options) : data.options;
+                setExpectedRevision(dispatchRevision(opts));
                 
                 // Khởi tạo state chỉnh sửa
                 const initialTimes = segs.map((seg: any) => ({
@@ -54,27 +59,18 @@ export function TimeEditorModal({ isOpen, onClose, orderId, itemId, onSuccess }:
     const handleSave = async () => {
         setSaving(true);
         try {
-            const updatedSegments = segments.map((seg, idx) => {
-                const newSeg = { ...seg };
-                if (segmentTimes[idx]) {
-                    newSeg.actualStartTime = segmentTimes[idx].actualStartTime || null;
-                    newSeg.actualEndTime = segmentTimes[idx].actualEndTime || null;
-                }
-                return newSeg;
-            });
-
-            const { error } = await supabase.from('BookingItems').update({
-                segments: JSON.stringify(updatedSegments)
-            }).eq('id', itemId);
-
-            if (error) throw error;
+            const result = await editDispatchActualTimes(orderId, itemId, expectedRevision, segments.map((seg, idx) => ({
+                segmentId: seg.id, actualStartTime: segmentTimes[idx]?.actualStartTime || null,
+                actualEndTime: segmentTimes[idx]?.actualEndTime || null
+            })));
+            if (!result.success) throw new Error(result.error);
 
             alert('Đã lưu thời gian thành công! (Dữ liệu sẽ được tự động cập nhật qua Realtime)');
             if (onSuccess) onSuccess();
             onClose();
         } catch (err) {
             console.error('Error saving item times:', err);
-            alert('Có lỗi xảy ra khi lưu thời gian');
+            alert(err instanceof Error ? err.message : 'Có lỗi xảy ra khi lưu thời gian');
         } finally {
             setSaving(false);
         }

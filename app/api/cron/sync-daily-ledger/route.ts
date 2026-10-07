@@ -6,6 +6,7 @@ import { KtvTypeDBonusService } from '@/lib/services/KtvTypeDBonusService';
 import { processMonthlyLedgerSync, processYearlyLedgerSync, processMonthlyMaintenanceFee } from '@/lib/services/KtvLedgerSyncService';
 import { SyncDailyLedgerPostSchema } from '@/lib/schemas/finance.schema';
 import { requireCronAuth } from '@/lib/cron-auth';
+import { buildRatingConfig, normalizeScale } from '@/lib/services/RatingScaleService';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,8 @@ async function processLedgerSync(targetDateStr: string) {
 
     // 1. Get configs from centralized service
     const allConfigs = await KtvCommissionService.getAllConfigs(supabase);
+    // A/B/C per-star deduction tables (0% by default → commission unchanged).
+    const abcTables = await KtvCommissionService.getAbcRatingTables(supabase);
     const allBonusConfigs = await KtvCommissionService.getAllBonusConfigs(supabase);
 
     const TYPE_D_RULE_EFFECTIVE_FROM = '2026-09-01';
@@ -38,14 +41,8 @@ async function processLedgerSync(targetDateStr: string) {
 
     const rateVIP_D = Number(typeDConfigs['ktv_type_d_vip_rate_per_60m']) || 180000;
     const ratePT_D = Number(typeDConfigs['ktv_type_d_pt_rate_per_60m']) || 100000;
-    let ratingDeductions_D = { "0": 0, "1": 0.75, "2": 0.5, "3": 0.25, "4": 0 };
-    if (typeDConfigs['ktv_type_d_rating_deduction']) {
-        try {
-            ratingDeductions_D = typeof typeDConfigs['ktv_type_d_rating_deduction'] === 'string' 
-                ? JSON.parse(typeDConfigs['ktv_type_d_rating_deduction']) 
-                : typeDConfigs['ktv_type_d_rating_deduction'];
-        } catch {}
-    }
+    // Per-scale tables: a rating is read on the scale it was given on (rating_scale).
+    const ratingTables_D = buildRatingConfig(typeDConfigs).typeD;
     const basePoints_D = Number(typeDConfigs['ktv_type_d_bonus_points']) || 20;
     const pointRate_D = Number(sysConfigs['ktv_bonus_rate_TYPE_D']) || 1000;
 
@@ -108,8 +105,8 @@ async function processLedgerSync(targetDateStr: string) {
     const { data: bookings } = await supabase
         .from('Bookings')
         .select(`
-            id, timeStart, timeEnd, status, technicianCode, rating, guestCount, createdAt,
-            BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment ),
+            id, timeStart, timeEnd, status, technicianCode, rating, rating_scale, guestCount, createdAt,
+            BookingItems:BookingItems!fk_bookingitems_booking ( id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, rating_scale, options, handover_status, handover_comment ),
             BookingGuests ( id, status )
         `)
         .gte('bookingDate', startTimeStr)
@@ -207,8 +204,9 @@ async function processLedgerSync(targetDateStr: string) {
                         return !(svcId.startsWith('NHP') || svcId.startsWith('NHT') || svcId.startsWith('VIP'));
                     });
 
-                    const vipComm = KtvTypeDCommissionService.calculateGuestCommission(vipItems, techCode, b.rating, rateVIP_D, ratingDeductions_D);
-                    const ptComm = KtvTypeDCommissionService.calculateGuestCommission(ptItems, techCode, b.rating, ratePT_D, ratingDeductions_D);
+                    const bookingTable_D = ratingTables_D[normalizeScale(b.rating_scale)];
+                    const vipComm = KtvTypeDCommissionService.calculateGuestCommission(vipItems, techCode, b.rating, rateVIP_D, bookingTable_D);
+                    const ptComm = KtvTypeDCommissionService.calculateGuestCommission(ptItems, techCode, b.rating, ratePT_D, bookingTable_D);
                     bookingCommission = vipComm + ptComm;
 
                     commissionBreakdown.push({
@@ -237,7 +235,8 @@ async function processLedgerSync(targetDateStr: string) {
                             const fallbackDuration = svcDurationMap[String(item.serviceId)] || 60;
                             let itemDuration = KtvCommissionService.calculateItemDuration(item, techCode, fallbackDuration);
                             if (itemDuration <= 0) itemDuration = 60;
-                            const itemCommission = KtvCommissionService.calcCommission(itemDuration, allConfigs, workType, item.serviceId);
+                            const grossCommission = KtvCommissionService.calcCommission(itemDuration, allConfigs, workType, item.serviceId);
+                            const itemCommission = KtvCommissionService.applyAbcRatingDeduction(grossCommission, item, b, techCode, abcTables, workType);
                             bookingCommission += itemCommission;
                             commissionBreakdown.push({
                                 bookingId: b.id,
@@ -245,13 +244,16 @@ async function processLedgerSync(targetDateStr: string) {
                                 serviceId: item.serviceId || null,
                                 duration: itemDuration,
                                 workType,
-                                commission: itemCommission
+                                commission: itemCommission,
+                                // Trừ theo sao (A/B/C) — lưu để truy vết; `rating_deduction` của dòng ngày là tỉ lệ của Loại D.
+                                ratingDeduction: grossCommission - itemCommission,
                             });
                         }
                     }
 
                     if (bookingCommission === 0 && coItemConQuyenLoi) {
-                        bookingCommission = KtvCommissionService.calcCommission(60, allConfigs, workType, '');
+                        const grossFallback = KtvCommissionService.calcCommission(60, allConfigs, workType, '');
+                        bookingCommission = KtvCommissionService.applyAbcRatingDeduction(grossFallback, null, b, techCode, abcTables, workType);
                         commissionBreakdown.push({
                             bookingId: b.id,
                             itemId: null,
@@ -259,6 +261,7 @@ async function processLedgerSync(targetDateStr: string) {
                             duration: 60,
                             workType,
                             commission: bookingCommission,
+                            ratingDeduction: grossFallback - bookingCommission,
                             fallback: true // ⚠️ Nhánh dự phòng
                         });
                     }

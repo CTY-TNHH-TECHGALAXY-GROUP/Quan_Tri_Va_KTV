@@ -1,0 +1,800 @@
+diff --git a/app/reception/dispatch/_components/QuickDispatchTable.tsx b/app/reception/dispatch/_components/QuickDispatchTable.tsx
+index 855dadbf..d8031d23 100644
+--- a/app/reception/dispatch/_components/QuickDispatchTable.tsx
++++ b/app/reception/dispatch/_components/QuickDispatchTable.tsx
+@@ -497,6 +497,9 @@ export const QuickDispatchTable = ({
+           staffList: updatedServices[svcIdx].staffList.map(row => {
+             const idx = state.selectedKtvIds.indexOf(row.ktvId);
+             return idx < 0 ? row : { ...row,
++              segments: row.segments.map(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime
++                ? { ...seg, startTime: state.ktvStartTimes[idx] ?? seg.startTime,
++                    endTime: state.ktvEndTimes[idx] ?? seg.endTime, duration: state.ktvDurations[idx] ?? seg.duration } : seg),
+               noteForKtv: state.ktvNotes[idx] ?? row.noteForKtv,
+               serviceNameForKtv: state.ktvServiceNames?.[idx] ?? row.serviceNameForKtv };
+           }),
+@@ -994,7 +997,6 @@ const ServiceGroupCard = ({
+   const waitingForB = hasHandoff && !groupItems.some(item => item.options?.finishedAfterA
+     || item.staffList.some(row => row.segments.some(seg => Number((seg as any).sequenceSlot) === 2 && (seg as any).voided !== true)));
+   const [ktvSearch, setKtvSearch] = useState('');
+-  const [bStartDrafts, setBStartDrafts] = useState<Record<string, string>>({});
+   const [showTicketForIdx, setShowTicketForIdx] = useState<number | null>(null);
+   const [openDurationIdx, setOpenDurationIdx] = useState<number | null>(null);
+   const [showRemindersIdx, setShowRemindersIdx] = useState<number | null>(null);
+@@ -1610,7 +1612,6 @@ const ServiceGroupCard = ({
+                   && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => Number(seg.sequenceSlot) === 2 && (seg as any).voided !== true && !seg.actualStartTime)));
+                 const slotAKtvId = slotBItem?.staffList.find(row => row.segments.some(seg => Number(seg.sequenceSlot) === 1))?.ktvId;
+                 const canEditBStart = !isDraft && !!slotBItem && !!slotAKtvId;
+-                const bStartDraft = bStartDrafts[ktvId] ?? startT;
+                 const replacedB = groupItems.some(item => isTwoSlotSequential(item.options) && item.staffList.some(row => row.ktvId === ktvId && row.segments.some(seg => (seg as any).sequenceSlot === 2 && (seg as any).voided === true)));
+                 const roomBedsList = selRoom ? beds.filter(b => b.roomId === selRoom) : [];
+                 return (
+@@ -1713,14 +1714,14 @@ const ServiceGroupCard = ({
+                     </div>
+                     <div className="flex items-center gap-1">
+                       <input type="time" aria-label={canEditBStart || (state.confirmedSequential && idx === 1) ? 'Giờ bắt đầu B' : `Giờ bắt đầu KTV ${idx + 1}`}
+-                        disabled={timeLocked && !canEditBStart} value={canEditBStart ? bStartDraft : startT}
+-                        onChange={e => canEditBStart ? setBStartDrafts(prev => ({ ...prev, [ktvId]: e.target.value })) : updateTimeForIdx(idx, 'start', e.target.value)}
++                        disabled={timeLocked && !canEditBStart} value={startT}
++                        onChange={e => updateTimeForIdx(idx, 'start', e.target.value)}
+                         className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none w-[82px]" />
+                       <span className="text-indigo-300 text-[10px]">&rarr;</span>
+-                      <span className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-indigo-50/50 w-[60px] text-center">{(canEditBStart && bStartDraft !== startT ? calcEndTime(bStartDraft, ktvDur) : endT) || '--:--'}</span>
+-                      {canEditBStart && <button type="button" disabled={!bStartDraft || bStartDraft === startT}
+-                        onClick={() => { onLiveHandoff?.(slotBItem!.id, slotAKtvId!, ktvId, bStartDraft); setBStartDrafts(prev => { const next = { ...prev }; delete next[ktvId]; return next; }); }}
+-                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 disabled:opacity-40">Lưu giờ B</button>}
++                      <span className="px-1.5 py-1 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-700 bg-indigo-50/50 w-[60px] text-center">{endT || '--:--'}</span>
++                      {canEditBStart && <button type="button" disabled={!startT}
++                        onClick={() => onDispatch?.(idx)}
++                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 disabled:opacity-40">Lưu & điều phối B</button>}
+                     </div>
+                     <button onClick={() => setShowTicketForIdx(idx)} className="p-2.5 bg-indigo-50 text-indigo-500 hover:bg-indigo-100 border border-indigo-100 rounded-xl transition-all active:scale-90 shrink-0" title="In phiếu"><Printer size={15} strokeWidth={2.5} /></button>
+                   </div>
+diff --git a/app/reception/dispatch/actions.ts b/app/reception/dispatch/actions.ts
+index 00c91408..1dc4ab84 100644
+--- a/app/reception/dispatch/actions.ts
++++ b/app/reception/dispatch/actions.ts
+@@ -22,8 +22,12 @@ import { after } from 'next/server';
+ 
+ async function applyDispatchEdit(supabase: any, bookingId: string, action: string, payload: any) {
+     const actor = await currentCounterActor();
+-    return supabase.rpc('dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
++    const result = await supabase.rpc('dispatch_apply_edit', { p_booking_id: bookingId, p_action: action,
+         p_payload: payload, p_actor: actor });
++    if (result.error?.message === 'OVERLAP_CONFIRM_REQUIRED') {
++        try { return { data: JSON.parse(result.error.details), error: null }; } catch { /* Keep the database error. */ }
++    }
++    return result;
+ }
+ 
+ async function resolveGuestIdsForUpdate(
+@@ -630,6 +634,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
+     guestCount?: number;
+     /** Mã KTV quầy đã bấm OK ở popup "chưa điểm danh" cho ĐÚNG lần gửi này (không lưu). */
+     confirmedUncheckedKtvIds?: string[];
++    confirmOverlap?: boolean;
+ }) {
+     try {
+         await requirePermission('dispatch_board');
+@@ -669,6 +674,20 @@ export async function processDispatch(bookingId: string, dispatchData: {
+         const extError = await resolveNewExternalKtvIds(supabase, dispatchData);
+         if (extError) return { success: false, error: extError };
+ 
++        const { data: currentItems, error: currentItemsError } = await supabase.from('BookingItems')
++            .select('id, segments, status, technicianCodes, options').eq('bookingId', bookingId);
++        if (currentItemsError) throw currentItemsError;
++        const liveSequentialItems = (currentItems || []).filter(i => isTwoSlotSequential(i.options)
++            && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(i.status));
++        const liveIds = new Set(liveSequentialItems.map(i => i.id));
++        if ((currentItems || []).some(i => isTwoSlotSequential(i.options) && !['NEW','WAITING','PREPARING','READY','IN_PROGRESS'].includes(i.status)
++            && dispatchData.itemUpdates?.some(update => update.id === i.id)))
++            throw new Error('Dịch vụ đã hoàn tất hoặc dừng; chỉ lưu thông tin, không điều phối lại');
++        const liveSegments = liveSequentialItems.flatMap(i => typeof i.segments === 'string' ? JSON.parse(i.segments) : (i.segments || []));
++        const aIds = new Set(liveSegments.filter(s => Number(s.sequenceSlot) === 1).map(s => s.ktvId));
++        const bIds = new Set(liveSegments.filter(s => Number(s.sequenceSlot) === 2 && s.voided !== true).map(s => s.ktvId));
++        const otherIds = new Set(dispatchData.staffAssignments.filter(a => !liveIds.has(a.bookingItemId)).map(a => a.ktvId));
++
+         const allKtvIds = new Set<string>();
+         if (dispatchData.technicianCode) allKtvIds.add(dispatchData.technicianCode);
+         if (dispatchData.staffAssignments) dispatchData.staffAssignments.forEach(a => { if (a.ktvId) allKtvIds.add(a.ktvId) });
+@@ -683,7 +702,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
+                 }
+             }
+         });
+-        const uniqueKtvIds = Array.from(allKtvIds).filter(Boolean);
++        const uniqueKtvIds = Array.from(allKtvIds).filter(id => id && (!aIds.has(id) || bIds.has(id) || otherIds.has(id)));
+ 
+         const { data: knownStaffs } = uniqueKtvIds.length > 0
+             ? await supabase.from('Staff').select('id, full_name, work_type').in('id', uniqueKtvIds)
+@@ -725,15 +744,11 @@ export async function processDispatch(bookingId: string, dispatchData: {
+         const ktvIdsWithoutTurnRow = uniqueKtvIds.filter(id => !(turnRowsToday || []).some(t => t.employee_id === id));
+ 
+         // 🔥 PRE-PROCESSOR: Chống ghi đè mất thời gian đã chạy (Stale Data Overwrite)
+-        const protectedSequentialIds = new Set<string>();
+         if (dispatchData.itemUpdates && dispatchData.itemUpdates.length > 0) {
+-            const { data: currentItems, error: currentItemsError } = await supabase.from('BookingItems').select('id, segments, status, technicianCodes, options').eq('bookingId', bookingId);
+-            if (currentItemsError) throw currentItemsError;
+             if (currentItems) {
+                 dispatchData.itemUpdates = dispatchData.itemUpdates.map(updateItem => {
+                     const dbItem = currentItems.find(i => i.id === updateItem.id);
+                     if (!dbItem) return updateItem;
+-                    if (isTwoSlotSequential(dbItem.options) && !['NEW', 'WAITING'].includes(dbItem.status)) protectedSequentialIds.add(dbItem.id);
+                     
+                     // 1. NGĂN LÙI TRẠNG THÁI CA ĐANG LÀM / ĐÃ XONG
+                     if (updateItem.status && dbItem.status) {
+@@ -783,11 +798,6 @@ export async function processDispatch(bookingId: string, dispatchData: {
+                 });
+             }
+         }
+-        if (protectedSequentialIds.size > 0) {
+-            dispatchData.itemUpdates = dispatchData.itemUpdates?.filter(item => !protectedSequentialIds.has(item.id));
+-            dispatchData.staffAssignments = dispatchData.staffAssignments.filter(a => !protectedSequentialIds.has(a.bookingItemId));
+-            if (!dispatchData.itemUpdates?.length) return { success: false, error: 'Dịch vụ nối tiếp đã điều phối; hãy dùng thao tác gán/sửa B riêng.' };
+-        }
+         for (const item of dispatchData.itemUpdates || []) {
+             if (!isTwoSlotSequential(item.options)) continue;
+             const slots = (item.segments || []).filter(s => s.voided !== true);
+@@ -866,11 +876,26 @@ export async function processDispatch(bookingId: string, dispatchData: {
+             throw error;
+         }
+ 
++        if (data?.code === 'OVERLAP_CONFIRM_REQUIRED') return data;
+         if (data && !data.success) {
+             console.error('❌ [Server] RPC failed internally:', data.error);
+             throw new Error(data.error || 'Lỗi khi lưu dữ liệu điều phối');
+         }
+ 
++        for (const item of liveSequentialItems) {
++            const update = dispatchData.itemUpdates?.find(update => update.id === item.id);
++            if (!update) continue;
++            const segments = typeof item.segments === 'string' ? JSON.parse(item.segments) : (item.segments || []);
++            const b = segments.find((s: any) => Number(s.sequenceSlot) === 2 && s.voided !== true);
++            if (!b) continue;
++            const name = update.options?.serviceNamesForKtvs?.[b.ktvId] || update.options?.displayName || 'dịch vụ';
++            const start = update.segments?.find(s => s.id === b.id)?.startTime || b.startTime;
++            await supabase.from('StaffNotifications').delete().eq('bookingId', bookingId).eq('employeeId', b.ktvId)
++                .eq('type', 'KTV_NEW_ORDER').eq('isRead', false);
++            await createNotification({ bookingId, employeeId: b.ktvId, type: 'KTV_NEW_ORDER',
++                message: `Phân công lượt B cập nhật: ${name} lúc ${start}. Vui lòng kiểm tra ứng dụng.` });
++        }
++
+         // 3.8 Xử lý cập nhật Guest sau khi RPC hoàn tất thành công
+         if (dispatchData.guestUpdates && dispatchData.guestUpdates.length > 0) {
+             for (const gu of dispatchData.guestUpdates) {
+@@ -889,7 +914,7 @@ export async function processDispatch(bookingId: string, dispatchData: {
+ 
+         // 4. Send background push and realtime notification to KTVs
+         if (dispatchData.staffAssignments && dispatchData.staffAssignments.length > 0) {
+-            const staffIds = dispatchData.staffAssignments.map(a => a.ktvId).filter(Boolean);
++            const staffIds = dispatchData.staffAssignments.filter(a => !liveIds.has(a.bookingItemId)).map(a => a.ktvId).filter(Boolean);
+             const uniqueStaffIds = Array.from(new Set(staffIds));
+             
+             for (const staffId of uniqueStaffIds) {
+@@ -936,8 +961,10 @@ export async function processDispatch(bookingId: string, dispatchData: {
+             }
+         }
+ 
+-        const { syncTurnsForDate } = await import('@/lib/turn-sync');
+-        await syncTurnsForDate(dispatchData.date);
++        if (dispatchData.staffAssignments.some(a => !liveIds.has(a.bookingItemId))) {
++            const { syncTurnsForDate } = await import('@/lib/turn-sync');
++            await syncTurnsForDate(dispatchData.date);
++        }
+ 
+         // 🔄 ĐỒNG BỘ TIMELINE SÂU XUỐNG DB (OPTION B)
+         // Removed destructive syncOrderTimelineToDb
+@@ -1142,6 +1169,7 @@ async function resolveNewExternalKtvIds(
+ 
+ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+     date?: string;
++    confirmOverlap?: boolean;
+     technicianCode?: string | null;
+     bedId: string | null;
+     roomName: string | null;
+@@ -1371,11 +1399,16 @@ export async function saveDraftDispatch(bookingId: string, dispatchData: {
+             ...dispatchData, itemUpdates: finalItemUpdates
+         });
+         if (saveError) throw saveError;
++        if (saved?.code === 'OVERLAP_CONFIRM_REQUIRED') return saved;
+         if (!saved?.success) throw new Error('Máy chủ chưa xác nhận lưu nháp');
+ 
+         // Fetch bookingDate to sync turns correctly
+         const { data: bData } = await supabase.from('Bookings').select('bookingDate').eq('id', bookingId).single();
+-        if (bData && bData.bookingDate) {
++        const hasNormalUpdate = dispatchData.itemUpdates?.some(update => {
++            const current = currentItems?.find(item => item.id === update.id);
++            return !current || !isTwoSlotSequential(current.options) || !['PREPARING','READY','IN_PROGRESS'].includes(current.status);
++        });
++        if (hasNormalUpdate && bData && bData.bookingDate) {
+             const dateStr = bData.bookingDate.split('T')[0];
+             const { syncTurnsForDate } = await import('@/lib/turn-sync');
+             await syncTurnsForDate(dateStr);
+diff --git a/app/reception/dispatch/page.tsx b/app/reception/dispatch/page.tsx
+index 4b2fd962..b370ca51 100644
+--- a/app/reception/dispatch/page.tsx
++++ b/app/reception/dispatch/page.tsx
+@@ -740,6 +740,8 @@ if (!hasPermission('dispatch_board')) {
+       durationMinutes: existingB?.duration ?? (segment.actualEndTime ? suggestedHandoffMinutes(item.duration, segment) : remainingHandoffMinutes(item.duration, segment.duration)), saving: false });
+   };
+ 
++  const confirmUpdatedBOverlap = (result: any) => confirm(`Giờ B mới trước mốc kết thúc ${result.referenceKind === 'actual' ? 'thực tế' : 'dự kiến'} của A (${new Date(result.referenceAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}). Vẫn lưu và cập nhật B?`);
++
+   const confirmLiveHandoff = async () => {
+     if (!liveHandoff || liveHandoff.saving) return;
+     setLiveHandoff(prev => prev ? { ...prev, saving: true } : null);
+@@ -1281,13 +1283,18 @@ if (!hasPermission('dispatch_board')) {
+       }
+ 
+       const { saveDraftDispatch } = await import('./actions');
+-      const res = await saveDraftDispatch(clonedOrder.id, {
+-        date: selectedDate,
+-        bedId: primarySeg?.bedId || null,
+-        roomName: primarySeg?.roomId || null,
+-        notes: finalNotesToSave,
+-        itemUpdates: itemUpdates
++      let confirmOverlap = false;
++      const savePayload = () => saveDraftDispatch(clonedOrder.id, {
++        date: selectedDate, confirmOverlap,
++        bedId: primarySeg?.bedId || null, roomName: primarySeg?.roomId || null,
++        notes: finalNotesToSave, itemUpdates
+       });
++      let res = await savePayload();
++      if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
++        if (!confirmUpdatedBOverlap(res)) return;
++        confirmOverlap = true;
++        res = await savePayload();
++      }
+ 
+       if (res.success) {
+         if (splitPlan.length > 1) {
+@@ -1644,6 +1651,7 @@ if (!hasPermission('dispatch_board')) {
+       // bằng ConfirmActionModal; OK thì gửi lại kèm danh sách đã xác nhận (áp luôn cho các
+       // payload sau của CÙNG lần bấm). Lần bấm gửi sau lại hỏi — chốt 14/09/2026.
+       const confirmedUncheckedKtvIds: string[] = [];
++      let confirmOverlap = false;
+       const askCheckinConfirm = (ktvs: CheckinGateKtv[]) => new Promise<boolean>(resolve => {
+           setConfirmModal({
+               isOpen: true,
+@@ -1664,7 +1672,7 @@ if (!hasPermission('dispatch_board')) {
+               date: selectedDate,
+               notes: isPartial ? undefined : finalNotesToSave,
+               itemUpdates: payload.itemUpdates,
+-              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds],
++              confirmedUncheckedKtvIds: [...confirmedUncheckedKtvIds], confirmOverlap,
+           });
+           let res: any = await sendPayload();
+           if (!res.success && res.code === 'NEED_CHECKIN_CONFIRM' && Array.isArray(res.ktvs) && res.ktvs.length > 0) {
+@@ -1675,6 +1683,10 @@ if (!hasPermission('dispatch_board')) {
+               });
+               res = await sendPayload();
+           }
++          if (res.code === 'OVERLAP_CONFIRM_REQUIRED') {
++              if (!confirmUpdatedBOverlap(res)) return;
++              confirmOverlap = true; res = await sendPayload();
++          }
+           if (!res.success) {
+               alert(`Lỗi khi điều phối đơn ${payload.bookingId}: ` + res.error);
+               return; 
+@@ -2885,7 +2897,7 @@ if (!hasPermission('dispatch_board')) {
+                         // Removed native confirm for hasKtvAssigned because SplitPreviewModal will handle it
+                         
+                         if (isDispatched) {
+-                            if (window.confirm('LƯU Ý: Nút này sẽ lưu thông tin các thay đổi về Phòng, Ghi chú, và Tách/Gộp dịch vụ.\nNếu bạn vừa THAY ĐỔI KTV, vui lòng bấm nút [CẬP NHẬT KTV & GỬI LẠI] màu xanh đậm bên cạnh để KTV mới nhận được đơn!\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
++                            if (window.confirm('LƯU Ý: Nút này sẽ lưu thông tin các thay đổi về Phòng, Ghi chú, và Tách/Gộp dịch vụ.\nTên riêng và giờ B mới sẽ được lưu. Bấm [CẬP NHẬT KTV & GỬI LẠI] để gửi thông báo cập nhật cho B.\n\nBạn có muốn tiếp tục lưu thông tin không?')) {
+                                 handleSaveDraft();
+                             }
+                             return;
+diff --git a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+index 50e1ae5c..bf46732f 100644
+--- a/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
++++ b/app/reception/dispatch/sequential-demo/SequentialDemo.tsx
+@@ -7,6 +7,7 @@ import { isTwoSlotSequential, sequentialSlotsComplete } from '@/lib/dispatch-sta
+ import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
+ import type { PendingOrder, ServiceBlock, StaffData, TurnQueueData } from '../types';
+ import { AccountDemo } from './AccountDemo';
++import { liveDispatchConflict } from '@/lib/dispatch-live-guard';
+ import { dispatchRevision, recordDispatchEdit } from '@/lib/dispatch-edit-history';
+ import { DispatchEditHistory } from '../_components/DispatchEditHistory';
+ import { segmentOf, segmentsOf, stampDemoAccount, type DemoSegment } from './demo-account';
+@@ -124,6 +125,13 @@ export default function SequentialDemo() {
+     }, 'DISPATCH', dispatchRevision(service.options));
+   };
+ 
++  const redispatchB = () => {
++    if (!service || !b || !['PREPARING','READY','IN_PROGRESS'].includes(service.status || '')) {
++      alert('Chọn và gán B trước khi cập nhật phân công.'); return;
++    }
++    change(() => {}, 'DISPATCH', dispatchRevision(service.options));
++  };
++
+   const openHandoff = (_itemId: string, _fromKtvId: string, toKtvId: string, plannedStartTime?: string) => {
+     if (!service || !isTwoSlotSequential(service.options) || !['PREPARING', 'IN_PROGRESS'].includes(service.status || '')) {
+       alert('Gửi phân công A ở chế độ nối tiếp trước khi gán B.'); return;
+@@ -215,7 +223,28 @@ export default function SequentialDemo() {
+         billCode={order.billCode} onUpdateServices={updated => change(s => {
+           const before = s.staffList;
+           const status = s.status;
+-          Object.assign(s, updated[0]);
++          const incoming = updated[0];
++          const conflict = liveDispatchConflict(segmentsOf(s), segmentsOf(incoming), s.options, incoming.options, s.status);
++          if (conflict) return conflict;
++          for (const row of incoming.staffList) {
++            const previous = before.find(old => old.ktvId === row.ktvId && segmentOf(old).id === segmentOf(row).id);
++            if (!previous) continue;
++            const old = segmentOf(previous), next = segmentOf(row);
++            const planChanged = next.startTime !== old.startTime || next.duration !== old.duration || next.endTime !== old.endTime;
++            if (!planChanged) {
++              next.plannedStartAt = old.plannedStartAt; next.plannedEndAt = old.plannedEndAt;
++            } else if (Number(next.sequenceSlot) === 2 && !['NEW','WAITING'].includes(status || '')) {
++              const day = old.plannedStartAt ? localInput(new Date(old.plannedStartAt)).slice(0,10) : localInput(new Date()).slice(0,10);
++              const start = Date.parse(`${day}T${next.startTime}:00+07:00`);
++              if (!Number.isFinite(start) || next.duration < 1) return 'Giờ/phút B không hợp lệ';
++              const currentA = before.find(person => Number(segmentOf(person).sequenceSlot) === 1);
++              const reference = currentA && plannedHandoffStartAt(day,segmentOf(currentA));
++              if (reference && start < Date.parse(reference) && !confirm('Giờ B mới trước mốc kết thúc A. Vẫn lưu và cập nhật B?'))
++                return 'Giờ B chưa được lưu.';
++              next.plannedStartAt = new Date(start).toISOString(); next.plannedEndAt = new Date(start + next.duration * 60_000).toISOString();
++            } else if (status === 'PREPARING' && !old.actualStartTime) next.plannedEndAt = plannedEndAt(next);
++          }
++          Object.assign(s, incoming);
+           s.status = status;
+           s.staffList.forEach(row => {
+             segmentOf(row).ktvId = row.ktvId;
+@@ -223,12 +252,10 @@ export default function SequentialDemo() {
+             if (previous) {
+               segmentOf(row).actualStartTime = segmentOf(previous).actualStartTime;
+               segmentOf(row).actualEndTime = segmentOf(previous).actualEndTime;
+-              (segmentOf(row) as DemoSegment).plannedEndAt = status === 'PREPARING' && !segmentOf(previous).actualStartTime
+-                ? plannedEndAt(segmentOf(row)) : segmentOf(previous).plannedEndAt;
+             }
+           });
+         }, 'DRAFT', dispatchRevision(updated[0].options))}
+-        onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={dispatchA}
++        onPrintGroup={() => alert('Demo local: không in phiếu.')} onDispatchGroup={service.status === 'NEW' ? dispatchA : redispatchB}
+         onLiveHandoff={openHandoff} onEnableSequential={() => change(s => {
+           s.options = { ...s.options, sequentialSlots: 2 };
+           segmentOf(s.staffList[0]).sequenceSlot = 1;
+@@ -240,6 +267,10 @@ export default function SequentialDemo() {
+       <div className="flex flex-wrap gap-2">
+         <button disabled={!a || service.status !== 'NEW'} className="rounded bg-indigo-600 px-3 py-2 font-bold text-white disabled:opacity-40"
+           onClick={dispatchA}>{isSequential && b ? 'Gửi phân công A + B' : 'Gửi phân công A'}</button>
++        {b && ['PREPARING','READY','IN_PROGRESS'].includes(service.status || '') && <>
++          <button className="rounded border px-3 py-2" onClick={() => alert('Đã lưu thông tin mới nhất. Demo tự lưu bản nháp vào localStorage.')}>Lưu thông tin</button>
++          <button className="rounded bg-indigo-600 px-3 py-2 text-white" onClick={redispatchB}>Cập nhật & điều phối B</button>
++        </>}
+         <button className="rounded border px-3 py-2" onClick={() => { setHandoff(null); saveOrder(sampleOrder()); }}>Tạo dịch vụ mới</button>
+       </div>
+       <p className="mt-2 text-sm">Trạng thái: <strong>{service.status}</strong> · A: <strong>{a?.ktvName || 'chưa chọn'}</strong>{isSequential && <> · B: <strong>{b?.ktvName || 'chọn sau'}</strong></>}</p>
+diff --git a/lib/dispatch-live-guard.ts b/lib/dispatch-live-guard.ts
+index 2349f703..a6da4f65 100644
+--- a/lib/dispatch-live-guard.ts
++++ b/lib/dispatch-live-guard.ts
+@@ -6,8 +6,11 @@ export function liveDispatchConflict(dbSegments: any[], incomingSegments: any[],
+     if (isTwoSlotSequential(dbOptions)) {
+         if (!isTwoSlotSequential(incomingOptions) || dbSegments.length !== incomingSegments.length || dbSegments.some(current => {
+             const incoming = incomingSegments.find(s => s.id === current.id);
+-            return !incoming || ['ktvId', 'sequenceSlot', 'roomId', 'bedId', 'startTime', 'duration', 'endTime',
+-                'actualStartTime', 'actualEndTime', 'voided'].some(k => String(incoming[k] ?? '') !== String(current[k] ?? ''));
++            const editableB = Number(current.sequenceSlot) === 2 && current.voided !== true && !current.actualStartTime
++                && ['PREPARING', 'READY', 'IN_PROGRESS'].includes(dbStatus || '');
++            const keys = ['ktvId', 'sequenceSlot', 'roomId', 'bedId', 'actualStartTime', 'actualEndTime', 'voided',
++                ...(editableB ? [] : ['startTime', 'duration', 'endTime'])];
++            return !incoming || keys.some(k => String(incoming[k] ?? '') !== String(current[k] ?? ''));
+         })) return 'Ca nối tiếp đã thay đổi; tải lại đơn và dùng thao tác gán B riêng.';
+         return null;
+     }
+diff --git a/scripts/test_dispatch_live_guard.ts b/scripts/test_dispatch_live_guard.ts
+index 38652bcd..3509275b 100644
+--- a/scripts/test_dispatch_live_guard.ts
++++ b/scripts/test_dispatch_live_guard.ts
+@@ -49,6 +49,10 @@ for (const segments of [[slotA], [slotA, slotB]]) {
+     assert.equal(cards[0].dispatchStatus, 'IN_PROGRESS');
+ }
+ assert.equal(suggestedHandoffMinutes(60, a, Date.parse('2026-09-25T04:01:00Z')), 0);
++assert.equal(liveDispatchConflict([slotA,slotB],[slotA,{...slotB,startTime:'10:50',endTime:'11:10'}],twoSlots,twoSlots,'IN_PROGRESS'),null);
++assert.ok(liveDispatchConflict([slotA,{...slotB,actualStartTime:'2026-09-26T03:40:00Z'}],
++    [slotA,{...slotB,actualStartTime:'2026-09-26T03:40:00Z',startTime:'10:50'}],twoSlots,twoSlots,'IN_PROGRESS'));
++assert.ok(liveDispatchConflict([slotA,slotB],[{...slotA,startTime:'09:50'},slotB],twoSlots,twoSlots,'IN_PROGRESS'));
+ const savedPlan = { startTime: '10:30', endTime: '11:00', duration: 30,
+     plannedStartAt: '2026-09-26T03:30:00Z', plannedEndAt: '2026-09-26T04:00:00Z' };
+ assert.deepEqual(savedPlanFields(savedPlan, { ...savedPlan, plannedStartAt: 'old', plannedEndAt: undefined }),
+diff --git a/scripts/test_sequential_flows.cjs b/scripts/test_sequential_flows.cjs
+index 210ba7eb..03d86713 100644
+--- a/scripts/test_sequential_flows.cjs
++++ b/scripts/test_sequential_flows.cjs
+@@ -186,7 +186,7 @@ try {
+   name('DEMO-C', 'Tên C riêng'); send();
+   const aBefore = structuredClone(segmentOf(row('DEMO-A')));
+   changeInput(elements(card.tree, e => e.props['aria-label'] === 'Giờ bắt đầu B')[0], '10:50');
+-  click(card.tree, 'Lưu giờ B'); click(elements(app.tree, e => e.props.role === 'dialog')[0], 'Lưu B');
++  click(card.tree, 'Lưu & điều phối B');
+   checkPlan('DEMO-C', '10:50', 30); assert.deepEqual(segmentOf(row('DEMO-A')), aBefore);
+   const oldAccount = elements(app.tree, e => e.type === AccountDemo && e.props.employeeId === 'DEMO-C')[0];
+   assignLiveB('DEMO-B', '2026-09-26T10:50', 30);
+@@ -275,4 +275,23 @@ try {
+   assert.equal(group.props.state.ktvStartTimes[0],''); assert.equal(group.props.state.ktvEndTimes[0],'');
+   console.log('PASS HISTORY UI 5/5: Chặng đã lưu thiếu giờ không tự lấy giờ hiện tại / tính giờ kết thúc');
+ 
++  reset(); chooseA(); minutes(0,30); send(); sequential(); assignLiveB();
++  const preservedA=structuredClone(segmentOf(row('DEMO-A')));
++  name('DEMO-A','Tên A cố định'); name('DEMO-B','Tên B lần 1');
++  changeInput(elements(card.tree,e=>e.props['aria-label']==='Giờ bắt đầu B')[0],'10:45');
++  click(app.tree,'Lưu thông tin'); click(card.tree,'Lưu & điều phối B');
++  checkPlan('DEMO-B','10:45',30); assertName('DEMO-B','Tên B lần 1');
++  assert.equal(segmentOf(row('DEMO-B')).plannedStartAt,'2026-09-26T03:45:00.000Z');
++  const accountBHtml=renderToStaticMarkup(React.createElement(AccountDemo,{service:service(),employeeId:'DEMO-B',employeeName:'B',now}));
++  assert.ok(accountBHtml.includes('Tên B lần 1') && accountBHtml.includes('10:45'));
++  assert.deepEqual(segmentOf(row('DEMO-A')),preservedA); assertName('DEMO-A','Tên A cố định');
++  app=hooks(SequentialDemo); quick=card=null; flush();
++  assertName('DEMO-B','Tên B lần 1'); checkPlan('DEMO-B','10:45',30);
++  name('DEMO-B','Tên B lần 2'); changeInput(elements(card.tree,e=>e.props['aria-label']==='Giờ bắt đầu B')[0],'11:10');
++  click(app.tree,'Cập nhật & điều phối B'); checkPlan('DEMO-B','11:10',30);
++  assertName('DEMO-B','Tên B lần 2'); assertName('DEMO-A','Tên A cố định');
++  assert.deepEqual(segmentOf(row('DEMO-A')),preservedA);
++  assert.equal(service().options.dispatchHistory.at(-1).action,'DISPATCH');
++  console.log('PASS UPDATE B UI: A gửi trước → gán B sau → sửa tên/giờ → lưu & điều phối → tài khoản B/reload → sửa lần 2; A giữ nguyên');
++
+ } finally { global.Date = originalDate; console.log = originalLog; }
+diff --git a/scripts/test_sequential_inline_ui.cjs b/scripts/test_sequential_inline_ui.cjs
+index 330afbdc..b9d7063c 100644
+--- a/scripts/test_sequential_inline_ui.cjs
++++ b/scripts/test_sequential_inline_ui.cjs
+@@ -19,9 +19,10 @@ loaded.paths = Module._nodeModulePaths(dirname(filename));
+ loaded._compile(compiled, filename);
+ const { ServiceGroupCard } = loaded.exports;
+ const jsxRuntime = require('react/jsx-runtime');
+-let actions = [], lastUpdate, lastHandoff, lastBStartDraft;
++let lastDispatch;
++let actions = [], lastUpdate, lastHandoff;
+ 
+-function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, bStartDraft, names = [] } = {}) {
++function render({ minutes = 60, sequential = false, b = false, status = 'NEW', finishedAfterA = false, startedB = false, names = [] } = {}) {
+   actions = []; lastUpdate = undefined; lastHandoff = undefined;
+   const ids = b ? ['A', 'B'] : ['A'];
+   const segments = ids.map((ktvId, idx) => ({ id: `segment-${ktvId}`, roomId: 'R', bedId: 'X',
+@@ -35,16 +36,6 @@ function render({ minutes = 60, sequential = false, b = false, status = 'NEW', f
+     ktvDurations: segments.map(s => s.duration), ktvStartTimes: segments.map(s => s.startTime), ktvEndTimes: segments.map(s => s.endTime),
+     ktvNotes: [], ktvServiceNames: names, displayName: 'Test', duration: 60, workMode: sequential ? 'sequential' : 'parallel', confirmedSequential: sequential };
+   const originalJsx = jsxRuntime.jsx, originalJsxs = jsxRuntime.jsxs;
+-  const originalUseState = React.useState;
+-  let capturedBStart = false;
+-  React.useState = initial => {
+-    if (bStartDraft !== undefined && !capturedBStart && initial && typeof initial === 'object' && !Array.isArray(initial) && Object.keys(initial).length === 0) {
+-      capturedBStart = true;
+-      const value = { B: bStartDraft };
+-      return [value, update => { lastBStartDraft = typeof update === 'function' ? update(value) : update; }];
+-    }
+-    return originalUseState(initial);
+-  };
+   const capture = original => (...args) => {
+     const element = original(...args);
+     if (typeof element.type === 'string' && (element.props.onClick || element.props.onChange || element.props.onDrop)) actions.push(element);
+@@ -56,8 +47,8 @@ function render({ minutes = 60, sequential = false, b = false, status = 'NEW', f
+     serviceName: 'Test', count: 1, duration: 60, state, groupItems: [item], allServices: [item],
+     availableTurns: [], staffs: [], allSelectedKtvIds: ids, rooms: [{ id: 'R', name: 'Phòng R' }], beds: [{ id: 'X', roomId: 'R' }],
+     busyBedIds: [], onUpdate: patch => { lastUpdate = patch; }, onPrint() {}, onEnableSequential() {},
+-    onLiveHandoff: (...args) => { lastHandoff = args; }, getLatestEndTime: () => '',
+-  })); } finally { jsxRuntime.jsx = originalJsx; jsxRuntime.jsxs = originalJsxs; React.useState = originalUseState; }
++    onLiveHandoff: (...args) => { lastHandoff = args; }, onDispatch: idx => { lastDispatch = idx; }, getLatestEndTime: () => '',
++  })); } finally { jsxRuntime.jsx = originalJsx; jsxRuntime.jsxs = originalJsxs; }
+   return html;
+ }
+ 
+@@ -101,23 +92,20 @@ render({ minutes: 30, sequential: true, b: true });
+ actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B').props.onChange({ target: { value: '10:45' } });
+ assert.deepEqual(lastUpdate.ktvStartTimes, ['10:00', '10:45']);
+ assert.deepEqual(lastUpdate.ktvEndTimes, ['10:30', '11:15']);
+-render({ minutes: 30, sequential: true, b: true, status: 'PREPARING', bStartDraft: '10:30' });
++render({ minutes: 30, sequential: true, b: true, status: 'PREPARING' });
+ const liveBTime = actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B');
+ assert.equal(liveBTime.props.disabled, false);
+ assert.equal(actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu KTV 1').props.disabled, true);
+ liveBTime.props.onChange({ target: { value: '10:45' } });
+-assert.deepEqual(lastBStartDraft, { B: '10:45' });
+-assert.equal(lastUpdate, undefined);
+-render({ minutes: 30, sequential: true, b: true, status: 'PREPARING', bStartDraft: lastBStartDraft.B });
+-const saveBTime = actions.find(e => e.props.children === 'Lưu giờ B');
+-assert.equal(saveBTime.props.disabled, false);
+-saveBTime.props.onClick();
+-assert.deepEqual(lastHandoff, ['item', 'A', 'B', '10:45']);
+-assert.equal(lastUpdate, undefined);
++assert.deepEqual(lastUpdate.ktvStartTimes, ['10:00','10:45']);
++assert.deepEqual(lastUpdate.ktvEndTimes, ['10:30','11:15']);
++const saveBTime = actions.find(e => e.props.children === 'Lưu & điều phối B');
++assert.equal(saveBTime.props.disabled, false); saveBTime.props.onClick();
++assert.equal(lastDispatch,1);
+ render({ minutes: 30, sequential: true, b: true, status: 'IN_PROGRESS', startedB: true });
+ assert.equal(actions.find(e => e.props['aria-label'] === 'Giờ bắt đầu B').props.disabled, true);
+-assert.ok(!actions.some(e => e.props.children === 'Lưu giờ B'));
+-console.log('PASS giờ B: Nhập tay trong nháp/đã gửi; lưu qua xác nhận riêng, khóa khi B đã bắt đầu');
++assert.ok(!actions.some(e => e.props.children === 'Lưu & điều phối B'));
++console.log('PASS giờ B: Tên/giờ chung bản chỉnh, lưu và điều phối lại B; khóa giờ khi B đã bắt đầu');
+ 
+ const kanbanFilename = join(__dirname, '../app/reception/dispatch/_components/KanbanBoard.tsx');
+ const kanbanModule = new Module(kanbanFilename, module);
+diff --git a/scripts/test_sequential_sql.cjs b/scripts/test_sequential_sql.cjs
+index 5f334616..6bf383dc 100644
+--- a/scripts/test_sequential_sql.cjs
++++ b/scripts/test_sequential_sql.cjs
+@@ -466,6 +466,77 @@ async function main() {
+ 
+   historyLog(5,'Background options cũ không xóa tên mới, lịch sử hoặc nhật ký quầy');
+ 
++  // The operational case: A sent first, B added later, then edit B through Save/Dispatch.
++  const liveId=fullA;
++  let baseline=updateOf(await item(liveId));
++  baseline.options.serviceNamesForKtvs={ [liveId.a]:'Tên A giữ nguyên' };
++  await apply(liveId,'DRAFT',{date:'2026-09-26',itemUpdates:[baseline]});
++  const aPlanBefore=(await item(liveId)).segments.find(s=>s.sequenceSlot===1);
++  const aAssignmentBefore=await assignment(liveId,liveId.a);
++  const aTurnBefore=(await db.query('SELECT * FROM "TurnQueue" WHERE employee_id=$1',[liveId.a])).rows[0];
++  const stableA=async()=>{
++    assert.deepEqual((await item(liveId)).segments.find(s=>s.sequenceSlot===1),aPlanBefore);
++    assert.deepEqual(await assignment(liveId,liveId.a),aAssignmentBefore);
++    assert.deepEqual((await db.query('SELECT * FROM "TurnQueue" WHERE employee_id=$1',[liveId.a])).rows[0],aTurnBefore);
++    assert.equal((await ledger(liveId,liveId.a)).length,1);
++    assert.equal((await ledger(liveId,liveId.b)).length,1);
++    assert.equal((await item(liveId)).options.serviceNamesForKtvs[liveId.a],'Tên A giữ nguyên');
++  };
++  let bUpdate=updateOf(await item(liveId));
++  bUpdate.options.serviceNamesForKtvs[liveId.b]='Tên B lần 1';
++  let bSegment=bUpdate.segments.find(s=>s.sequenceSlot===2 && !s.voided);
++  const originalBId=bSegment.id;
++  bSegment.startTime='10:45'; bSegment.endTime='11:15';
++  await apply(liveId,'DRAFT',{date:'2026-09-26',itemUpdates:[bUpdate]});
++  let newest=await item(liveId);
++  assert.equal(newest.options.serviceNamesForKtvs[liveId.b],'Tên B lần 1');
++  assert.equal(newest.segments.find(s=>s.sequenceSlot===2).startTime,'10:45');
++  assert.equal((await assignment(liveId,liveId.b)).planned_start_time.toISOString(),'2026-09-26T03:45:00.000Z');
++  await stableA();
++  console.log('PASS UPDATE B 1/5: A gửi trước → B gán sau → lưu tên/giờ B mới, giữ A/ledger/tua');
++
++  const savedBeforeResend=updateOf(newest);
++  await apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[savedBeforeResend],staffAssignments:[]});
++  bUpdate=updateOf(await item(liveId));
++  bUpdate.options.serviceNamesForKtvs[liveId.b]='Tên B lần 2';
++  bSegment=bUpdate.segments.find(s=>s.sequenceSlot===2); bSegment.startTime='11:10'; bSegment.endTime='11:40';
++  await apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[bUpdate],staffAssignments:[]});
++  newest=await item(liveId);
++  assert.equal(newest.options.serviceNamesForKtvs[liveId.b],'Tên B lần 2');
++  assert.equal(newest.segments.find(s=>s.sequenceSlot===2).startTime,'11:10');
++  assert.equal((await assignment(liveId,liveId.b)).segment_id,originalBId);
++  assert.equal((await assignment(liveId,liveId.b)).planned_start_time.toISOString(),'2026-09-26T04:10:00.000Z');
++  assert.ok(newest.options.dispatchHistory.some(entry=>entry.action==='DISPATCH' && entry.changes.some(c=>c.field==='serviceNameForKtv' && c.before==='Tên B lần 1' && c.after==='Tên B lần 2')));
++  await stableA();
++  console.log('PASS UPDATE B 2/5: Điều phối lại B lấy lần sửa 2 từ lần 1, giữ segment và phân công A');
++
++  await assert.rejects(apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[savedBeforeResend]}),/bản lưu mới/);
++  assert.deepEqual(await item(liveId),newest); await stableA();
++  console.log('PASS UPDATE B 3/5: Cửa sổ/tab cũ không ghi đè tên/giờ và lịch sử mới');
++
++  const overlapUpdate=updateOf(newest); overlapUpdate.options.serviceNamesForKtvs[liveId.b]='Tên B overlap';
++  const overlapB=overlapUpdate.segments.find(s=>s.sequenceSlot===2); overlapB.startTime='10:15'; overlapB.endTime='10:45';
++  await assert.rejects(apply(liveId,'DRAFT',{date:'2026-09-26',itemUpdates:[overlapUpdate]}),error=>{
++    assert.equal(error.message,'OVERLAP_CONFIRM_REQUIRED'); assert.equal(JSON.parse(error.detail).referenceKind,'planned'); return true;
++  });
++  assert.deepEqual(await item(liveId),newest);
++  await apply(liveId,'DISPATCH',{date:'2026-09-26',confirmOverlap:true,itemUpdates:[overlapUpdate]});
++  assert.equal((await item(liveId)).options.serviceNamesForKtvs[liveId.b],'Tên B overlap'); await stableA();
++  console.log('PASS UPDATE B 4/5: Overlap chưa xác nhận không lưu cả tên/giờ; xác nhận mới cập nhật');
++
++  await actual(liveId,liveId.b,'actualStartTime','2026-09-26T03:15:00Z');
++  const started=await item(liveId), attempted=updateOf(started);
++  attempted.segments.find(s=>s.sequenceSlot===2).startTime='10:20';
++  attempted.segments.find(s=>s.sequenceSlot===2).endTime='10:50';
++  await assert.rejects(apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[attempted]}),/B đã bắt đầu/);
++  assert.deepEqual(await item(liveId),started);
++  const renameOnly=updateOf(started); renameOnly.options.serviceNamesForKtvs[liveId.b]='Tên B khi đang làm';
++  await apply(liveId,'DISPATCH',{date:'2026-09-26',itemUpdates:[renameOnly]});
++  assert.equal((await item(liveId)).options.serviceNamesForKtvs[liveId.b],'Tên B khi đang làm');
++  assert.equal((await item(liveId)).segments.find(s=>s.sequenceSlot===2).actualStartTime,'2026-09-26T03:15:00Z');
++  await stableA();
++  console.log('PASS UPDATE B 5/5: B đang làm khóa giờ dự kiến; tên vẫn cập nhật, không reset giờ thực/A');
++
+   await db.close();
+ }
+ 
+diff --git a/supabase/migrations/20260926120000_dispatch_edit_history.sql b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+index d318561d..dcb0e417 100644
+--- a/supabase/migrations/20260926120000_dispatch_edit_history.sql
++++ b/supabase/migrations/20260926120000_dispatch_edit_history.sql
+@@ -85,6 +85,80 @@ DROP TRIGGER IF EXISTS zz_dispatch_edit_history ON "BookingItems";
+ CREATE TRIGGER zz_dispatch_edit_history BEFORE UPDATE OF segments, options ON "BookingItems"
+ FOR EACH ROW EXECUTE FUNCTION keep_dispatch_edit_history();
+ 
++-- Edit an existing sequential service without resending/recreating A's assignment.
++CREATE OR REPLACE FUNCTION dispatch_save_sequential_update(p_booking_id text, p_edit jsonb, p_confirm_overlap boolean)
++RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
++DECLARE
++  item_row "BookingItems"%ROWTYPE;
++  opts jsonb;
++  old_segments jsonb;
++  incoming_segments jsonb := jsonb_unwrap_string(p_edit->'segments');
++  old_segment jsonb;
++  incoming jsonb;
++  b jsonb;
++  next_b jsonb;
++  field_name text;
++  plan_start timestamptz;
++  plan_day date;
++  result jsonb;
++BEGIN
++  SELECT * INTO item_row FROM "BookingItems" WHERE id = p_edit->>'id' AND "bookingId" = p_booking_id FOR UPDATE;
++  opts := COALESCE(jsonb_unwrap_string(item_row.options), '{}');
++  old_segments := COALESCE(jsonb_unwrap_string(item_row.segments), '[]');
++  IF NOT FOUND OR opts->>'sequentialSlots' IS DISTINCT FROM '2'
++     OR item_row.status NOT IN ('PREPARING','READY','IN_PROGRESS')
++     OR jsonb_unwrap_string(p_edit->'options')->>'sequentialSlots' IS DISTINCT FROM '2'
++     OR COALESCE((opts->>'dispatchRevision')::bigint,0) <> COALESCE((jsonb_unwrap_string(p_edit->'options')->>'dispatchRevision')::bigint,0)
++     OR jsonb_typeof(incoming_segments) <> 'array' OR jsonb_array_length(old_segments) <> jsonb_array_length(incoming_segments) THEN
++    RAISE EXCEPTION 'Dịch vụ đã thay đổi; tải lại đơn trước khi cập nhật B';
++  END IF;
++  FOR old_segment IN SELECT value FROM jsonb_array_elements(old_segments) LOOP
++    SELECT value INTO incoming FROM jsonb_array_elements(incoming_segments) WHERE value->>'id' = old_segment->>'id';
++    IF incoming IS NULL THEN RAISE EXCEPTION 'Không được xóa chặng đã điều phối'; END IF;
++    FOR field_name IN SELECT unnest(ARRAY['ktvId','sequenceSlot','roomId','bedId','actualStartTime','actualEndTime','voided']) LOOP
++      IF COALESCE(incoming->>field_name,'') IS DISTINCT FROM COALESCE(old_segment->>field_name,'') THEN
++        RAISE EXCEPTION 'Chặng đã thay đổi; dùng thao tác đổi B riêng';
++      END IF;
++    END LOOP;
++    IF old_segment->>'sequenceSlot' = '2' AND COALESCE(old_segment->>'voided','false') <> 'true' THEN
++      b := old_segment; next_b := incoming;
++    ELSE
++      FOR field_name IN SELECT unnest(ARRAY['startTime','endTime','duration','plannedStartAt','plannedEndAt']) LOOP
++        IF COALESCE(incoming->>field_name,'') IS DISTINCT FROM COALESCE(old_segment->>field_name,'') THEN
++          RAISE EXCEPTION 'Không đổi kế hoạch A hoặc chặng cũ khi cập nhật B';
++        END IF;
++      END LOOP;
++    END IF;
++  END LOOP;
++  IF b IS NOT NULL AND (b->'startTime' IS DISTINCT FROM next_b->'startTime'
++      OR b->'endTime' IS DISTINCT FROM next_b->'endTime' OR b->'duration' IS DISTINCT FROM next_b->'duration') THEN
++    IF COALESCE(b->>'actualStartTime','') <> '' THEN RAISE EXCEPTION 'B đã bắt đầu; không sửa giờ dự kiến'; END IF;
++    IF COALESCE(next_b->>'startTime','') = '' OR COALESCE((next_b->>'duration')::integer,0) NOT BETWEEN 1 AND 600 THEN
++      RAISE EXCEPTION 'Giờ/phút B không hợp lệ';
++    END IF;
++    SELECT COALESCE((NULLIF(b->>'plannedStartAt','')::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh')::date,
++      (SELECT business_date FROM "KtvAssignments" WHERE booking_item_id = item_row.id AND segment_id = b->>'id' LIMIT 1)) INTO plan_day;
++    IF plan_day IS NULL THEN RAISE EXCEPTION 'Thiếu ngày phân công B; tải lại đơn'; END IF;
++    plan_start := (plan_day + (next_b->>'startTime')::time) AT TIME ZONE 'Asia/Ho_Chi_Minh';
++    IF next_b->>'endTime' IS DISTINCT FROM to_char((plan_start + make_interval(mins => (next_b->>'duration')::integer)) AT TIME ZONE 'Asia/Ho_Chi_Minh','HH24:MI') THEN
++      RAISE EXCEPTION 'Giờ kết thúc B không khớp thời lượng';
++    END IF;
++    result := dispatch_assign_sequential_slot_b(p_booking_id,item_row.id,b->>'ktvId',plan_start,
++      (next_b->>'duration')::integer,p_confirm_overlap);
++    IF result->>'code' = 'OVERLAP_CONFIRM_REQUIRED' THEN
++      RAISE EXCEPTION USING MESSAGE = 'OVERLAP_CONFIRM_REQUIRED', DETAIL = result::text;
++    END IF;
++    IF COALESCE((result->>'success')::boolean,false) = false THEN RAISE EXCEPTION 'Chưa cập nhật được kế hoạch B'; END IF;
++  END IF;
++  -- Read options again: the planned-time RPC may already have appended an audit entry.
++  UPDATE "BookingItems" SET options = COALESCE(jsonb_unwrap_string(options),'{}') || COALESCE(jsonb_unwrap_string(p_edit->'options'),'{}')
++  WHERE id = item_row.id;
++  RETURN '{"success":true}';
++END;
++$$;
++REVOKE ALL ON FUNCTION dispatch_save_sequential_update(text,jsonb,boolean) FROM PUBLIC, anon, authenticated;
++GRANT EXECUTE ON FUNCTION dispatch_save_sequential_update(text,jsonb,boolean) TO service_role;
++
+ CREATE OR REPLACE FUNCTION dispatch_apply_edit(p_booking_id text, p_action text, p_payload jsonb, p_actor jsonb)
+ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+ DECLARE
+@@ -98,6 +172,8 @@ DECLARE
+   segment_list jsonb;
+   plan_day date;
+   plan_start timestamptz;
++  normal_updates jsonb := '[]';
++  live_ids text[] := ARRAY[]::text[];
+ BEGIN
+   IF p_action NOT IN ('DRAFT','DISPATCH','ENABLE_SEQUENTIAL','ASSIGN_B','FINISH_AFTER_A','EDIT_ACTUAL_TIME') THEN
+     RAISE EXCEPTION 'Thao tác lưu không hợp lệ';
+@@ -118,10 +194,25 @@ BEGIN
+   END LOOP;
+   PERFORM set_config('app.dispatch_action', p_action, true);
+   PERFORM set_config('app.dispatch_actor', COALESCE(p_actor, 'null')::text, true);
+-  IF p_action = 'DISPATCH' THEN
++  IF p_action IN ('DRAFT','DISPATCH') THEN
++    FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
++      SELECT * INTO item_row FROM "BookingItems" WHERE id = edit->>'id';
++      IF jsonb_unwrap_string(item_row.options)->>'sequentialSlots' = '2'
++         AND item_row.status IN ('PREPARING','READY','IN_PROGRESS') THEN
++        PERFORM dispatch_save_sequential_update(p_booking_id,edit,COALESCE((p_payload->>'confirmOverlap')::boolean,false));
++        live_ids := array_append(live_ids,item_row.id);
++      ELSE
++        normal_updates := normal_updates || jsonb_build_array(edit);
++      END IF;
++    END LOOP;
++  END IF;
++  IF p_action = 'DISPATCH' AND cardinality(live_ids) > 0 AND jsonb_array_length(normal_updates) = 0 THEN
++    result := '{"success":true}';
++  ELSIF p_action = 'DISPATCH' THEN
+     result := dispatch_confirm_booking(p_booking_id, (p_payload->>'date')::date,
+       COALESCE(p_payload->>'status', 'PREPARING'), p_payload->>'technicianCode', p_payload->>'bedId',
+-      p_payload->>'roomName', p_payload->>'notes', COALESCE(p_payload->'staffAssignments', '[]'), item_updates);
++      p_payload->>'roomName', p_payload->>'notes', COALESCE((SELECT jsonb_agg(value) FROM jsonb_array_elements(COALESCE(p_payload->'staffAssignments','[]'))
++        WHERE NOT (value->>'bookingItemId' = ANY(live_ids))), '[]'), normal_updates);
+     IF COALESCE((result->>'success')::boolean, false) = false THEN RAISE EXCEPTION '%', COALESCE(result->>'error', 'Điều phối chưa được lưu'); END IF;
+   ELSIF p_action = 'EDIT_ACTUAL_TIME' THEN
+     FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
+@@ -156,7 +247,7 @@ BEGIN
+     UPDATE "Bookings" SET "technicianCode" = CASE WHEN p_payload ? 'technicianCode' THEN p_payload->>'technicianCode' ELSE "technicianCode" END,
+       "bedId" = p_payload->>'bedId', "roomName" = p_payload->>'roomName',
+       notes = p_payload->>'notes', "updatedAt" = clock_timestamp() WHERE id = p_booking_id;
+-    FOR edit IN SELECT value FROM jsonb_array_elements(item_updates) LOOP
++    FOR edit IN SELECT value FROM jsonb_array_elements(normal_updates) LOOP
+       SELECT COALESCE(jsonb_unwrap_string(options), '{}') INTO opts FROM "BookingItems" WHERE id = edit->>'id';
+       segment_list := COALESCE(edit->'segments', (SELECT segments FROM "BookingItems" WHERE id = edit->>'id'));
+       IF opts->>'sequentialSlots' IS DISTINCT FROM '2' THEN
+diff --git a/scripts/test_sequential_b_redispatch.cjs b/scripts/test_sequential_b_redispatch.cjs
+new file mode 100644
+index 00000000..f83a4565
+--- /dev/null
++++ b/scripts/test_sequential_b_redispatch.cjs
+@@ -0,0 +1,68 @@
++const assert=require('node:assert/strict');
++const {readFileSync}=require('node:fs');
++const {join}=require('node:path');
++const ts=require('typescript');
++require('ts-node').register({project:join(__dirname,'qa/tsconfig.qa.json'),transpileOnly:true});
++require('tsconfig-paths').register({baseUrl:join(__dirname,'..'),paths:{'@/*':['./*']}});
++const {isTwoSlotSequential}=require('../lib/dispatch-status');
++const {liveDispatchConflict,savedPlanFields}=require('../lib/dispatch-live-guard');
++const source=readFileSync(join(__dirname,'../app/reception/dispatch/actions.ts'),'utf8');
++const applyBody=source.slice(source.indexOf('async function applyDispatchEdit('),source.indexOf('async function resolveGuestIdsForUpdate('));
++const processBody=source.slice(source.indexOf('export async function processDispatch('),source.indexOf('/** Manual actual-time corrections'));
++const compiled=ts.transpileModule(applyBody+processBody,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
++const original={id:'item',bookingId:'booking',status:'PREPARING',options:{sequentialSlots:2,dispatchRevision:4,serviceNamesForKtvs:{A:'Tên A',B:'Tên B cũ'}},technicianCodes:['A','B'],segments:[
++  {id:'a',ktvId:'A',sequenceSlot:1,roomId:'R',bedId:'X',startTime:'10:00',endTime:'10:30',duration:30},
++  {id:'b',ktvId:'B',sequenceSlot:2,roomId:'R',bedId:'X',startTime:'10:30',endTime:'11:00',duration:30,plannedStartAt:'2026-09-26T03:30:00Z'}]};
++let current,notifications,rpcs,staffQueries,rpcResult;
++const db={from(table){return {select(){return this;},eq(){return this;},in(_field,ids){if(table==='Staff')staffQueries.push(ids);return this;},delete(){assert.equal(table,'StaffNotifications');return this;},single(){return Promise.resolve({data:{status:current.status}});},then(resolve,reject){
++  const data=table==='BookingItems'?[structuredClone(current)]:table==='Staff'?[{id:'B',full_name:'B',work_type:'TYPE_A'}]:table==='TurnQueue'?[{employee_id:'B',status:'assigned'}]:[];
++  return Promise.resolve({data}).then(resolve,reject);
++}};},async rpc(name,args){rpcs.push({name,args});return rpcResult;}};
++const dependencies={requirePermission:async p=>assert.equal(p,'dispatch_board'),getSupabaseAdmin:()=>db,
++  currentCounterActor:async()=>({id:'ADMIN',name:'Quầy test',verified:true}),resolveNewExternalKtvIds:async()=>null,
++  isTwoSlotSequential,liveDispatchConflict,savedPlanFields,checkedInStaffIds:async()=>new Set(['B']),
++  findKtvsNeedingCheckinConfirm:({ktvIds})=>{assert.deepEqual(ktvIds,['B']);return [];},
++  ensureTurnRowsAtEnd:async()=>{throw Error('Không tạo lại tua');},resolveGuestIdsForUpdate:async()=>[],
++  createNotification:async notification=>notifications.push(notification)};
++const exportsStub={};
++new Function(...Object.keys(dependencies),'exports',compiled)(...Object.values(dependencies),exportsStub);
++function reset(){current=structuredClone(original);notifications=[];rpcs=[];staffQueries=[];rpcResult={data:{success:true},error:null};}
++const payload=()=>{const update=structuredClone(current);update.options.serviceNamesForKtvs.B='Tên B mới';return {status:current.status,date:'2026-09-26',itemUpdates:[update],staffAssignments:current.segments.map(s=>({ktvId:s.ktvId,bookingItemId:'item',segmentId:s.id,startTime:s.startTime,endTime:s.endTime}))};};
++async function main(){
++  reset(); let input=payload();input.itemUpdates[0].segments[1].startTime='10:45';input.itemUpdates[0].segments[1].endTime='11:15';
++  assert.equal((await exportsStub.processDispatch('booking',input)).success,true);
++  assert.deepEqual(staffQueries,[['B']]);assert.equal(rpcs[0].name,'dispatch_apply_edit');assert.equal(rpcs[0].args.p_action,'DISPATCH');
++  assert.equal(rpcs[0].args.p_payload.itemUpdates[0].options.dispatchRevision,4);
++  assert.equal(rpcs[0].args.p_payload.itemUpdates[0].segments[1].startTime,'10:45');
++  assert.equal(notifications.length,1);assert.equal(notifications[0].employeeId,'B');
++  assert.ok(notifications[0].message.includes('Tên B mới')&&notifications[0].message.includes('10:45'));
++  assert.deepEqual(current,original);
++  console.log('PASS REDISPATCH 1/5: Tên/giờ B trong payload; chỉ thông báo B, không tạo tua/gửi A');
++  reset();rpcResult={error:{message:'OVERLAP_CONFIRM_REQUIRED',details:JSON.stringify({success:false,code:'OVERLAP_CONFIRM_REQUIRED',referenceAt:'2026-09-26T03:30:00Z',referenceKind:'planned'})}};
++  assert.equal((await exportsStub.processDispatch('booking',payload())).code,'OVERLAP_CONFIRM_REQUIRED');assert.equal(notifications.length,0);
++  rpcResult={data:{success:true},error:null};input=payload();input.confirmOverlap=true;
++  assert.equal((await exportsStub.processDispatch('booking',input)).success,true);assert.equal(rpcs.at(-1).args.p_payload.confirmOverlap,true);
++  console.log('PASS REDISPATCH 2/5: SQL overlap chuyển thành yêu cầu xác nhận; chỉ gửi sau xác nhận');
++  reset();rpcResult={error:{message:'Dịch vụ đã có bản lưu mới'}};
++  assert.equal((await exportsStub.processDispatch('booking',payload())).success,false);assert.equal(notifications.length,0);
++  console.log('PASS REDISPATCH 3/5: RPC từ chối phiên bản cũ thì không gửi thông báo thành công');
++  reset();current.status='IN_PROGRESS';current.segments[1].actualStartTime='2026-09-26T03:30:00Z';input=payload();
++  input.itemUpdates[0].segments[1].startTime='10:45';input.itemUpdates[0].segments[1].endTime='11:15';
++  assert.equal((await exportsStub.processDispatch('booking',input)).success,false);assert.equal(rpcs.length,0);assert.equal(notifications.length,0);
++  console.log('PASS REDISPATCH 4/5: B đã bắt đầu bị chặn sửa giờ trước RPC');
++  reset();current.status='IN_PROGRESS';current.segments[1].actualStartTime='2026-09-26T03:30:00Z';
++  assert.equal((await exportsStub.processDispatch('booking',payload())).success,true);
++  assert.equal(notifications.length,1);assert.equal(notifications[0].employeeId,'B');
++  assert.equal(rpcs[0].args.p_payload.itemUpdates[0].segments[1].actualStartTime,current.segments[1].actualStartTime);
++  console.log('PASS REDISPATCH 5/5: B đang làm vẫn nhận tên mới; giờ thực không bị xóa/reset');
++  const page=readFileSync(join(__dirname,'../app/reception/dispatch/page.tsx'),'utf8');
++  const retryBody=page.slice(page.indexOf('          let res: any = await sendPayload();'),page.indexOf('          if (!res.success) {',page.indexOf('          let res: any = await sendPayload();')));
++  const retryCode=ts.transpileModule(retryBody,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
++  const runRetry=new Function('sendPayload','askCheckinConfirm','confirmUpdatedBOverlap',`return (async()=>{let confirmOverlap=false;const confirmedUncheckedKtvIds=[];${retryCode}return {res,confirmOverlap,confirmedUncheckedKtvIds};})()`);
++  let calls=0;
++  const results=[{success:false,code:'NEED_CHECKIN_CONFIRM',ktvs:[{id:'B'}]},{success:false,code:'OVERLAP_CONFIRM_REQUIRED'},{success:true}];
++  const retry=await runRetry(async()=>results[calls++],async()=>true,()=>true);
++  assert.equal(calls,3);assert.equal(retry.res.success,true);assert.equal(retry.confirmOverlap,true);assert.deepEqual(retry.confirmedUncheckedKtvIds,['B']);
++  console.log('PASS retry UI: xác nhận điểm danh B rồi xác nhận overlap vẫn gửi được bản mới');
++}
++main().catch(error=>{console.error(error);process.exitCode=1;});

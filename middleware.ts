@@ -9,8 +9,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/notifications/trigger-webhook', // x-webhook-secret
   '/api/notifications/push',            // x-webhook-secret
   '/api/ktv/booking',                   // điều phối — quyết định để mở (30/09/2026)
-  '/api/customers/identify',            // không có caller trong repo — chờ quyết định
-  '/api/resend-email',                  // không có caller trong repo — chờ quyết định
+  '/api/finance/invoice',               // hoá đơn khách quét QR — chỉ GET, route tự whitelist trường (04/10/2026)
 ]
 
 // Bật bằng env AUTH_ENFORCE_API=1. Tắt (mặc định) = hành vi cũ: chỉ ghi log.
@@ -18,6 +17,9 @@ const PUBLIC_API_PREFIXES = [
 const AUTH_ENFORCE = process.env.AUTH_ENFORCE_API === '1'
 
 export async function middleware(request: NextRequest) {
+  if (process.env.NODE_ENV === 'development' && request.nextUrl.pathname === '/reception/dispatch/sequential-demo') {
+    return NextResponse.next()
+  }
   let supabaseResponse = NextResponse.next({
     request,
   })

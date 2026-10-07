@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Globe, MapPin, Phone } from 'lucide-react';
+import { AlertTriangle, Calendar, ExternalLink, Globe, MapPin, Phone } from 'lucide-react';
 import type { PromotionEmailLang, PromotionPassEffectiveStatus } from '@/lib/types/promotion-client';
 import { formatPromoDate } from '@/lib/promotion-format';
 import VoucherCardLocalized from './VoucherCardLocalized';
@@ -18,6 +18,7 @@ export interface VoucherContact {
   hotline: string | null;
   address: string | null;
   websiteUrl: string | null;
+  webBookingInstructions?: Record<PromotionEmailLang, string>;
 }
 
 /** Page copy in one language (Agent A `PromotionVoucherPageStrings`). */
@@ -32,6 +33,8 @@ export interface VoucherPageStrings {
   address: string;
   applicableMenus: string;
   allMenus: string;
+  bookOnline: string;
+  webBookingInstruction?: string;
 }
 
 export type PublicVoucherView =
@@ -121,18 +124,38 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
               </div>
             </dl>
 
-            <p className="mt-6 text-center text-sm font-semibold text-[#4A2C14]">{strings.contactToApply(contact.brandName)}</p>
+            {(() => {
+              const isWebBooking = view.voucher.conditionsSummary?.conditions?.some((c) => c.sources?.includes('WEB_BOOKING'));
+              const guidanceText = isWebBooking
+                ? (contact.webBookingInstructions?.[lang] || strings.webBookingInstruction || 'Please book through our website to apply this voucher.')
+                : strings.contactToApply(contact.brandName);
+              return <p className="mt-6 text-center text-sm font-semibold text-[#4A2C14]">{guidanceText}</p>;
+            })()}
           </>
         )}
 
         {(contact.hotline || contact.address || contact.websiteUrl) && (
           <section className="mt-4 flex w-full flex-col gap-2">
-            {contact.hotline && (
-              <a href={`tel:${contact.hotline.replace(/\s+/g, '')}`} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#24160D] px-4 text-sm font-semibold text-[#F4A64A] shadow-sm">
+            {contact.websiteUrl ? (
+              <a
+                href={contact.websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-12 items-center justify-center gap-2.5 rounded-2xl bg-[#24160D] px-5 text-sm font-bold text-[#F4A64A] shadow-md ring-1 ring-[#F4A64A]/30 transition-all hover:bg-[#382315] active:scale-[0.99]"
+              >
+                <Calendar size={18} className="shrink-0 text-[#F4A64A]" aria-hidden />
+                <span>{strings.bookOnline}</span>
+                <ExternalLink size={15} className="shrink-0 opacity-75" aria-hidden />
+              </a>
+            ) : contact.hotline ? (
+              <a
+                href={`tel:${contact.hotline.replace(/\s+/g, '')}`}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#24160D] px-4 text-sm font-semibold text-[#F4A64A] shadow-sm hover:bg-[#382315]"
+              >
                 <Phone size={18} aria-hidden />
                 {strings.hotline}: {contact.hotline}
               </a>
-            )}
+            ) : null}
             {contact.address && (
               <p className="flex items-start justify-center gap-2 px-2 text-center text-sm text-[#4A2C14]">
                 <MapPin size={16} className="mt-0.5 shrink-0" aria-hidden />
@@ -141,10 +164,13 @@ const VoucherPublicView = ({ view, strings, lang, token, langs }: VoucherPublicV
                 </span>
               </p>
             )}
-            {contact.websiteUrl && (
-              <a href={contact.websiteUrl} className="flex min-h-11 items-center justify-center gap-2 text-sm font-medium text-[#6B3410]" rel="noopener">
-                <Globe size={16} aria-hidden />
-                {contact.websiteUrl.replace(/^https?:\/\//, '')}
+            {contact.websiteUrl && contact.hotline && (
+              <a
+                href={`tel:${contact.hotline.replace(/\s+/g, '')}`}
+                className="flex min-h-11 items-center justify-center gap-2 text-sm font-medium text-[#6B3410] hover:underline"
+              >
+                <Phone size={16} aria-hidden />
+                <span>{strings.hotline}: {contact.hotline}</span>
               </a>
             )}
           </section>

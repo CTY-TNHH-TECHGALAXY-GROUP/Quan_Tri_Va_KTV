@@ -31,6 +31,8 @@ export class KtvWalletService {
 
         // 2. Fetch configs
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
+        // A/B/C per-star deduction tables (0% by default → commission unchanged).
+        const abcTables = await KtvCommissionService.getAbcRatingTables(supabase);
         const commConfig = commConfigs[workType] || commConfigs['TYPE_A'];
         const bonusConfig = await KtvCommissionService.getBonusConfig(supabase);
 
@@ -74,8 +76,8 @@ export class KtvWalletService {
             const { data, error } = await supabase
                 .from('BookingItems')
                 .select(`
-                    id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, options, handover_status, handover_comment,
-                    Bookings!inner ( id, timeStart, status, billCode, createdAt, rating )
+                    id, serviceId, technicianCodes, segments, status, tip, itemRating, ktvRatings, rating_scale, options, handover_status, handover_comment,
+                    Bookings!inner ( id, timeStart, status, billCode, createdAt, rating, rating_scale )
                 `)
                 .contains('technicianCodes', [staffId])
                 .gte('Bookings.timeStart', realtimeStartStr)
@@ -152,14 +154,16 @@ export class KtvWalletService {
                         const fallbackDuration = svcDurationMap[String(item.serviceId)] || 0;
                         let itemDuration = KtvCommissionService.calculateItemDuration(item, staffId, fallbackDuration);
                         if (itemDuration <= 0) itemDuration = 60;
-                        bookingCommission += KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId);
+                        bookingCommission += KtvCommissionService.applyAbcRatingDeduction(
+                            KtvCommissionService.calcCommission(itemDuration, commConfigs, workType, item.serviceId), item, b, staffId, abcTables, workType);
                     }
                     bookingTip += (Number(item.tip) || 0);
                 }
             }
 
             if (bookingCommission === 0 && passedItemCount > 0 && coItemConQuyenLoi) {
-                bookingCommission = KtvCommissionService.calcCommission(60, commConfigs, workType, '');
+                bookingCommission = KtvCommissionService.applyAbcRatingDeduction(
+                    KtvCommissionService.calcCommission(60, commConfigs, workType, ''), null, { ...b, BookingItems: relevantItems }, staffId, abcTables, workType);
             }
 
 

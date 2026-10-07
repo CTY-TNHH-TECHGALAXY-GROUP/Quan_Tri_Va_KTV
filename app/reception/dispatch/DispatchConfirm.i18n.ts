@@ -1,0 +1,52 @@
+// Chữ hiển thị cho các popup xác nhận trên màn điều phối.
+export const t = {
+    removeLastKtv: (serviceName: string) =>
+        `Không điều phối nhân viên nào cho "${serviceName}".\nĐưa dịch vụ về trạng thái Chờ điều phối?`,
+    runningDurationChange: (lines: string[]) =>
+        `Thay đổi thời gian của dịch vụ đã bắt đầu?\n\n${lines.map(l => `• ${l}`).join('\n')}\n\nNhân viên sẽ nhận thông báo quầy đã thay đổi thời gian dịch vụ.`,
+    runningDurationLine: (ktv: string, from: number, to: number) => `${ktv}: ${from} → ${to} phút`,
+    removedBLine: (ktv: string) => `Bỏ lượt B (${ktv}) — chưa bắt đầu`,
+    removedBAfterADoneLine: (ktv: string) => `Bỏ lượt B (${ktv}) — dịch vụ hoàn tất theo A`,
+    removedBWarning: (ktv: string) => `Đã bỏ lượt B (${ktv}) · A làm đến hết thời lượng gán rồi hoàn tất`,
+    durationSaved: 'Đã cập nhật thời lượng dịch vụ và gửi thông báo cho nhân viên.',
+    removedBSaved: 'Đã bỏ lượt B và gửi thông báo cho nhân viên.',
+    removedBAfterASaved: 'Đã bỏ lượt B, dịch vụ hoàn tất theo A. Đã gửi thông báo cho nhân viên.',
+    notifyFailed: (lines: string[]) => `Đã lưu nhưng chưa gửi được thông báo:\n${lines.join('\n')}`,
+    durationOutOfRange: (min: number, max: number) => `Thời lượng ${min}–${max} phút`,
+    durationSaveFailed: (error: string) => `Chưa cập nhật được thời gian dịch vụ: ${error}`,
+    turnOffSequential: 'Tắt nối tiếp',
+    turnOffSequentialConfirm: 'Tắt nối tiếp cho dịch vụ này?\n\nLượt B (chưa có nhân viên) sẽ được đóng. A làm hết thời lượng là hoàn tất dịch vụ.',
+    turnOffSequentialReason: 'Bật nhầm nối tiếp',
+    turnOffSequentialDone: 'Đã tắt nối tiếp. A làm hết thời lượng là hoàn tất dịch vụ.',
+    turnOffSequentialFailed: (error: string) => `Chưa tắt được nối tiếp: ${error}`,
+    staleDraftNotice: 'Đơn vừa được người khác sửa kế hoạch trong lúc bạn đang sửa. Tải lại dữ liệu để làm tiếp trên bản mới.',
+    staleReloadTitle: 'Đơn đã thay đổi',
+    staleReloadMessage: (error: string) => `${error}\n\nĐơn vừa được người khác sửa kế hoạch. Tải lại dữ liệu của đơn này để làm tiếp (phần đang sửa của đơn này sẽ bỏ).`,
+    staleReloadButton: 'Tải lại dữ liệu',
+    close: 'Đóng',
+    staleAutoRetried: 'Đơn vừa có thao tác của KTV — đã tự cập nhật và lưu lại.',
+    assignBServiceNameLabel: 'Nhập tên dịch vụ (nếu có thay đổi)',
+    assignBSaved: (ktv: string) => `Đã gán lượt B cho ${ktv} và gửi thông báo cho nhân viên.`,
+    assignBAlreadySaved: (ktv: string) => `Đã điều phối thành công — lượt B của ${ktv} đã được lưu ở lần bấm trước.`,
+
+    // Ghép dịch vụ ("Gộp chung KTV")
+    mergeRemovedKtvs: (ktvs: string[]) => `Đã ghép dịch vụ. KTV của dịch vụ trước làm luôn dịch vụ sau.\nĐã gỡ ${ktvs.join(', ')} khỏi dịch vụ sau — phân công lại nếu cần.`,
+    unmergeFinished: 'Dịch vụ ghép đã xong — tiền tua đã chốt, không hủy gộp được.',
+    unmergeRunningTitle: 'Hủy gộp dịch vụ đang làm',
+    unmergeRunningConfirm: (lines: string[], follows: string[]) => `Dịch vụ đang làm. Hủy gộp sẽ:\n\n${lines.map(l => `• ${l}`).join('\n')}\n• Tách «${follows.join(', ')}» về chờ điều phối (gán KTV mới nếu khách vẫn làm)\n• Gửi thông báo cho nhân viên\n\nTiếp tục?`,
+    unmergeRunningLine: (ktv: string, before: number, after: number, worked: number) => `${ktv}: ${before} → ${after} phút (đã làm ${worked} phút)`,
+    unmergeRunningReason: 'Lý do hủy gộp (bắt buộc, ít nhất 5 ký tự):',
+    unmergeRunningReasonShort: 'Cần nhập lý do ít nhất 5 ký tự. Chưa hủy gộp.',
+    unmergeRunningDone: 'Đã hủy gộp và gửi thông báo cho nhân viên.',
+    unmergeRunningFailed: (error: string) => `Chưa hủy gộp được: ${error}`,
+    unmergeStarted: 'Dịch vụ ghép đã bắt đầu — không hủy gộp được, vì tiền tua và giờ làm đang tính theo chặng ghép.\nDùng Đổi KTV hoặc Kết thúc sớm nếu cần thay đổi.',
+    mergeShorterThanTotal: (minutes: number, total: number) => `Ngắn hơn tổng 2 dịch vụ (${minutes}/${total} phút)`,
+
+    // Nút "Hồ sơ" (i) & tạo đơn nhanh — liên kết hồ sơ khách
+    customerNotLinked: 'Đơn chưa liên kết hồ sơ khách và không có SĐT/email để tìm.\nMở trang Khách Hàng để tạo hoặc gán hồ sơ cho đơn.',
+    customerProfileMissing: 'Hồ sơ khách gắn với đơn không còn tồn tại. Kiểm tra trong trang Khách Hàng.',
+    customerAmbiguous: 'Có nhiều hồ sơ trùng thông tin liên hệ. Vui lòng đối soát trong trang Khách Hàng.',
+    customerLoadFailed: 'Không tải được hồ sơ khách hàng',
+    customerNotCreated: 'Đã tạo đơn nhưng CHƯA tạo được hồ sơ khách.\nVào trang Khách Hàng tạo hồ sơ rồi gán lại cho đơn, nếu không lượt ghé và khuyến mãi của khách sẽ không được ghi nhận.',
+    customerSelectedMissing: 'Hồ sơ khách đã chọn không còn tồn tại. Hệ thống đã tìm/tạo hồ sơ theo SĐT/email của đơn.',
+};

@@ -589,6 +589,9 @@ export class BookingItemPauseService {
                         status: 'ACTIVE',
                         dispatch_source: 'SWAP_KTV',
                         planned_start_time: new Date().toISOString(),
+                        // Required since validate_final_ktv_assignment_plan (20260928020000): a live
+                        // assignment without an end > start is rejected at commit.
+                        planned_end_time: new Date(Date.now() + Math.max(1, remainingMins) * 60000).toISOString(),
                     }, { onConflict: 'employee_id,booking_item_id' });
                 if (errPhieu) {
                     // Không chặn luồng đổi người: đơn vẫn chạy nhờ TurnQueue.

@@ -8,6 +8,15 @@ export interface CustomerData {
     orders: number;
     revenue: number;
     createdAt?: string;
+    cancelled?: number;
+    closed?: number;
+    cancelRate?: number | null;
+}
+
+export interface CancelSummary {
+    cancelled: number;
+    closed: number;
+    rate: number | null;
 }
 
 export interface LanguageBreakdown {
@@ -21,6 +30,7 @@ export const useRevenueCustomers = (dateFrom: string, dateTo: string, langFilter
     const [newCustomers, setNewCustomers] = useState<CustomerData[]>([]);
     const [topCustomers, setTopCustomers] = useState<CustomerData[]>([]);
     const [languageBreakdown, setLanguageBreakdown] = useState<LanguageBreakdown[]>([]);
+    const [cancelSummary, setCancelSummary] = useState<CancelSummary | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +48,7 @@ export const useRevenueCustomers = (dateFrom: string, dateTo: string, langFilter
                 setNewCustomers(json.newCustomerList || []);
                 setTopCustomers(json.topCustomersData || []);
                 setLanguageBreakdown(json.languageBreakdown || []);
+                setCancelSummary(json.cancelSummary || null);
             } else {
                 setError(json.error || 'Failed to fetch customers data');
             }
@@ -52,5 +63,5 @@ export const useRevenueCustomers = (dateFrom: string, dateTo: string, langFilter
         fetchCustomers();
     }, [fetchCustomers]);
 
-    return { newCustomers, topCustomers, languageBreakdown, isLoading, error, refetch: fetchCustomers };
+    return { newCustomers, topCustomers, languageBreakdown, cancelSummary, isLoading, error, refetch: fetchCustomers };
 };

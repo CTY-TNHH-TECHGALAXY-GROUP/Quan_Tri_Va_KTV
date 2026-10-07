@@ -105,10 +105,16 @@ export interface OfficeMonth {
 export interface HoursAggregate {
     /** Giờ làm THỰC trong dịch vụ (đã loại dịch vụ tiện ích). */
     earned: number;
-    /** Giờ bị trừ do kỷ luật (nghỉ không báo, từ chối tua…). */
+    /** Giờ bị trừ do kỷ luật (nghỉ không báo, từ chối tua…). Chỉ phần DƯƠNG. */
     penalty: number;
-    /** earned − penalty. Có thể ÂM khi phạt nhiều hơn giờ làm — không cắt về 0
-     *  để người xem thấy đúng tình trạng thay vì tưởng là chưa làm gì. */
+    /**
+     * Giờ admin/DEV cộng thủ công (bù giờ). Lưu trong KTVDPenaltyLedger dưới dạng
+     * `penalty_type = 'HOURS_GRANT'`, `hours_penalty` ÂM — nhờ vậy `netHoursByStaff`
+     * và thứ tự nhận tua tự cộng vào mà không cần sửa công thức.
+     */
+    granted: number;
+    /** earned − penalty + granted. Có thể ÂM khi phạt nhiều hơn giờ làm — không cắt
+     *  về 0 để người xem thấy đúng tình trạng thay vì tưởng là chưa làm gì. */
     net: number;
     /** Số tua có phát sinh giờ làm. */
     turns: number;
@@ -436,6 +442,8 @@ export class KtvOfficeScoreService {
             at: string | null;
             /** Phiếu do cron chốt sổ cuối ngày ghi — không phải mốc giờ KTV làm gì. */
             tuChotSo: boolean;
+            /** Admin/DEV cộng giờ thủ công (HOURS_GRANT) — hiện là dòng CỘNG, không phải tua. */
+            isGrant: boolean;
             /** Real moment in ms, only for ordering. Stripped before returning. */
             sortMs: number;
         };
@@ -462,24 +470,32 @@ export class KtvOfficeScoreService {
                 note: r.service_name,
                 at: r.booking_time_start || null,
                 tuChotSo: false,
+                isGrant: false,
                 // No order start (manual/admin rows) → when it was written to the ledger.
                 sortMs: toMs(r.booking_time_start) || toMs((r as any).created_at),
             })),
             // Khoản chỉ trừ TIỀN (phí kích hoạt lại) không thuộc sổ giờ — để lại
             // sẽ thành một dòng '0 giờ' vô nghĩa giữa các tua.
-            ...penalties.filter(p => Number(p.hours_penalty) > 0 || !Number(p.money_penalty)).map((p, i) => ({
-                id: `pen-${p.work_date}-${p.penalty_type}-${i}`,
-                date: p.work_date,
-                earned: 0,
-                penalty: Number(p.hours_penalty) || 0,
-                penaltyType: p.penalty_type,
-                bookingId: null,
-                note: p.note,
-                at: p.created_at || null,
-                // Cron ghi lúc 00:00 ngày HÔM SAU — hiện giờ đó ra chỉ làm người đọc rối.
-                tuChotSo: String((p as any).created_by || '').toUpperCase().startsWith('CRON'),
-                sortMs: toMs(p.created_at),
-            })),
+            ...penalties.filter(p => Number(p.hours_penalty) > 0 || !Number(p.money_penalty)).map((p, i) => {
+                const h = Number(p.hours_penalty) || 0;
+                // Giờ ÂM = admin cộng giờ: hiện như một dòng CỘNG có nhãn riêng, không
+                // phải tua (không có mã đơn) và không phải phiếu phạt.
+                const isGrant = h < 0;
+                return {
+                    id: `pen-${p.work_date}-${p.penalty_type}-${i}`,
+                    date: p.work_date,
+                    earned: isGrant ? -h : 0,
+                    penalty: isGrant ? 0 : h,
+                    penaltyType: isGrant ? null : p.penalty_type,
+                    bookingId: null,
+                    note: p.note,
+                    at: p.created_at || null,
+                    // Cron ghi lúc 00:00 ngày HÔM SAU — hiện giờ đó ra chỉ làm người đọc rối.
+                    tuChotSo: String((p as any).created_by || '').toUpperCase().startsWith('CRON'),
+                    isGrant,
+                    sortMs: toMs(p.created_at),
+                };
+            }),
         ];
 
         // Thứ tự cộng số dư:
@@ -507,9 +523,11 @@ export class KtvOfficeScoreService {
         let balance = 0;
         let earnedTotal = 0;
         let penaltyTotal = 0;
+        let grantTotal = 0;
         const rows = entries.map(({ sortMs: _sortMs, ...e }) => {
             balance += e.earned - e.penalty;
-            earnedTotal += e.earned;
+            if (e.isGrant) grantTotal += e.earned;
+            else earnedTotal += e.earned;
             penaltyTotal += e.penalty;
             return {
                 ...e,
@@ -529,6 +547,7 @@ export class KtvOfficeScoreService {
             total: r2(balance),
             earnedTotal: r2(earnedTotal),
             penaltyTotal: r2(penaltyTotal),
+            grantTotal: r2(grantTotal),
         };
     }
 
@@ -582,7 +601,7 @@ export class KtvOfficeScoreService {
     ): Promise<Map<string, HoursAggregate>> {
         const out = new Map<string, HoursAggregate>();
         staffIds.forEach(id =>
-            out.set(id, { earned: 0, penalty: 0, net: 0, turns: 0, days: 0, lastDate: null }));
+            out.set(id, { earned: 0, penalty: 0, granted: 0, net: 0, turns: 0, days: 0, lastDate: null }));
         if (staffIds.length === 0) return out;
 
         // Lũy kế toàn bộ lịch sử thì mở biên thật rộng — reader bắt buộc có from/to.
@@ -616,14 +635,19 @@ export class KtvOfficeScoreService {
             const agg = out.get(p.staff_id);
             if (!agg) continue;
             if (p.work_date < (effFrom.get(p.staff_id) || '2020-01-01')) continue;
-            agg.penalty += Number(p.hours_penalty) || 0;
+            const h = Number(p.hours_penalty) || 0;
+            // Âm = admin cộng giờ (HOURS_GRANT). Tách ra để bảng hiện "Cộng +X" thay vì
+            // làm cột "Phạt" co lại khó hiểu; tổng ròng vẫn y hệt netHoursByStaff.
+            if (h < 0) agg.granted += -h;
+            else agg.penalty += h;
         }
 
         const round2 = (n: number) => Math.round(n * 100) / 100;
         for (const [id, agg] of out) {
             agg.earned = round2(agg.earned);
             agg.penalty = round2(agg.penalty);
-            agg.net = round2(agg.earned - agg.penalty);
+            agg.granted = round2(agg.granted);
+            agg.net = round2(agg.earned - agg.penalty + agg.granted);
             agg.days = daysOf.get(id)?.size ?? 0;
         }
         return out;
@@ -632,10 +656,15 @@ export class KtvOfficeScoreService {
 
 /** Dịch mã phạt giờ sang tiếng Việt để lễ tân/KTV đọc được. */
 export const HOURS_PENALTY_VI: Record<string, string> = {
-    ABSENT_NO_NOTICE: 'Nghỉ đột xuất không báo',
+    // Dùng chung cho: không báo không đến, báo off đột xuất, tan ca sớm.
+    // Chi tiết từng trường hợp nằm ở `note` của dòng sổ.
+    ABSENT_NO_NOTICE: 'Nghỉ đột xuất',
     ABSENT_EARLY_NOTICE: 'Báo vắng trước 07:00',
     LATE_NO_UPDATE: 'Đến muộn hơn giờ đã báo',
     ORDER_REJECT: 'Từ chối tua đã gán',
     // Dấu mốc, không phải khoản phạt: hours_penalty = 0.
     ACCOUNT_LOCK: 'Khoá tài khoản',
+    // Admin/DEV bù giờ: hours_penalty ÂM. hoursLedger đã đổi sang dòng cộng (isGrant),
+    // nhãn này chỉ còn dùng khi nơi nào đó in thẳng penalty_type.
+    HOURS_GRANT: 'Cộng giờ (admin)',
 };

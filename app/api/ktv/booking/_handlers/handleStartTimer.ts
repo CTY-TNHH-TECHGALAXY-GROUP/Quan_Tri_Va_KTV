@@ -2,378 +2,215 @@
  * ============================================================
  * ⏱️ HANDLER: START_TIMER / NEXT_SEGMENT
  * ============================================================
- * 
- * Xử lý khi KTV bấm BẮT ĐẦU hoặc chuyển sang chặng tiếp theo.
- * 
+ *
  * 📋 LUỒNG:
- *   1. Validate thời gian (không cho bắt đầu sớm hơn giờ dispatch)
- *      → Trả earlyResponse 403 nếu chưa đến giờ
- *   2. Set Bookings.timeStart nếu chưa có (chỉ lần đầu)
- *   3. Set actualStartTime cho segment hiện tại (BookingItems.segments)
- *   4. Nếu NEXT_SEGMENT: set actualEndTime cho segment trước
- *   5. Recalculate TurnQueue.estimated_end_time (dựa trên actual start)
- * 
+ *   START_TIMER — KTV bấm "Bắt đầu" một chặng (chặng 1, chặng 2 cùng đơn, lượt B, người vào thay):
+ *     1. Không bấm sớm hơn giờ admin gán (trừ lượt B đã được gán, vẫn phải chờ A bắt đầu).
+ *     2. Chặng trước của CHÍNH KTV này trong đơn đang chạy dở → từ chối (không làm 2 chặng một lúc).
+ *     3. Ảnh bắt đầu: bắt buộc. Ảnh dép: ảnh mới nếu có, không thì dùng lại ảnh dép đã có
+ *        trong cùng đơn của cùng khách (chặng trước / A / người bị thay); chưa có thì bắt buộc chụp.
+ *     4. actualStartTime = giờ máy chủ lúc nhận lệnh (giờ thực tế), commit qua ktv_start_service_atomic.
+ *   NEXT_SEGMENT — đồng hồ chặng trước hết:
+ *     Chỉ đóng chặng trước (actualEndTime). KHÔNG bắt đầu chặng sau — KTV phải bấm START_TIMER
+ *     (quyết định 04/10/2026, plans/plan_chang2_phai_bam_bat_dau_20261004.md).
+ *
  * 🚫 KHÔNG ĐƯỢC:
- *   - Set actualStartTime cho segment của KTV KHÁC (Parallel Sync đã bị xóa)
- *   - Thay đổi status của BookingItem ở bước này
- *   - Gọi recomputeBookingStatus ở bước này
- * 
- * 📊 DB OPERATIONS (tự xử lý):
- *   - UPDATE BookingItems.segments (set actualStartTime/actualEndTime)
- *   - UPDATE TurnQueue (status, start_time, estimated_end_time)
- * 
- * 📤 TRẢ VỀ:
- *   - bookingUpdatePayload: { timeStart } (nếu lần đầu) hoặc {}
- *   - earlyResponse: 403 nếu chưa đến giờ
- * 
- * 🔗 PHỤ THUỘC: _shared/utils.ts (HandlerContext)
- * ============================================================
+ *   - Set actualStartTime cho segment của KTV KHÁC (Parallel Sync đã bị xóa).
+ *   - Tự bắt đầu chặng sau khi đóng chặng trước.
+ *   - Hạ status item đã đi xa hơn (CLAUDE.md 9.6).
+ *   - Sửa dữ liệu đơn quá khứ.
  */
-
 import { NextResponse } from 'next/server';
-import { HandlerContext, HandlerResult, ktvMatchesSeg } from '../_shared/utils';
+import { HandlerContext, HandlerResult } from '../_shared/utils';
+import { isLiveKtvSegment, parseKtvSegments, parseKtvOptions } from '@/lib/ktvUtils';
 import { calculateAccurateEndTimeFromSegments } from '@/lib/time-helper';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
+
+// Thứ tự hậu kỳ của một dịch vụ. Không bao giờ hạ status đã đi xa hơn (CLAUDE.md 9.6).
+const POST_SERVICE_RANK: Record<string, number> = { IN_PROGRESS: 1, CLEANING: 2, FEEDBACK: 3, DONE: 4 };
+
 export async function handleStartTimer(ctx: HandlerContext): Promise<HandlerResult> {
-    const { supabase, bookingId, technicianCode, action, turnForSync, allItemIdsForThisKTV, body } = ctx;
-    const bookingUpdatePayload: Record<string, any> = {};
-
-    const fail = (error: string, status = 400): HandlerResult => ({
-        bookingUpdatePayload: {},
-        earlyResponse: NextResponse.json({ success: false, error }, { status })
-    });
-
-    const uploadedPaths: string[] = [];
-
-    const cleanupUploadedProofs = async () => {
-        if (uploadedPaths.length === 0) return;
-
-        const paths = [...uploadedPaths];
-        const { error } = await supabase.storage
-            .from('attendance')
-            .remove(paths);
-
-        if (error) {
-            console.error('Proof cleanup failed:', { paths, error });
+    const { supabase, bookingId, technicianCode, action, allItemIdsForThisKTV, body } = ctx;
+    const fail = (error: string, status = 409): HandlerResult => ({ bookingUpdatePayload: {},
+        earlyResponse: NextResponse.json({ success: false, error }, { status }) });
+    const { data: booking, error: bookingError } = await supabase.from('Bookings')
+        .select('id, status, rating, timeStart, bookingDate, BookingGuests(id, rating)').eq('id', bookingId).single();
+    if (bookingError || !booking) return fail('Không đọc được đơn; tải lại.', 500);
+    if (!['START_TIMER', 'NEXT_SEGMENT'].includes(action)) {
+        return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: booking };
+    }
+    const { data: items, error: itemError } = await supabase.from('BookingItems')
+        .select('id, segments, status, itemRating, guest_id, options, handover_status, handover_images, handover_skipped, handover_submitted_at, serviceId')
+        .eq('bookingId', bookingId);
+    if (itemError || !items?.length) return fail('Không đọc được chặng; tải lại.', 500);
+    const snapshots = structuredClone(items);
+    const ids = new Set(allItemIdsForThisKTV);
+    const work: any[] = [];
+    for (const item of items) {
+        if (!ids.has(item.id)) continue;
+        const segments = parseKtvSegments(item.segments, true);
+        if (!segments.length) return fail('Dữ liệu chặng không hợp lệ.');
+        for (const seg of segments) {
+            if (isLiveKtvSegment(seg, technicianCode)) work.push({ item, seg, segments });
         }
+    }
+    work.sort((a, b) => String(a.seg.plannedStartAt || a.seg.startTime || '').localeCompare(String(b.seg.plannedStartAt || b.seg.startTime || ''))
+        || String(a.seg.id).localeCompare(String(b.seg.id)));
+    const index = body.activeSegmentIndex ?? 0;
+    if (!Number.isInteger(index) || index < 0) return fail('Chặng làm việc không hợp lệ.', 400);
+    const target = body.targetSegmentId ? work.find(s => s.seg.id === body.targetSegmentId) : work[index];
+    if (!target || !target.seg.id || target.seg.actualEndTime || ['DONE', 'CANCELLED'].includes(target.item.status)) {
+        return fail('Chặng đã thay đổi hoặc đã hoàn tất; tải lại.');
+    }
+    if (target.item.status === 'PAUSED') return fail('Ca đang tạm dừng; lễ tân cần cho tiếp tục trước khi bắt đầu.');
+    if (target.seg.actualStartTime) {
+        // Retry after a committed START keeps the stamp and the existing proof URLs.
+        return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: booking };
+    }
+    const serviceDay = String(booking.bookingDate || '').slice(0, 10);
+    const allowedAt = target.seg.plannedStartAt || `${serviceDay}T${target.seg.startTime}:00+07:00`;
+    let assignedB = false;
+    if (Number(target.seg.sequenceSlot) === 2 && isTwoSlotSequential(target.item.options)) {
+        const first = target.segments.find((seg: any) => Number(seg.sequenceSlot) === 1 && seg.voided !== true && seg.voided !== 'true');
+        if (!first?.actualStartTime) return fail('Chờ KTV lượt 1 bắt đầu trước khi bắt đầu lượt 2.');
+        const { data, error } = await supabase.from('KtvAssignments').select('id')
+            .eq('booking_id', bookingId).eq('booking_item_id', target.item.id).eq('segment_id', target.seg.id)
+            // QUEUED/READY: KTV còn dịch vụ khác chưa bắt đầu đang đứng trước; ktv_start_service_atomic
+            // sẽ đưa chặng được bấm lên ACTIVE và hạ dịch vụ kia về hàng chờ (quyết định 01/10/2026).
+            .eq('employee_id', technicianCode).in('status', ['ACTIVE', 'QUEUED', 'READY']).maybeSingle();
+        if (error) return fail('Không đọc được phân công B.', 500);
+        assignedB = !!data;
+        if (!assignedB) return fail('B không còn được gán; tải lại.');
+    }
+    if (!Number.isFinite(Date.parse(allowedAt))) return fail('Giờ phân công không hợp lệ.');
+    if (action === 'START_TIMER' && !assignedB && Date.now() < Date.parse(allowedAt) - 5000) {
+        return fail(`Chưa đến giờ bắt đầu ${target.seg.startTime}.`, 403);
+    }
+    const merge = action === 'START_TIMER' && body.shouldMerge === true;
+    const run = merge ? work : [target];
+    if (merge && (run.some(s => s.seg.actualStartTime || s.seg.actualEndTime || ['DONE', 'CANCELLED'].includes(s.item.status))
+        || new Set(run.map(s => s.seg.roomId)).size !== 1 || !target.seg.roomId)) {
+        return fail('Các chặng không còn đủ điều kiện gộp; tải lại.');
+    }
+    const prior = work[work.indexOf(target) - 1];
+    if (action === 'START_TIMER' && !merge && prior?.seg.actualStartTime && !prior.seg.actualEndTime
+        && !['DONE', 'CANCELLED'].includes(prior.item.status)) {
+        return fail('Chặng trước chưa kết thúc; hết giờ chặng trước mới bắt đầu chặng này.');
+    }
+    const previous = action === 'NEXT_SEGMENT' ? prior : null;
+    if (action === 'NEXT_SEGMENT' && (!previous?.seg.actualStartTime || previous.item.status === 'CANCELLED')) {
+        return fail('Chặng trước chưa bắt đầu; không thể chuyển chặng.');
+    }
+    if (action === 'NEXT_SEGMENT') {
+        // Only close the previous segment; the next one starts when the KTV presses Start.
+        if (previous!.seg.actualEndTime) return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: booking };
+        previous!.seg.actualEndTime = new Date().toISOString();
+        const entry = previous!;
+        const done = entry.segments.filter((s: any) => s.ktvId && s.voided !== true && s.voided !== 'true').every((s: any) => s.actualStartTime && s.actualEndTime);
+        const computed = done && !isTwoSlotSequential(entry.item.options) ? 'CLEANING' : 'IN_PROGRESS';
+        const current = String(entry.item.status || '');
+        const status = (POST_SERVICE_RANK[current] ?? 0) > POST_SERVICE_RANK[computed] ? current : computed;
+        const { data, error } = await supabase.rpc('ktv_finish_service_atomic', {
+            p_booking_id: bookingId, p_booking_snapshot: { id: booking.id, status: booking.status, rating: booking.rating },
+            p_item_snapshots: snapshots, p_guest_ratings: booking.BookingGuests || [],
+            p_updates: [{ id: entry.item.id, status, segments: JSON.stringify(entry.segments) }], p_booking_status: 'IN_PROGRESS',
+        });
+        if (error || !data?.success) {
+            console.error('[KTV NEXT_SEGMENT] close previous failed', { bookingId, technicianCode, segmentId: entry.seg.id, error });
+            return fail('Chưa lưu được kết thúc chặng; tải lại trước khi thử lại.');
+        }
+        return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: data.booking || booking };
+    }
+    // Slipper photo already in this order for the same guest (previous segment, KTV A, replaced KTV).
+    const inheritedSlipper = (): string | null => {
+        let best: { url: string; at: string } | null = null;
+        for (const item of items) {
+            if ((item.guest_id || null) !== (target.item.guest_id || null)) continue;
+            for (const seg of parseKtvSegments(item.segments)) {
+                const url = typeof seg.guestSlipperPhotoUrl === 'string' ? seg.guestSlipperPhotoUrl : '';
+                if (!/^https?:\/\//.test(url)) continue;
+                const at = String(seg.actualStartTime || '');
+                if (!best || at > best.at) best = { url, at };
+            }
+        }
+        return best?.url || null;
     };
-
-    if (action === 'START_TIMER' && (!technicianCode || allItemIdsForThisKTV.length === 0)) {
-        return fail('Không tìm thấy KTV hoặc chặng làm việc hợp lệ');
+    const isPhotoData = (raw: unknown) => typeof raw === 'string' && raw.startsWith('data:image/');
+    const paths: string[] = [];
+    const upload = async (raw: unknown, prefix: string) => {
+        const match = typeof raw === 'string' ? /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(raw) : null;
+        if (!match) throw new Error('Ảnh phải là JPEG, PNG hoặc WEBP.');
+        const bytes = Buffer.from(match[2], 'base64');
+        const signatures = { jpeg: bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255,
+            png: bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])),
+            webp: bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP' };
+        const mime = match[1].toLowerCase() as keyof typeof signatures;
+        if (!bytes.length || bytes.length > 5 * 1024 * 1024 || !signatures[mime]) throw new Error('Ảnh không hợp lệ hoặc quá 5 MB.');
+        const { data, error } = await supabase.storage.from('attendance').upload(
+            `${prefix}_${crypto.randomUUID()}.${mime === 'jpeg' ? 'jpg' : mime}`, bytes, { contentType: `image/${mime}`, upsert: false });
+        if (error || !data?.path) throw error || new Error('Tải ảnh thất bại.');
+        paths.push(data.path);
+        const { data: url } = supabase.storage.from('attendance').getPublicUrl(data.path);
+        if (!url?.publicUrl) throw new Error('Không đọc được URL ảnh.');
+        return url.publicUrl;
+    };
+    let attemptedCommit = false;
+    try {
+        const slipper = isPhotoData(body.guestSlipperPhotoBase64)
+            ? await upload(body.guestSlipperPhotoBase64, 'slipper') : inheritedSlipper();
+        if (!slipper) throw new Error('Cần chụp ảnh dép khách trước khi bắt đầu.');
+        const start = await upload(body.startPhotoBase64 || body.photoBase64, 'start');
+        const now = new Date().toISOString();
+        for (const entry of run) {
+            entry.seg.actualStartTime = now;
+            if (merge) { entry.seg.isMergedRun = true; entry.seg.mergedRunId = now; }
+            if (start) entry.seg.startPhotoUrl = start;
+            if (slipper) entry.seg.guestSlipperPhotoUrl = slipper;
+        }
+        // Chỉ đụng tới item của chặng trước khi thực sự phải chốt giờ kết thúc cho nó.
+        // Chặng trước đã xong/bàn giao (item CLEANING/FEEDBACK/DONE) thì để nguyên.
+        const closesPrevious = !!previous && !previous.seg.actualEndTime;
+        if (closesPrevious) previous!.seg.actualEndTime = now;
+        const changedIds = new Set([...run.map(s => s.item.id), ...(closesPrevious ? [previous!.item.id] : [])]);
+        const updates = [...changedIds].map(id => {
+            const entry = work.find(s => s.item.id === id)!;
+            const done = entry.segments.filter((s: any) => s.ktvId && s.voided !== true && s.voided !== 'true').every((s: any) => s.actualStartTime && s.actualEndTime);
+            const computed = done && !isTwoSlotSequential(entry.item.options) ? 'CLEANING' : 'IN_PROGRESS';
+            const current = String(entry.item.status || '');
+            const status = (POST_SERVICE_RANK[current] ?? 0) > POST_SERVICE_RANK[computed] ? current : computed;
+            return { id, status, segments: JSON.stringify(entry.segments) };
+        });
+        for (const item of items) {
+            const parentId = parseKtvOptions(item.options).mergedIntoId;
+            if (changedIds.has(parentId) && !changedIds.has(item.id) && !['DONE', 'CANCELLED'].includes(item.status)
+                && !parseKtvSegments(item.segments).some(s => s.ktvId && s.voided !== true && s.voided !== 'true')) {
+                updates.push({ id: item.id, status: 'IN_PROGRESS', segments: item.segments });
+            }
+        }
+        const clock = new Date(now).toLocaleTimeString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
+        const turnPatch = { status: 'working', current_order_id: bookingId, start_time: clock,
+            room_id: target.seg.roomId || null, bed_id: target.seg.bedId || null,
+            booking_item_id: target.item.id, booking_item_ids: [...new Set(run.map(s => s.item.id))],
+            estimated_end_time: calculateAccurateEndTimeFromSegments(run, clock) };
+        attemptedCommit = true;
+        const { data, error } = await supabase.rpc('ktv_start_service_atomic', {
+            p_booking_id: bookingId, p_booking_snapshot: { id: booking.id, status: booking.status, rating: booking.rating, timeStart: booking.timeStart },
+            p_item_snapshots: snapshots, p_guest_ratings: booking.BookingGuests || [], p_updates: updates,
+            p_employee_id: technicianCode, p_target_segment_id: target.seg.id, p_started_at: now, p_turn_patch: turnPatch,
+        });
+        if (error) {
+            console.error('[KTV START] Atomic commit failed', { bookingId, technicianCode, segmentId: target.seg.id, error });
+            if (error.message?.includes('Ca trước chưa bàn giao')) return fail('Ca trước chưa bàn giao xong; hoàn tất bàn giao hoặc nhờ quầy kiểm tra phân công.');
+            return fail('Chưa xác nhận được lưu bắt đầu. Tải lại trước khi thử lại.');
+        }
+        if (!data?.success || !data.booking) return fail('Chưa xác nhận được lưu bắt đầu. Tải lại trước khi thử lại.');
+        return { bookingUpdatePayload: {}, bookingPersisted: true, bookingData: data.booking };
+    } catch (error: any) {
+        // Once an RPC was attempted, a network timeout cannot prove rollback. Do not delete referenced proof photos.
+        if (!attemptedCommit && paths.length) {
+            const { error: cleanupError } = await supabase.storage.from('attendance').remove(paths);
+            if (cleanupError) console.error('Proof cleanup failed', cleanupError);
+        }
+        return fail(error?.message || 'Chưa lưu được bắt đầu.', 500);
     }
-
-    const activeSegmentIndex = body.activeSegmentIndex ?? 0;
-    if (action === 'START_TIMER' && (!Number.isInteger(activeSegmentIndex) || activeSegmentIndex < 0)) {
-        return fail('Chặng làm việc không hợp lệ');
-    }
-
-    // ─── 1. TIME VALIDATION (chờ đúng giờ) ───
-    if (turnForSync && action !== 'NEXT_SEGMENT_PREPARE') {
-        let allowed: Date | null = null;
-        if (turnForSync.start_time) {
-            const [h, m] = String(turnForSync.start_time).split(':').map(Number);
-            const nowUtc = new Date();
-            const vnOffsetMs = 7 * 60 * 60 * 1000;
-            const nowVn = new Date(nowUtc.getTime() + vnOffsetMs);
-            let allowedUtc = new Date(Date.UTC(nowVn.getUTCFullYear(), nowVn.getUTCMonth(), nowVn.getUTCDate(), h, m, 0) - vnOffsetMs);
-            
-            // 🌙 FIX CA ĐÊM: Nếu start_time chiều (VD: 17:29) nhưng hiện tại đã qua 0:00
-            // → allowed bị tính vào ngày hôm sau → lùi 1 ngày
-            if (allowedUtc.getTime() - nowUtc.getTime() > 12 * 60 * 60 * 1000) {
-                allowedUtc = new Date(allowedUtc.getTime() - 24 * 60 * 60 * 1000);
-            }
-            
-            allowed = allowedUtc;
-        }
-        if (allowed && new Date().getTime() < (allowed.getTime() - 5000)) {
-            const vnOffsetMs = 7 * 60 * 60 * 1000;
-            const allowedVn = new Date(allowed.getTime() + vnOffsetMs);
-            return {
-                bookingUpdatePayload: {},
-                earlyResponse: NextResponse.json(
-                    { success: false, error: `Chưa đến giờ được phép bắt đầu! Vui lòng đợi đến ${String(allowedVn.getUTCHours()).padStart(2, '0')}:${String(allowedVn.getUTCMinutes()).padStart(2, '0')}` },
-                    { status: 403 }
-                )
-            };
-        }
-    }
-
-    // ─── 2. SET BOOKING timeStart (chỉ lần đầu) ───
-    const sharedTimeStart = new Date().toISOString();
-    const { data: currentBookingForTime } = await supabase.from('Bookings').select('timeStart, status').eq('id', bookingId).single();
-    
-    if (!currentBookingForTime?.timeStart && action !== 'RESUME_TIMER' && action !== 'NEXT_SEGMENT') {
-        bookingUpdatePayload.timeStart = sharedTimeStart;
-    }
-    
-    if ((action === 'START_TIMER' || action === 'NEXT_SEGMENT') && currentBookingForTime?.status !== 'IN_PROGRESS') {
-        bookingUpdatePayload.status = 'IN_PROGRESS';
-    }
-
-    // ─── 3. SEGMENT actualStartTime LOGIC ───
-    let allGlobalSegs: any[] = [];
-    if (allItemIdsForThisKTV.length > 0) {
-        const { data: currentItems } = await supabase.from('BookingItems').select('id, segments, timeStart').in('id', allItemIdsForThisKTV);
-        const activeSegmentIndex = body.activeSegmentIndex || 0;
-        let originalItemsData: Record<string, any[]> = {};
-        
-        for (const item of currentItems || []) {
-            let segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []);
-            originalItemsData[item.id] = [...segs]; // Backup the entire array
-            segs.forEach((seg: any, idx: number) => {
-                if (ktvMatchesSeg(seg.ktvId, technicianCode)) allGlobalSegs.push({ item, idx, seg });
-            });
-        }
-        allGlobalSegs.sort((a: any, b: any) => (a.seg.startTime || '23:59').localeCompare(b.seg.startTime || '23:59'));
-
-        const target = allGlobalSegs[activeSegmentIndex];
-
-        if (action === 'START_TIMER' &&
-            (!target ||
-             !ktvMatchesSeg(target.seg.ktvId, technicianCode) ||
-             target.seg.actualEndTime)) {
-            return fail('Không tìm thấy chặng đang xử lý hoặc chặng đã hoàn tất', 409);
-        }
-
-        const parseProof = (value: unknown) => {
-            const match = typeof value === 'string'
-                ? /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value)
-                : null;
-
-            if (!match) throw new Error('Ảnh phải là JPEG, PNG hoặc WEBP');
-
-            const mime = match[1].toLowerCase();
-            const encoded = match[2];
-            const buffer = Buffer.from(encoded, 'base64');
-
-            if (
-                buffer.length === 0 ||
-                buffer.length > 5 * 1024 * 1024 ||
-                buffer.toString('base64') !== encoded
-            ) {
-                throw new Error('Ảnh không hợp lệ hoặc vượt quá 5MB');
-            }
-
-            const validSignature = mime === 'jpeg'
-                ? buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
-                : mime === 'png'
-                    ? buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-                    : buffer.length >= 12 &&
-                      buffer.toString('ascii', 0, 4) === 'RIFF' &&
-                      buffer.toString('ascii', 8, 12) === 'WEBP';
-
-            if (!validSignature) throw new Error('Nội dung ảnh không khớp định dạng');
-
-            return {
-                buffer,
-                contentType: `image/${mime}`,
-                extension: mime === 'jpeg' ? 'jpg' : mime
-            };
-        };
-
-        let startPhotoUrl: string | null = null;
-        let guestSlipperPhotoUrl: string | null = null;
-
-        const startInput = body.startPhotoBase64 || body.photoBase64;
-        if (action === 'START_TIMER') {
-            if (!body.guestSlipperPhotoBase64 || !startInput) {
-                return fail('Bắt buộc có ảnh dép khách và ảnh bắt đầu dịch vụ');
-            }
-
-            let slipperProof: ReturnType<typeof parseProof>;
-            let startProof: ReturnType<typeof parseProof>;
-
-            try {
-                slipperProof = parseProof(body.guestSlipperPhotoBase64);
-                startProof = parseProof(startInput);
-            } catch (error: any) {
-                return fail(error?.message || 'Ảnh không hợp lệ', 400);
-            }
-
-            const uploadProof = async (prefix: string, proof: ReturnType<typeof parseProof>) => {
-                const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${proof.extension}`;
-
-                const { data, error } = await supabase.storage
-                    .from('attendance')
-                    .upload(fileName, proof.buffer, {
-                        contentType: proof.contentType,
-                        upsert: false
-                    });
-
-                if (error || !data?.path) throw error || new Error('Upload ảnh thất bại');
-
-                uploadedPaths.push(data.path);
-
-                const { data: publicData } = supabase.storage
-                    .from('attendance')
-                    .getPublicUrl(data.path);
-
-                if (!publicData?.publicUrl) throw new Error('Không tạo được URL ảnh');
-
-                return { path: data.path, url: publicData.publicUrl };
-            };
-
-            try {
-                const slipperUpload = await uploadProof('slipper', slipperProof);
-                const startUpload = await uploadProof('start', startProof);
-
-                guestSlipperPhotoUrl = slipperUpload.url;
-                startPhotoUrl = startUpload.url;
-            } catch (error: any) {
-                await cleanupUploadedProofs();
-                console.error('❌ [KTV API] Upload proofs error:', error);
-                return fail('Tải ảnh minh chứng lên máy chủ thất bại', 500);
-            }
-        }
-
-        if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
-            const startIdx = activeSegmentIndex; // Use activeSegmentIndex from client or logic
-            if (allGlobalSegs[startIdx]) {
-                const myStartTime = allGlobalSegs[startIdx].seg.startTime;
-                if (action === 'NEXT_SEGMENT' && startIdx > 0) {
-                    if (!allGlobalSegs[startIdx - 1].seg.actualEndTime) {
-                        allGlobalSegs[startIdx - 1].seg.actualEndTime = sharedTimeStart;
-                    }
-                }
-                
-                allGlobalSegs[startIdx].seg.actualStartTime = sharedTimeStart;
-                
-                // 🔒 MERGE LOCK: Khi START_TIMER với nhiều DV (merge scenario),
-                // đóng dấu actualStartTime lên TẤT CẢ segments của KTV này.
-                // Mục đích: Nếu Quầy gán thêm DV sau khi KTV đã bắt đầu,
-                // segment mới sẽ KHÔNG có actualStartTime → server biết nó là thẻ riêng,
-                // không gộp vào nhóm hiện tại khi hoàn tất.
-                if (action === 'START_TIMER' && allGlobalSegs.length > 1) {
-                    const mergeItemIds = new Set(allGlobalSegs.map((s: any) => s.item?.id));
-                    const uniqueRoomIds = new Set(allGlobalSegs.map((s: any) => s.seg.roomId).filter(Boolean));
-                    const hasFinishedSegment = allGlobalSegs.some((s: any) => s.item.status === 'DONE' || (s.seg.actualEndTime && s.item.status !== 'IN_PROGRESS'));
-                    
-                    const isMergeAtStart = body.shouldMerge === true;
-                        
-                    if (isMergeAtStart) {
-                        console.log(`🔒 [Merge Lock] Stamping actualStartTime on ${allGlobalSegs.length} segments for ${technicianCode}`);
-                        allGlobalSegs.forEach((itemSeg: any, i: number) => {
-                            // Gắn cờ Gộp để Frontend không bị tách chặng kể cả khi hoàn thành
-                            itemSeg.seg.isMergedRun = true;
-                            if (i !== startIdx && !itemSeg.seg.actualStartTime) {
-                                itemSeg.seg.actualStartTime = sharedTimeStart;
-                            }
-                            // BẮT BUỘC lưu lại vào originalItemsData
-                            originalItemsData[itemSeg.item.id][itemSeg.idx] = itemSeg.seg;
-                        });
-                    }
-                }
-
-                // Ghi nhận ảnh vào đúng chặng đang thực hiện (không đè chặng đã xong)
-                if (action === 'START_TIMER' && startPhotoUrl && guestSlipperPhotoUrl) {
-                    allGlobalSegs.forEach((itemSeg: any, i: number) => {
-                        const belongsToRun =
-                            i === activeSegmentIndex ||
-                            (body.shouldMerge === true && itemSeg.seg.isMergedRun);
-
-                        if (
-                            belongsToRun &&
-                            !itemSeg.seg.actualEndTime &&
-                            ktvMatchesSeg(itemSeg.seg.ktvId, technicianCode)
-                        ) {
-                            itemSeg.seg.startPhotoUrl = startPhotoUrl;
-                            itemSeg.seg.guestSlipperPhotoUrl = guestSlipperPhotoUrl;
-                            originalItemsData[itemSeg.item.id][itemSeg.idx] = itemSeg.seg;
-                        }
-                    });
-                }
-                
-                const target = allGlobalSegs[startIdx];
-                originalItemsData[target.item.id][target.idx] = target.seg;
-                
-                if (action === 'NEXT_SEGMENT' && startIdx > 0) {
-                    const prevTarget = allGlobalSegs[startIdx - 1];
-                    originalItemsData[prevTarget.item.id][prevTarget.idx] = prevTarget.seg;
-                }
-
-                // 🤝 PARALLEL START SYNC: Removed to allow independent starts for KTVs entering at different times
-            }
-        }
-
-
-        const itemsToUpdate = currentItems || [];
-        let persistedItemCount = 0;
-
-        for (let itemIdx = 0; itemIdx < itemsToUpdate.length; itemIdx++) {
-            const item = itemsToUpdate[itemIdx];
-            const updatePayload: any = { segments: JSON.stringify(originalItemsData[item.id]) };
-            if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
-                updatePayload.status = 'IN_PROGRESS';
-            }
-            const { error: itemUpdateError } = await supabase.from('BookingItems').update(updatePayload).eq('id', item.id);
-            if (itemUpdateError) {
-                console.error('❌ [handleStartTimer] Failed to update BookingItem:', item.id, itemUpdateError);
-                if (persistedItemCount === 0) {
-                    await cleanupUploadedProofs();
-                }
-
-                const partialWarning = persistedItemCount > 0
-                    ? ` (Lưu ý: Đã cập nhật dở ${persistedItemCount}/${itemsToUpdate.length} item trước đó do chưa hỗ trợ database transaction)`
-                    : '';
-                return fail(`Lỗi cập nhật chặng dịch vụ (${item.id})${partialWarning}: ${itemUpdateError.message}`, 500);
-            }
-            persistedItemCount++;
-        }
-    }
-    
-    // ─── 3.5 🔄 SYNC CHILD ITEMS ───
-    if (action === 'START_TIMER' || action === 'NEXT_SEGMENT') {
-        const { data: bookingItemsToSync } = await supabase.from('BookingItems').select('id, status, options').eq('bookingId', bookingId);
-        if (bookingItemsToSync) {
-            const updates = [];
-            for (const item of bookingItemsToSync) {
-                let opts: any = {};
-                try { opts = typeof item.options === 'string' ? JSON.parse(item.options) : (item.options || {}); } catch {}
-                if (opts.mergedIntoId) {
-                    const parent = bookingItemsToSync.find((p: any) => p.id === opts.mergedIntoId);
-                    if (parent && parent.status && parent.status !== item.status) {
-                        updates.push({ id: item.id, status: parent.status });
-                    }
-                }
-            }
-            if (updates.length > 0) {
-                for (const upd of updates) {
-                    await supabase.from('BookingItems').update({ status: upd.status }).eq('id', upd.id);
-                }
-            }
-        }
-    }
-
-    // ─── 4. TURNQUEUE RECALCULATION ───
-    // 🔥 CRITICAL: Recalculate TurnQueue.estimated_end_time when KTV actually starts
-    if (action === 'START_TIMER' && technicianCode && turnForSync) {
-        const nowVN = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
-        const turnUpdatePayload: any = { 
-            status: 'working', 
-            start_time: nowVN,
-            current_order_id: bookingId
-        };
-        
-        // Tự động self-heal dữ liệu sổ tua nếu KTV được gán vào từ Draft Mode
-        if (allGlobalSegs && allGlobalSegs.length > 0) {
-            turnUpdatePayload.room_id = allGlobalSegs[0].seg.roomId || turnForSync.room_id || null;
-            turnUpdatePayload.bed_id = allGlobalSegs[0].seg.bedId || null;
-            turnUpdatePayload.booking_item_ids = Array.from(new Set(allGlobalSegs.map((s: any) => s.item.id)));
-            turnUpdatePayload.booking_item_id = turnUpdatePayload.booking_item_ids[0];
-        }
-
-        try {
-            if (allGlobalSegs && allGlobalSegs.length > 0) {
-                const newEnd = calculateAccurateEndTimeFromSegments(allGlobalSegs, nowVN);
-                turnUpdatePayload.estimated_end_time = newEnd;
-                console.log(`🔄 [KTV API] ${technicianCode}: Accurately calculated end from segments → ${turnUpdatePayload.estimated_end_time} (actual start: ${nowVN})`);
-            }
-        } catch (calcErr) {
-            console.error('❌ [KTV API] Failed to calculate TurnQueue estimated end time:', calcErr);
-        }
-
-        await supabase.from('TurnQueue').update(turnUpdatePayload).eq('id', turnForSync.id);
-    }
-
-    return { bookingUpdatePayload };
 }
-

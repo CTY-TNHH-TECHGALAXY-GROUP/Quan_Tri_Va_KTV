@@ -17,11 +17,12 @@ interface NotifyPayload {
     bookingId?: string | null;
 }
 
-export async function createNotification(payload: NotifyPayload) {
+export async function createNotification(payload: NotifyPayload): Promise<boolean> {
+    try {
     const supabase = getSupabaseAdmin();
     if (!supabase) {
         console.error('❌ [Notify] Supabase not initialized');
-        return;
+        return false;
     }
 
     // Insert into StaffNotifications (for Realtime + history)
@@ -38,9 +39,13 @@ export async function createNotification(payload: NotifyPayload) {
 
     if (insertErr) {
         console.error('❌ [Notify] Insert failed:', insertErr);
-        return;
+        return false;
     }
 
     console.log(`📡 [Notify] Inserted "${payload.type}" notification. Push will be handled by DB Webhook.`);
+    return true;
+    } catch (error) {
+        console.error('[Notify] Insert failed:', error);
+        return false;
+    }
 }
-

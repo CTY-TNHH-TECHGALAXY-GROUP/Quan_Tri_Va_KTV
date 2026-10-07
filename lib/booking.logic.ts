@@ -228,6 +228,30 @@ export const STRENGTH_MAP: Record<string, string> = {
  * Nhận chuỗi hoặc mảng từ mọi ngôn ngữ (VN, EN, CN, JP, KR).
  * Tự động nhận diện 'Toàn thân' khi chọn >= 8 vùng hoặc có từ khóa Toàn thân.
  */
+/**
+ * Bỏ phần "vùng tập trung / tránh" đã được ghép vào ghi chú tự do.
+ *
+ * WRB (menu VIP / Deep Body / Therapy) từng ghép "[Tập trung: Cổ, Vai | Tránh: Gối]" và nhãn
+ * "(Tứ thủ - 2 KTV)" vào `note` / `customerNotes`, trong khi focus/avoid đã có cột riêng
+ * → quầy thấy "Tập trung: …" hai lần (ca 004-03102026). Ghi chú chỉ còn phần khách gõ tay.
+ */
+export const stripBodyAreaTags = (raw: string | null | undefined): string => {
+  if (!raw || typeof raw !== 'string') return '';
+  const AREA_WORDS = '(?:Tập trung|Tránh|Né|Focus|Avoid|重点|避开|집중|피함|避ける)';
+  return raw
+    // Nhóm trong ngoặc vuông bắt đầu bằng từ khoá vùng: [Tập trung: … | Tránh: …]
+    .replace(new RegExp(`\\[\\s*${AREA_WORDS}[^\\]]*\\]`, 'gi'), ' ')
+    // Cụm rời "Tập trung: …" / "Tránh: …" tới dấu |, xuống dòng hoặc hết chuỗi
+    .replace(new RegExp(`${AREA_WORDS}\\s*[:：][^|\\n]*`, 'gi'), ' ')
+    // Nhãn chế độ KTV sinh tự động
+    .replace(/\((?:Tứ thủ[^)]*|Four Hands[^)]*|Mỗi khách[^)]*|Separate[^)]*)\)/gi, ' ')
+    // Dọn dấu nối thừa
+    .replace(/\s*\|\s*(\|\s*)+/g, ' | ')
+    .replace(/^[\s|•]+|[\s|•]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+};
+
 export const formatBodyAreas = (raw: string | string[] | undefined | null): string => {
   if (!raw) return '';
   let parts: string[] = [];

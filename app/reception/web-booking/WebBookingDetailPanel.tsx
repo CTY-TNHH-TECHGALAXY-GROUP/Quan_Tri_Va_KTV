@@ -8,10 +8,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Phone, Mail, CalendarDays, Clock, MessageSquare,
-  CheckCircle2, XCircle, Globe, Package, DollarSign, AlertTriangle,
+  CheckCircle2, XCircle, Globe, Package, DollarSign, AlertTriangle, Send,
 } from 'lucide-react';
+import { isDummyEmail } from '@/lib/customer.logic';
 import { WebBooking } from './actions';
-import { formatBodyAreas, normalizeStrength } from '@/lib/booking.logic';
+import { formatBodyAreas, normalizeStrength, stripBodyAreaTags } from '@/lib/booking.logic';
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -37,16 +38,23 @@ interface WebBookingDetailPanelProps {
   onClose: () => void;
   onConfirm: (id: string) => void;
   onReject: (id: string) => void;
+  /** Gửi lại email xác nhận — chỉ cho đơn đã xác nhận còn email thật. */
+  onResendEmail?: (id: string) => void;
+  /** Lần gửi email khi xác nhận đã lỗi (nhớ trong phiên) → nhắc quầy gửi lại. */
+  emailFailed?: boolean;
   isLoading?: boolean;
 }
 
 // ─── COMPONENT ────────────────────────────────────────────────────────────────
 
-const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoading }: WebBookingDetailPanelProps) => {
+const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, onResendEmail, emailFailed, isLoading }: WebBookingDetailPanelProps) => {
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
 
   const isNew = booking?.status === 'NEW';
+  // Đơn đã xác nhận + có email thật → cho phép gửi lại email xác nhận.
+  const canResendEmail = !!booking && !isNew && !!onResendEmail
+    && !!booking.customerEmail && !isDummyEmail(booking.customerEmail);
   const totalDuration = booking?.items.reduce((sum, i) => sum + i.duration * i.quantity, 0) ?? 0;
 
   let parsedNotes: any = null;
@@ -71,8 +79,8 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
               }
           } else if (parsedNotes.type === 'CHECKOUT_CART') {
               finalNote = 'Checkout Giỏ Hàng';
-              if (parsedNotes.vipCustomerNotes) {
-                  finalNote += ` | Ghi chú VIP: ${parsedNotes.vipCustomerNotes}`;
+              if (stripBodyAreaTags(parsedNotes.vipCustomerNotes)) {
+                  finalNote += ` | Ghi chú VIP: ${stripBodyAreaTags(parsedNotes.vipCustomerNotes)}`;
               }
               const cNote = parsedNotes.customerNote || parsedNotes.note || parsedNotes.receptionNote;
               if (cNote) {
@@ -257,7 +265,7 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
                              {item.options.focus && formatBodyAreas(item.options.focus) && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> <span className="font-medium">Tập trung:</span> {formatBodyAreas(item.options.focus)}</p>}
                              {item.options.avoid && formatBodyAreas(item.options.avoid) && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-400"></span> <span className="font-medium">Tránh vùng:</span> {formatBodyAreas(item.options.avoid)}</p>}
                              {item.options.tags && item.options.tags.length > 0 && <p className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span> <span className="font-medium">Yêu cầu khác:</span> {item.options.tags.join(', ')}</p>}
-                             {(item.options.note || item.options.customerNotes) && <p className="flex gap-1 mt-0.5 text-gray-500 italic">" {item.options.note || item.options.customerNotes} "</p>}
+                             {stripBodyAreaTags(item.options.note || item.options.customerNotes) && <p className="flex gap-1 mt-0.5 text-gray-500 italic">" {stripBodyAreaTags(item.options.note || item.options.customerNotes)} "</p>}
                           </div>
                         )}
                         {item.requestedKTVs && item.requestedKTVs.length > 0 && (
@@ -349,6 +357,25 @@ const WebBookingDetailPanel = ({ booking, onClose, onConfirm, onReject, isLoadin
                 )}
               </AnimatePresence>
             </div>
+
+            {/* Footer — đơn đã xác nhận: gửi lại email khi lần đầu lỗi */}
+            {canResendEmail && (
+              <div className="p-5 border-t border-gray-100 shrink-0 bg-gray-50/50 space-y-2">
+                {emailFailed && (
+                  <p className="text-xs font-semibold text-red-600 flex items-center gap-1.5">
+                    <AlertTriangle size={14} /> Email xác nhận chưa gửi được ở lần xác nhận. Kiểm tra SMTP / email khách rồi gửi lại.
+                  </p>
+                )}
+                <button
+                  onClick={() => onResendEmail!(booking!.id)}
+                  disabled={isLoading}
+                  className="w-full py-3 rounded-2xl font-bold text-sm text-indigo-700 bg-white border-2 border-indigo-100 hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Send size={16} />
+                  {isLoading ? 'Đang gửi...' : `Gửi lại email xác nhận tới ${booking!.customerEmail}`}
+                </button>
+              </div>
+            )}
 
             {/* Footer actions — only for NEW orders */}
             {isNew && !showRejectForm && (

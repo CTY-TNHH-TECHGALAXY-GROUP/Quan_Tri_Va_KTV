@@ -59,6 +59,8 @@ export class FinanceReportService {
         langFilter: string = 'all'
     ) {
         const commConfigs = await KtvCommissionService.getAllConfigs(supabase);
+        // A/B/C per-star deduction tables (0% by default → commission unchanged).
+        const abcTables = await KtvCommissionService.getAbcRatingTables(supabase);
 
         // 1. Fetch completed bookings in date range
         const { data: bookings, error: bErr } = await supabase
@@ -107,7 +109,7 @@ export class FinanceReportService {
                 const batch = uniqueIdsToFetch.slice(i, i + batchSize);
                 const { data: batchItems } = await supabase
                     .from('BookingItems')
-                    .select('id, bookingId, serviceId, price, tip, itemRating, technicianCodes, roomName, quantity, segments')
+                    .select('id, bookingId, serviceId, price, tip, itemRating, ktvRatings, rating_scale, technicianCodes, roomName, quantity, segments')
                     .in('bookingId', batch);
                 if (batchItems) allItems.push(...batchItems);
             }
@@ -184,7 +186,8 @@ export class FinanceReportService {
             employeeMap,
             ktvWorkTypeMap,
             allKTV,
-            commConfigs
+            commConfigs,
+            abcTables
 
         };
     }

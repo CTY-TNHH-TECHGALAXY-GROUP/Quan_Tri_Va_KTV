@@ -1,5 +1,12 @@
 import { isUtilityService } from '@/lib/booking.logic';
 import { PendingOrder, ServiceBlock, GuestBlock } from '../types';
+import { isTwoSlotSequential } from '@/lib/dispatch-status';
+// Ghép dịch vụ: đọc cả dấu vừa bấm (bộ nhớ) lẫn dấu đã lưu — dịch vụ sau về chung thẻ NGAY khi bấm ghép.
+import { mergedIntoIdOf } from '@/lib/dispatch/merged-service';
+
+// Thẻ chỉ tách theo nối tiếp khi đã LƯU. Bật "Nối tiếp" trong form mới là bản nháp
+// (options._draftSequential) — chưa được tách thẻ trước khi quầy bấm Lưu.
+const isSavedSequential = (options: any) => isTwoSlotSequential(options) && options?._draftSequential !== true;
 
 export const formatToHourMinute = (isoString: string | null | undefined): string => {
     if (!isoString) return '--:--';
@@ -41,6 +48,7 @@ export interface SubOrder {
     ktvIds: string[]; // Explicit array of KTV IDs for this suborder
     calculatedStart: string; // The dynamically calculated start time
     rating?: number | null;
+    ratingScale?: number;
     subSuffix?: string | null;
 }
 
@@ -75,7 +83,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             if (isPrivateRoom) return;
             
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
-            if (opts.mergedIntoId) return;
+            if (mergedIntoIdOf(svc)) return;
             
             if (!svc.staffList) return;
             
@@ -147,12 +155,13 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             if (isPrivateRoom) return; 
 
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
-            if (opts.mergedIntoId) return;
+            if (mergedIntoIdOf(svc)) return;
 
             if (svc.staffList) {
                 svc.staffList = svc.staffList.map(st => {
                     const origStart = st.segments?.[0]?.startTime || svc.timeStart || 'unknown';
-                    const calculatedStart = dynamicStartTimes.get(`${svc.id}_${st.ktvId}`) || origStart;
+                    const calculatedStart = isTwoSlotSequential(svc.options)
+                        ? origStart : (dynamicStartTimes.get(`${svc.id}_${st.ktvId}`) || origStart);
                     return { ...st, _calculatedStartTime: calculatedStart };
                 });
             }
@@ -200,10 +209,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             if (isPrivateRoom) return; 
 
             const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
-            if (opts.mergedIntoId) {
+            if (mergedIntoIdOf(svc)) {
                 let foundParent = false;
                 for (let group of guestGroups.values()) {
-                    if (group.services.some(s => s.id === opts.mergedIntoId)) {
+                    if (group.services.some(s => s.id === mergedIntoIdOf(svc))) {
                         group.services.push(svc);
                         foundParent = true;
                         break; // Stop searching once found
@@ -263,6 +272,10 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
             // [Antigravity] SPLIT SERVICES BY CALCULATED START TIME FOR SEQUENTIAL (NỐI TIẾP)
             const splitGroupServices: ServiceBlock[] = [];
             group.services.forEach(svc => {
+                if (isTwoSlotSequential(svc.options)) {
+                    splitGroupServices.push(svc);
+                    return;
+                }
                 if (svc.staffList && svc.staffList.length > 1) {
                     // ⚠️ Người BỊ ĐỔI RA không phải một ca nối tiếp.
                     //
@@ -342,11 +355,11 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 let dStatus = svc.status || 'NEW';
                 const opts = typeof (svc as any).options === 'string' ? JSON.parse((svc as any).options) : ((svc as any).options || {});
                 
-                if (opts.mergedIntoId) {
-                    return { ...svc, status: dStatus, _isChild: true, _parentId: opts.mergedIntoId, _splitTime: (svc as any)._splitTime };
+                if (mergedIntoIdOf(svc)) {
+                    return { ...svc, status: dStatus, _isChild: true, _parentId: mergedIntoIdOf(svc), _splitTime: (svc as any)._splitTime };
                 }
 
-                if (dStatus !== 'CANCELLED' && dStatus !== 'DONE' && dStatus !== 'PAUSED') {
+                if (!isTwoSlotSequential(svc.options) && dStatus !== 'CANCELLED' && dStatus !== 'DONE' && dStatus !== 'PAUSED') {
                     let svcAllComp = true, svcAnyStart = false, svcAllFb = true;
                     if (!svc.staffList || svc.staffList.length === 0) {
                         svcAllComp = false; svcAllFb = false;
@@ -362,7 +375,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     }
                     if (svcAllFb && svcAllComp) dStatus = 'FEEDBACK';
                     else if (svcAllComp) dStatus = 'CLEANING';
-                    else if (svcAnyStart) dStatus = 'IN_PROGRESS';
+                    // Status server là nguồn đúng: bản nháp có thể chưa nhận actualStartTime qua realtime.
+                    else if (svcAnyStart || svc.status === 'IN_PROGRESS') dStatus = 'IN_PROGRESS';
                     else dStatus = 'PREPARING';
                 }
                 return { ...svc, status: dStatus, _isChild: false, _splitTime: (svc as any)._splitTime };
@@ -412,7 +426,12 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                 // [Antigravity] To guarantee separated Kanban cards for "Nối tiếp" even if they share the same phase,
                 // we group by phase AND _splitTime.
                 let groupingKey = phase;
-                if ((svc as any)._splitTime) {
+                const sequentialParent = svc._isChild && (svc as any)._parentId
+                    ? updatedServices.find(parent => parent.id === (svc as any)._parentId)
+                    : svc;
+                if (sequentialParent && isSavedSequential(sequentialParent.options)) {
+                    groupingKey = `${phase}#item:${sequentialParent.id}`;
+                } else if ((svc as any)._splitTime) {
                     groupingKey = `${phase}#${(svc as any)._splitTime}`;
                 }
 
@@ -467,8 +486,11 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
 
                 // Create a unique ID for this SubOrder split by Phase, so they render as distinct cards
                 // Also factor in _splitTime to ensure uniqueness
-                const splitIdSuffix = servicesByPhase.size > 1 ? `_${groupingKey}` : '';
                 const baseId = guestId !== 'default' ? `${order.id}_${guestId}` : `${order.id}_guest${groupIndex}`;
+                const sequentialItem = phaseServices.find(s => isSavedSequential(s.options));
+                const splitIdSuffix = sequentialItem
+                    ? `_${sequentialItem.id}`
+                    : (servicesByPhase.size > 1 ? `_${groupingKey}` : '');
 
                 resultForOrder.push({
                     id: `${baseId}${splitIdSuffix}`,
@@ -481,6 +503,7 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     ktvIds: Array.from(phaseSubKtvIds),
                     calculatedStart: phaseCalculatedStart,
                     rating: subOrderRating,
+                    ratingScale: order.ratingScale,
                     subSuffix: calculatedSuffix
                 });
             });
@@ -530,7 +553,8 @@ export function buildOrderTimeline(orders: PendingOrder[]): SubOrder[] {
                     ktvSignature: 'utility',
                     ktvIds: [],
                     calculatedStart: order.timeBooking || order.time || '',
-                    rating: utilityRating
+                    rating: utilityRating,
+                    ratingScale: order.ratingScale
                 });
             }
         }
