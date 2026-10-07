@@ -492,8 +492,8 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
       <div className="flex-1 flex flex-col bg-white overflow-hidden relative z-10 border-r border-gray-200">
       
       {/* HEADER TỔNG */}
-      <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="px-4 md:px-5 py-3 md:py-4 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <CalendarIcon size={24} strokeWidth={2.5} className="text-indigo-600" />
           <div>
             <h2 className="text-xl font-black text-gray-900 tracking-tight">Lịch Trực Quan</h2>
@@ -526,12 +526,12 @@ const [preBookings, setPreBookings] = React.useState<any[]>([]);
           </div>
         </div>
         
-        {/* Chú thích màu sắc */}
-        <div className="hidden md:flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm">
-           <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-500"></span>{t.preBookingBlock}</div>
-           <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-red-500 border border-red-600"></span>VIP Booking</div>
-           <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-amber-400 border border-amber-500"></span>Web (Mới)</div>
-           <div className="flex items-center gap-2 text-xs font-bold text-gray-600"><span className="w-3 h-3 rounded-full bg-blue-400 border border-blue-500"></span>Khách đã xác nhận</div>
+        {/* Chú thích màu sắc (Hiển thị cả Mobile & Desktop) */}
+        <div className="flex items-center gap-2 md:gap-4 bg-white px-3 md:px-4 py-1.5 md:py-2 rounded-xl border border-gray-200 shadow-sm overflow-x-auto no-scrollbar text-[11px] md:text-xs font-bold text-gray-600 shrink-0">
+           <div className="flex items-center gap-1.5 md:gap-2 shrink-0"><span className="w-2.5 md:w-3 h-2.5 md:h-3 rounded-full bg-emerald-400 border border-emerald-500"></span>{t.preBookingBlock}</div>
+           <div className="flex items-center gap-1.5 md:gap-2 shrink-0"><span className="w-2.5 md:w-3 h-2.5 md:h-3 rounded-full bg-red-500 border border-red-600"></span>Khách VIP</div>
+           <div className="flex items-center gap-1.5 md:gap-2 shrink-0"><span className="w-2.5 md:w-3 h-2.5 md:h-3 rounded-full bg-amber-400 border border-amber-500"></span>Web mới</div>
+           <div className="flex items-center gap-1.5 md:gap-2 shrink-0"><span className="w-2.5 md:w-3 h-2.5 md:h-3 rounded-full bg-blue-400 border border-blue-500"></span>Khách đã xác nhận</div>
         </div>
       </div>
 
