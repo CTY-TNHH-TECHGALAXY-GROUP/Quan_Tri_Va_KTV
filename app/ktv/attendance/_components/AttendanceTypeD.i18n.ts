@@ -16,5 +16,7 @@ export const t = {
   suddenOffCancel: 'Huỷ',
   suddenOffConfirm: 'Xác nhận báo off',
   suddenOffDoneTitle: 'Đã báo off đột xuất hôm nay',
-  suddenOffDoneNote: 'Đã trừ 10 giờ tích lũy, tài khoản không bị khoá. Nếu đổi ý vẫn có thể bấm "Oria Xin chào" để đi làm.',
+  suddenOffDoneNote: 'Đã trừ 10 giờ tích lũy, tài khoản không bị khoá.',
+  suddenOffChangeMindOnCall: 'Muốn đi làm lại? Bấm Bật nhận đơn trước, rồi Oria Xin chào.',
+  suddenOffChangeMindNoOnCall: 'Nếu đổi ý, bấm "Oria Xin chào" để đi làm.',
 };
