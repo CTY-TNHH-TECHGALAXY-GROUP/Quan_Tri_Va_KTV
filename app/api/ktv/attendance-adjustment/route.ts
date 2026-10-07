@@ -54,10 +54,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Bạn đã đăng ký nghỉ hôm nay.' }, { status: 400 });
     }
     
-    if (registration.penalty_applied === 'SUDDEN_OFF_REPORTED') {
-      return NextResponse.json({ error: 'Bạn đã báo off đột xuất hôm nay.' }, { status: 400 });
-    }
-
     if (registration.check_in_at) {
         return NextResponse.json({ error: 'Bạn đã điểm danh, không thể điều chỉnh nữa.' }, { status: 400 });
     }

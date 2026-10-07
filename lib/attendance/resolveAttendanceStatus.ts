@@ -9,16 +9,18 @@ export function resolveAttendanceStatus(
     }
 
     if (workType === 'TYPE_D') {
-        // Lấy record mới nhất không REJECTED (records sắp mới → cũ).
-        //
-        // SUDDEN_OFF ("Báo off đột xuất") = đã RỜI ca, không phải đang ở tiệm.
-        // Trước đây nó trả 'CONFIRMED' và được ưu tiên tuyệt đối → màn KTV hiện
-        // "ĐÃ TỚI TIỆM", và KTV báo off rồi quay lại điểm danh thì kẹt mãi ở
-        // trạng thái cũ. Nay xét như CHECK_OUT, record mới hơn thắng.
+        // SUDDEN_OFF ưu tiên tuyệt đối
+        const confirmedOff = records.find(r => r.checkType === 'SUDDEN_OFF' && r.status === 'CONFIRMED');
+        if (confirmedOff) return { checkStatus: 'CONFIRMED', record: confirmedOff };
+        
+        const pendingOff = records.find(r => r.checkType === 'SUDDEN_OFF' && r.status === 'PENDING');
+        if (pendingOff) return { checkStatus: 'PENDING', record: pendingOff };
+
+        // Còn lại lấy record mới nhất không REJECTED
         const latestValid = records.find(r => r.status !== 'REJECTED');
         if (!latestValid) return { checkStatus: 'IDLE', record: null };
 
-        if (latestValid.checkType === 'CHECK_OUT' || latestValid.checkType === 'SUDDEN_OFF') {
+        if (latestValid.checkType === 'CHECK_OUT') {
             return { checkStatus: latestValid.status === 'CONFIRMED' ? 'CHECKED_OUT' : 'PENDING', record: latestValid };
         }
         

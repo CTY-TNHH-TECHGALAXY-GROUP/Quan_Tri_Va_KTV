@@ -114,25 +114,6 @@ Dịch vụ ghép ("Gộp chung KTV", 60p + 70p = 130p) đã bắt đầu, quầ
 | Nhật ký quầy | `UNMERGE_RUNNING` "A 130p → 60p (đã làm 40p) · tách S · lý do" | cùng dòng |
 | Đã kiểm | `npm run test:huy-gop-dang-lam-db` (DB TEST, chặng dạng chuỗi như prod, phân công ACTIVE): 40p / 80p / đang tạm dừng / đã xong (chặn) / lý do ngắn / chưa bắt đầu / đường lưu thường bị chặn; 9 bảng sổ KTV không đổi | |
 
-### 2.3. Sự kiện "Báo off đột xuất" — Loại D (07/10/2026)
-
-KTV Loại D đã đăng ký đi làm, **từ 07:00** bấm "Báo off đột xuất" ở màn chấm công. Không cần quầy duyệt. Quy chế mục 06: bỏ lịch đã đăng ký mà báo trễ → trừ 10 giờ. Quyết định 07/10: **chỉ trừ giờ, không bao giờ khoá**. Plan: `plans/plan_bao_off_dot_xuat_loai_d.md`.
-
-| Khía cạnh | KTV báo off |
-|---|---|
-| Giờ tích luỹ | −10h **ngay khi bấm** (case `SUDDEN_OFF_REPORTED`, sổ `KTVDPenaltyLedger` loại `ABSENT_NO_NOTICE`), chốt luôn |
-| Khoá tài khoản | Không, kể cả quỹ giờ âm; cấu hình LOCK bị ép về trừ giờ |
-| Tiền tua / lượt tua / thưởng / đánh giá | không áp dụng — chưa vào ca, không có đơn |
-| Dọn phòng / nợ phòng / chặn tan ca / hạn mức bỏ qua | không áp dụng — chưa điểm danh |
-| Hàng đợi | `goOffline`, không vào TurnQueue |
-| App KTV | thẻ "Đã báo off đột xuất"; ẩn Báo đi muộn; trạng thái = đã rời ca (không còn "ĐÃ TỚI TIỆM") |
-| Đồng hồ / tự chốt / Kanban / cùng làm với / lịch sử đơn | không áp dụng — không có đơn |
-| Nhật ký quầy | KTV Hub "NGHỈ ĐỘT XUẤT" + Lịch OFF (`KTVLeaveRequests.is_sudden_off`) — có sẵn |
-| Lý do | tự do, không bắt buộc |
-| Báo off rồi vẫn đến | cho điểm danh, giữ −10h, **không** xét trễ thêm |
-| Cron 00:00 | `penalty_applied = SUDDEN_OFF_REPORTED` → chỉ đóng sổ; có SUDDEN_OFF mà chưa đánh dấu → xử dự phòng, không khoá |
-| Đã kiểm | `scripts/qa/qa_23_bao_off_dot_xuat.ts` — 19/19, cả `TZ=UTC` |
-
 ## 3. Trạng thái triển khai (11/09/2026 · cập nhật 21/09/2026)
 
 - Hoàn tất bình thường nhận đủ tiền theo phút gán: đã sửa engine và calculator legacy trong mã nguồn; chưa deploy/backfill dữ liệu thật. Plan: `plan_fix_type_d_subsecond_commission.md`.
@@ -153,7 +134,6 @@ KTV Loại D đã đăng ký đi làm, **từ 07:00** bấm "Báo off đột xu�
 | CG (03/10) — cộng giờ âm vào sổ phạt | `scripts/qa/qa_hours_grant.ts`: netHoursByStaff với giờ âm; đối chiếu 13 KTV D: xếp hạng == thứ tự tua == earned−penalty+granted, cả `TZ=UTC` |
 | Tự Hoàn tất khi khách không chấm (14/09) — item `FEEDBACK` quá 5 phút → `DONE`, `itemRating` giữ NULL, không đụng CLEANING/CANCELLED, không lùi booking DONE | chỉ item vào chờ từ 01/09 (VN) | `scripts/qa/qa_auto_complete_feedback.cjs` — 73/73 trên DB thật trong transaction ROLLBACK (biên 31/08 23:30 ↔ 01/09 00:10 VN, số phút chờ 20 / 8 / 0 / hỏng / âm, và **chờ cả đơn con xong** sau sự cố 14/09: người sau trong chuỗi đang làm / chưa bắt đầu / bị tước, 2 KTV **song song** (một người còn làm / vừa xong / cả hai xong), dịch vụ khác còn CLEANING / IN_PROGRESS / PAUSED; **đổi KTV / kết thúc sớm / huỷ có công – không công** × nối tiếp / song song). Kanban giữ dịch vụ "Đang làm" khi một người xong: `scripts/qa/qa_kanban_sequential_hold.ts` 36/36 (nối tiếp, song song, đổi KTV, kết thúc sớm, huỷ — dựng chặng bằng `voidSegment` / `closeOpenPause` thật) + đối chiếu mọi item thật không phải FEEDBACK giữ nguyên). Migration `20260914120000` đã áp 14/09 16:24, lần chạy đầu chốt 13 dịch vụ |
 
-- **Báo off đột xuất Loại D (07/10/2026)**: nút từ 07:00, −10h, không khoá; cron đóng sổ. Kiểm bằng `scripts/qa/qa_23_bao_off_dot_xuat.ts` (cả `TZ=UTC`). Chưa deploy.
 - **Khuyến mãi +phút (02/10/2026)**: item KM đi theo luồng add-on, không sửa item đã trả tiền; kiểm bằng `scripts/qa/qa_promotion_engine.ts` (local + Supabase test, cả `TZ=UTC`). Chưa deploy production. Plan: `plan_promotion_engine_backend.md`.
 
 ### ⚠️ Còn lỗ — chưa sửa

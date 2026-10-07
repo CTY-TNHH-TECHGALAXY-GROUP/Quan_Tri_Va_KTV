@@ -24,8 +24,6 @@ export const dynamic = 'force-dynamic';
  *   NO_SHOW_NO_NOTICE        — đăng ký làm, không báo, không đến
  *   LATE_REPORTED_NO_SHOW    — đã báo trễ nhưng vẫn không đến
  *   ABSENT_REPORTED_NO_SHOW  — báo vắng trước 07:00 rồi không đến
- *   SUDDEN_OFF_REPORTED      — báo off đột xuất từ 07:00 (thường đã xử lúc bấm;
- *                              ở đây chỉ đóng sổ hoặc xử dự phòng, không khoá)
  *
  * Hai luật đăng ký mặc định KHOÁ THẲNG (quyết định 14/09,
  * plans/plan_khoa_khi_chua_dang_ky_lich_loai_d.md). Mỗi người tối đa một lần
@@ -96,7 +94,7 @@ async function run(dry = false) {
         return NextResponse.json({ success: true, enabled, dry, targetDate: ngayVuaQua, newDate: ngayMoi, results: [] });
     }
 
-    const [regMoi, regCu, diemDanh, baoOff] = await Promise.all([
+    const [regMoi, regCu, diemDanh] = await Promise.all([
         supabase.from('KTVTypeDDailyRegistration')
             .select('staff_id').eq('work_date', ngayMoi).in('staff_id', ids),
         supabase.from('KTVTypeDDailyRegistration')
@@ -104,23 +102,15 @@ async function run(dry = false) {
         supabase.from('KTVAttendance')
             .select('employeeId').eq('date', ngayVuaQua).in('employeeId', ids)
             .in('checkType', ['CHECK_IN', 'LATE_CHECKIN']),
-        // Báo off đột xuất (nút trên app từ 07:00). Lúc bấm đã trừ giờ và đánh dấu
-        // dòng đăng ký; đây là lưới dự phòng nếu bước đánh dấu thất bại, để người
-        // đã báo không bị xử như "không báo, không đến" rồi bị khoá.
-        supabase.from('KTVAttendance')
-            .select('employeeId').eq('date', ngayVuaQua).in('employeeId', ids)
-            .eq('checkType', 'SUDDEN_OFF'),
     ]);
     // Không đọc được đăng ký thì DỪNG: coi như "không ai đăng ký" là khoá cả tiệm.
     if (regMoi.error) throw regMoi.error;
     if (regCu.error) throw regCu.error;
     if (diemDanh.error) throw diemDanh.error;
-    if (baoOff.error) throw baoOff.error;
 
     const daDangKyNgayMoi = new Set((regMoi.data || []).map((r: any) => r.staff_id));
     const regCuTheoNguoi = new Map((regCu.data || []).map((r: any) => [r.staff_id, r]));
     const daDiLam = new Set((diemDanh.data || []).map((r: any) => r.employeeId));
-    const daBaoOff = new Set((baoOff.data || []).map((r: any) => r.employeeId));
 
     // Ai vừa được quầy mở khoá trong ngày đang chốt: KHÔNG xét đêm nay. Họ mất
     // phần lớn ngày hôm đó vì bị khoá, không đăng nhập được để đăng ký hay điểm
@@ -167,7 +157,6 @@ async function run(dry = false) {
             regNgayVuaQua: reg,
             coRegNgayMoi: daDangKyNgayMoi.has(staff.id),
             coDiLamNgayVuaQua: daDiLam.has(staff.id) || !!reg?.check_in_at,
-            coBaoOffDotXuat: daBaoOff.has(staff.id),
         });
 
         if (dongSoNgayVuaQua && enabled) {
