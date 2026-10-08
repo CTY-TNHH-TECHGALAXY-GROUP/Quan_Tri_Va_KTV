@@ -876,7 +876,9 @@ const KTVAttendancePage = () => {
                                 </div>
                             )}
 
-                            {formType === 'CHECK_IN' && workType === 'TYPE_D' && (
+                            {/* Ngày vừa được mở khoá, chưa có lịch: không cảnh báo "chưa đăng ký"
+                                — KTV khai giờ về ngay ở ô bên dưới. */}
+                            {formType === 'CHECK_IN' && workType === 'TYPE_D' && (todayRegistration || !unlockedToday) && (
                                 <div className="space-y-2 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                     {todayRegistration ? (
                                         (() => {
@@ -968,7 +970,6 @@ const KTVAttendancePage = () => {
                                         required
                                         disabled={!isTypeDOffCheckIn && isTypeBFlow && !!availableUntil}
                                     />
-                                    <p className="text-xs text-gray-500 font-medium">Giúp Lễ tân nắm bắt thời gian để sắp xếp khách cho bạn.</p>
                                 </div>
                             );})()}
                             
