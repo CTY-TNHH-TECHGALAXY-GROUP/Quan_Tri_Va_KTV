@@ -402,89 +402,17 @@ export const useSupportTemplates = () => {
     repeatMode: string = 'DAILY'
   ) => {
     try {
-      let finalCategoryId = categoryId;
-      
-      // 1. Create or update category
-      if (!finalCategoryId) {
-        const { data: newCat, error: catErr } = await supabase
-          .from('TaskCategories')
-          .insert({ name: categoryName, type: categoryType, repeat_mode: repeatMode })
-          .select('id')
-          .single();
-          
-        if (catErr) {
-          console.error('Error creating category:', catErr.message);
-          return false;
-        }
-        finalCategoryId = newCat.id;
-      } else {
-        const { error: catUpdateErr } = await supabase
-          .from('TaskCategories')
-          .update({ name: categoryName, type: categoryType, repeat_mode: repeatMode })
-          .eq('id', finalCategoryId);
-          
-        if (catUpdateErr) {
-          console.error('Error updating category:', catUpdateErr.message);
-          return false;
-        }
+      // Server validates and logs; removed templates are deactivated there (client no longer writes these tables).
+      const res = await fetch('/api/support/task-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryId, name: categoryName, type: categoryType, repeatMode, tasks: tasksToSave }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        console.error('saveCategoryWithTemplates failed:', json.error || res.status);
+        return false;
       }
-
-      // 2. Add new tasks or update existing
-      const savedTaskIds: string[] = [];
-
-      for (let i = 0; i < tasksToSave.length; i++) {
-        const t = tasksToSave[i];
-        if (t.name.trim() === '') continue;
-        
-        if (t.id) {
-          // Update existing
-          await supabase.from('TaskTemplates').update({
-            name: t.name,
-            requires_photo: t.requires_photo,
-            min_photo_count: t.min_photo_count,
-            sort_order: i,
-            cron_schedule: t.cron_schedule || null,
-          }).eq('id', t.id);
-          savedTaskIds.push(t.id);
-        } else {
-          // Insert new
-          const { data: newTasks } = await supabase.from('TaskTemplates').insert({
-            name: t.name,
-            category_id: finalCategoryId,
-            requires_photo: t.requires_photo,
-            min_photo_count: t.min_photo_count,
-            sort_order: i,
-            cron_schedule: t.cron_schedule || null,
-            is_active: true,
-          }).select('id');
-          if (newTasks && newTasks.length > 0) {
-            savedTaskIds.push(newTasks[0].id);
-          }
-        }
-      }
-      
-      // 3. Soft delete tasks that were removed from the UI
-      if (finalCategoryId) {
-        const { data: existingTasks } = await supabase
-          .from('TaskTemplates')
-          .select('id')
-          .eq('category_id', finalCategoryId)
-          .eq('is_active', true);
-          
-        if (existingTasks) {
-          const toDelete = existingTasks
-            .map(t => t.id)
-            .filter(id => !savedTaskIds.includes(id));
-            
-          if (toDelete.length > 0) {
-            await supabase
-              .from('TaskTemplates')
-              .update({ is_active: false })
-              .in('id', toDelete);
-          }
-        }
-      }
-      
       await Promise.all([fetchCategories(), fetchTemplates()]);
       return true;
     } catch (e) {

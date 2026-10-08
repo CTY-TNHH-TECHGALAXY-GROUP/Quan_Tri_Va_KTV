@@ -2,7 +2,7 @@
 
 > **Mức 2** — chạm DB (migration), chấm công / chặn tan ca, phân quyền, cron, "xoá" dữ liệu (đổi sang huỷ mềm).
 > Trạng thái: **ĐÃ DUYỆT 08/10** — đang làm. Nhánh: `feat/office-p0-checklist-v1` (worktree `.worktrees/office-p0-v1`, `.env.local` = Supabase TEST).
-> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ — `6a09fa3a` · bước 4 UI nhân viên ✅ — `da7c3aa2` · bước 5 UI giám sát/admin ✅ — `ca5e40c3` · bước 6 seed NH01 ✅ trên TEST (QA28 đạt, chạy lại không trùng) · bước 7 chưa làm. DB thật: **chưa apply** migration, **chưa seed**. UI **chưa xem bằng mắt khi đăng nhập**.
+> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ — `6a09fa3a` · bước 4 UI nhân viên ✅ — `da7c3aa2` · bước 5 UI giám sát/admin ✅ — `ca5e40c3` · bước 6 seed NH01 ✅ trên TEST (QA28 đạt, chạy lại không trùng) · bước 7 RLS chỉ-đọc + dọn code ✅ trên TEST (QA27 86 · QA28 · QA29 đạt). DB thật: **chưa apply** migration, **chưa seed**. UI **chưa xem bằng mắt khi đăng nhập**.
 > Thay thế: `plans/plan_nang_cap_giao_viec.md` (giữ làm lịch sử; các quyết định ở mục 9 của file đó vẫn áp dụng).
 > Bối cảnh: `plans/context_giao_viec_v2.md`. Demo duyệt UX: https://claude.ai/artifact/YJcAZMkAGQZbHNZtj5vGk3
 
@@ -538,3 +538,13 @@ Sau khi ghi CHECK_IN thành công: `after(() => EmployeeTasksService.ensureTasks
 - DB TEST: tạo tài khoản thử NH001 (Phát, TECHNICIAN, TYPE_A, giống DB thật, mật khẩu riêng cho TEST), bật `block_checkout_incomplete_tasks_TYPE_A=true` như DB thật, seed NH01 với thành viên NH001.
 - ⚠️ Khi lên thật: DB thật NH001 có `Staff.feature_flags.enable_employee_tasks = false` → không thấy menu "Công việc của tôi" trong khi chấm công vẫn bị chặn. **Phải bật cờ này** cùng lúc seed (thêm vào checklist lên thật).
 - Cập nhật nhánh test: commit trên `feat/office-p0-checklist-v1` rồi merge sang nhánh test và push nhánh test.
+
+## 17. Bước 7 (09/10/2026, DB TEST)
+
+- Probe chỉ đọc (TEST + DB thật): 8 bảng việc có policy **"Allow all access" cho public** → ai cầm khoá anon (có sẵn trong trang web) cũng thêm/sửa/xoá được việc, ảnh, kết quả duyệt.
+- Migration `20261009150000_office_p0_task_rls_read_only.sql`: thay bằng `office_client_read_only` (chỉ SELECT cho anon + authenticated) — màn hình và realtime vẫn đọc được. **Đã apply TEST** (chạy 2 lần OK). DB thật: chưa.
+- Trước khi siết, chuyển nốt ghi từ trình duyệt: form "Kho việc" → `POST /api/support/task-categories` (`saveCategoryWithTemplates`, việc bỏ khỏi danh sách = tắt, không xoá, không sửa được việc của nhóm khác); đánh dấu đã đọc thông báo → `POST /api/support/notifications` (có kiểm người).
+- Thêm kiểm quyền: `GET/POST /api/support/notifications`, `GET /api/support/room-stats`, `GET /api/support/templates/available`.
+- Xoá code chết: `app/api/support/tasks/[id]/{review,status,photos}` + `lib/support-task.service.ts` (route **không kiểm đăng nhập**, ghi bằng service role → RLS không chặn được), `app/api/support/tasks/rework` (xoá ảnh, đã thay bằng supersede), `app/support/dashboard/SupportDashboard.logic.ts`. Grep: không màn nào gọi; WebBooking / WRB nội bộ không dùng.
+- Kiểm: QA29 dùng **khoá anon thật**: đọc được 8 bảng; không thêm/sửa/xoá được nhóm việc, việc, ảnh, kết quả duyệt; không đọc được bảng Office mới.
+- ⚠️ Còn mở (không thuộc P0): `AUTH_ENFORCE_API` chưa bật ở đâu (cả Hobby) → API gọi **không có phiên** vẫn qua. RLS chặn ghi thẳng DB, nhưng API vẫn cần cờ này để chặn người chưa đăng nhập. Bucket Storage `task-photos` chưa siết.

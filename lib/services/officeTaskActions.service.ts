@@ -711,3 +711,63 @@ export const saveTemplateConfig = async (sb: any, templateId: string, input: Tem
   if (error) throw new TaskActionError(error.message, 500);
   await logTaskEvent(sb, null, actorId, 'TEMPLATE_CONFIG_CHANGED', { template_id: templateId, time_mode: mode, slots: slots.length, fields: fields.length });
 };
+
+// ============================================================
+// "Kho việc" — category + its task templates (moved from the client before RLS was narrowed)
+// ============================================================
+
+const REPEAT_MODES = ['DAILY', 'WEEKLY', 'WEEKLY_SUNDAY', 'WEEKLY_MONDAY', 'WEEKLY_TUESDAY', 'WEEKLY_WEDNESDAY', 'WEEKLY_THURSDAY', 'WEEKLY_FRIDAY', 'WEEKLY_SATURDAY'];
+
+export interface CategoryTemplatesInput {
+  categoryId?: string | null;
+  name: string;
+  type?: 'ROLE' | 'ROOM';
+  repeatMode?: string;
+  tasks: { id?: string; name: string; requires_photo?: boolean; min_photo_count?: number; cron_schedule?: string | null }[];
+}
+
+/** Create / update a category and its templates; templates removed from the list are deactivated, never deleted. */
+export const saveCategoryWithTemplates = async (sb: any, input: CategoryTemplatesInput, actorId: string | null) => {
+  const name = input.name?.trim();
+  if (!name) throw new TaskActionError('Nhập tên nhóm việc.');
+  const type = input.type === 'ROOM' ? 'ROOM' : 'ROLE';
+  const repeatMode = REPEAT_MODES.includes(input.repeatMode || '') ? input.repeatMode : 'DAILY';
+
+  let categoryId = input.categoryId || null;
+  if (categoryId) {
+    const { error } = await sb.from('TaskCategories').update({ name, type, repeat_mode: repeatMode }).eq('id', categoryId);
+    if (error) throw new TaskActionError(error.message, 500);
+  } else {
+    const { data, error } = await sb.from('TaskCategories').insert({ name, type, repeat_mode: repeatMode }).select('id').single();
+    if (error) throw new TaskActionError(error.message, 500);
+    categoryId = data.id;
+  }
+
+  const kept: string[] = [];
+  const rows = (input.tasks || []).filter(t => t?.name?.trim());
+  for (const [i, t] of rows.entries()) {
+    const base = {
+      name: t.name.trim(),
+      requires_photo: !!t.requires_photo,
+      min_photo_count: Math.max(0, Math.min(20, Number(t.min_photo_count) || 0)),
+      sort_order: i,
+      cron_schedule: t.cron_schedule?.trim() || null,
+    };
+    if (t.id) {
+      // Only templates of this category can be edited from this form.
+      const { error } = await sb.from('TaskTemplates').update(base).eq('id', t.id).eq('category_id', categoryId);
+      if (error) throw new TaskActionError(error.message, 500);
+      kept.push(t.id);
+    } else {
+      const { data, error } = await sb.from('TaskTemplates').insert({ ...base, category_id: categoryId, is_active: true }).select('id').single();
+      if (error) throw new TaskActionError(error.message, 500);
+      kept.push(data.id);
+    }
+  }
+
+  const { data: active } = await sb.from('TaskTemplates').select('id').eq('category_id', categoryId).eq('is_active', true);
+  const removed = (active || []).map((r: any) => r.id).filter((id: string) => !kept.includes(id));
+  if (removed.length) await sb.from('TaskTemplates').update({ is_active: false }).in('id', removed);
+  await logTaskEvent(sb, null, actorId, 'CATEGORY_SAVED', { category_id: categoryId, templates: kept.length, deactivated: removed.length });
+  return { categoryId, deactivated: removed.length };
+};

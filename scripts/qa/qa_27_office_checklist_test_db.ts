@@ -359,6 +359,18 @@ async function main() {
     w = await fresh(whole);
     check(rv[0].ok && w.rejected_slots?.length === 2 && svc.deriveTaskState(w) === 'FIX', 'trả lại cả việc (màn nhân viên) → mọi ô phải chụp lại', rv[0].error);
 
+    // Kho việc (bước 7: chuyển từ client lên server)
+    const saved = await act.saveCategoryWithTemplates(sb, { name: `${P}Kho`, repeatMode: 'WEEKLY', tasks: [
+        { name: 'Việc A', requires_photo: true, min_photo_count: 2, cron_schedule: '1,5' }, { name: 'Việc B' }, { name: '   ' },
+    ] }, ACTOR);
+    let kho = await must(sb.from('TaskTemplates').select('id, name, min_photo_count, cron_schedule, is_active, sort_order').eq('category_id', saved.categoryId).order('sort_order'), 'kho');
+    check(kho.length === 2 && kho[0].cron_schedule === '1,5' && kho[0].min_photo_count === 2, 'lưu nhóm việc mới + 2 việc (bỏ dòng trống)');
+    await act.saveCategoryWithTemplates(sb, { categoryId: saved.categoryId, name: `${P}Kho`, tasks: [{ id: kho[1].id, name: 'Việc B sửa' }, { id: T1.id, name: 'Lấn nhóm khác' }] }, ACTOR);
+    kho = await must(sb.from('TaskTemplates').select('id, name, is_active').eq('category_id', saved.categoryId), 'kho2');
+    check(kho.find((x: any) => x.name === 'Việc A')?.is_active === false && kho.find((x: any) => x.id !== undefined && x.name === 'Việc B sửa')?.is_active, 'việc bỏ khỏi danh sách → tắt (không xoá), việc giữ lại được sửa tên');
+    check((await must(sb.from('TaskTemplates').select('name').eq('id', T1.id), 't1'))[0].name !== 'Lấn nhóm khác', 'không sửa được việc mẫu của nhóm khác qua form này');
+    await expectErr(() => act.saveCategoryWithTemplates(sb, { name: ' ', tasks: [] }, ACTOR), 400, 'nhóm việc bắt buộc có tên');
+
     const opts = await act.listOfficeOptions(sb);
     check(opts.staff.some((x: any) => x.id === STAFF_A) && opts.categories.some((c: any) => c.id === catDaily.id), 'danh sách chọn nhân viên / nhóm việc');
 }
