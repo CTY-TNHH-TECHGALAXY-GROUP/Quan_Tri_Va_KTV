@@ -8,7 +8,7 @@ import type { QueueTask, RejectDraft, ReviewQueueLogic } from '../SupportReviews
 const BTN = 'min-h-[44px] px-4 rounded-xl text-sm font-bold disabled:opacity-40';
 const REASON_KEYS = Object.keys(t.review.reasons);
 
-interface SlotView { label: string; ref: string | null; photo: string | null; index: number | null }
+interface SlotView { label: string; ref: string | null; photo: string | null; photoId: string | null; index: number | null }
 
 /** One task waiting for review: sample ↔ submitted photo per slot, approve, or return marked slots. */
 const ReviewCard = ({ task, logic }: { task: QueueTask; logic: ReviewQueueLogic }) => {
@@ -21,8 +21,11 @@ const ReviewCard = ({ task, logic }: { task: QueueTask; logic: ReviewQueueLogic 
   const named = !!task.photo_slots && task.photo_slots.length > 0;
   const photos = task.photos || [];
   const slots: SlotView[] = named
-    ? task.photo_slots!.map((s, i) => ({ label: s.label, ref: task.refs?.[i] || null, photo: photos.find(p => p.slot === i)?.url || null, index: i }))
-    : photos.map((p, i) => ({ label: `${t.review.submitted} ${i + 1}`, ref: null, photo: p.url, index: null }));
+    ? task.photo_slots!.map((s, i) => {
+        const ph = photos.find(p => p.slot === i);
+        return { label: s.label, ref: task.refs?.[i] || null, photo: ph?.url || null, photoId: ph?.id || null, index: i };
+      })
+    : photos.map((p, i) => ({ label: `${t.review.submitted} ${i + 1}`, ref: null, photo: p.url, photoId: p.id, index: null }));
 
   const draftOf = (i: number | null) => (i === null ? undefined : drafts.find(d => d.slot === i));
 
@@ -102,6 +105,21 @@ const ReviewCard = ({ task, logic }: { task: QueueTask; logic: ReviewQueueLogic 
                   )}
                   {d && <span className="absolute bottom-1.5 right-1.5 text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-rose-600 text-white">{t.review.slotMarked}</span>}
                 </button>
+                {/* Supervisor sets the sample here; staff see the very same picture. */}
+                {!returning && task.template_id && s.index !== null && (
+                  <div className="flex flex-wrap items-center gap-x-2 text-[11px]">
+                    {!s.ref && <span className="text-amber-700 font-semibold">{t.review.noSample}</span>}
+                    {s.photoId && (
+                      <button type="button" disabled={logic.busy} onClick={() => logic.sampleFromPhoto(s.photoId!)}
+                        className="min-h-[32px] font-semibold text-emerald-800 underline disabled:opacity-40">{t.review.useAsSample}</button>
+                    )}
+                    <label className="min-h-[32px] inline-flex items-center font-semibold text-stone-600 underline cursor-pointer">
+                      {s.ref ? t.review.changeSample : t.review.uploadSample}
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) logic.uploadSample(task.template_id!, s.index!, f); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                )}
                 {d && (
                   <div className="flex flex-col gap-1">
                     <input value={d.reason || ''} placeholder={t.review.slotReasonPlaceholder} aria-label={t.review.slotReasonPlaceholder}

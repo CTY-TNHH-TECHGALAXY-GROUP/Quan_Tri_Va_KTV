@@ -32,6 +32,7 @@ export interface TaskItem {
   requires_photo: boolean;
   photo_slots: PhotoSlotDef[] | null;
   photos: TaskPhoto[];
+  /** Supervisor-set sample photo per slot (same picture the supervisor sees). */
   refs: (string | null)[];
   evidence_fields: EvidenceFieldDef[] | null;
   evidence_values: Record<string, boolean | number>;
@@ -67,7 +68,11 @@ export interface CheckoutPicture {
   override?: { reason: string; granted_by: string | null } | null;
 }
 
-export type StatusFilter = 'all' | 'open' | 'fix' | 'waiting' | 'approved';
+/** 'all' or one concrete task state — the chips are generated from the states present today. */
+export type StatusFilter = 'all' | TaskState;
+
+/** Display order of state chips (most urgent first). */
+export const STATE_CHIP_ORDER: TaskState[] = ['FIX', 'OFFERED', 'BLOCKED', 'TODO', 'DOING', 'WAITING', 'APPROVED', 'DECLINED'];
 type UploadStatus = 'uploading' | 'queued' | 'failed';
 export interface PendingUpload { taskId: string; slot: number | null; previewUrl: string; status: UploadStatus; file: File }
 
@@ -340,14 +345,14 @@ export const useSupportTasks = () => {
     return c;
   }, [tasks]);
 
-  const groupNames = useMemo(() => Array.from(new Set(tasks.map(x => x.categoryName))), [tasks]);
+  // Group names sort "1. …", "2. …" in numeric order so the list follows the shift.
+  const byName = (a: string, b: string) => a.localeCompare(b, 'vi', { numeric: true });
+  const groupNames = useMemo(() => Array.from(new Set(tasks.map(x => x.categoryName))).sort(byName), [tasks]);
+  const stateChips = useMemo(() => STATE_CHIP_ORDER.filter(st => counts[st]).map(st => ({ state: st, count: counts[st] })), [counts]);
 
   const visible = useMemo(() => tasks.filter(x => {
     if (x.state === 'CANCELLED') return false;
-    if (statusFilter === 'open' && !['OFFERED', 'TODO', 'DOING', 'BLOCKED'].includes(x.state)) return false;
-    if (statusFilter === 'fix' && x.state !== 'FIX') return false;
-    if (statusFilter === 'waiting' && x.state !== 'WAITING') return false;
-    if (statusFilter === 'approved' && x.state !== 'APPROVED') return false;
+    if (statusFilter !== 'all' && x.state !== statusFilter) return false;
     if (groupFilter !== 'all' && x.categoryName !== groupFilter) return false;
     return true;
   }), [tasks, statusFilter, groupFilter]);
@@ -364,6 +369,7 @@ export const useSupportTasks = () => {
       if (!g) { g = { name: x.categoryName, tasks: [] }; byGroup.push(g); }
       g.tasks.push(x);
     });
+    byGroup.sort((a, b) => byName(a.name, b.name));
     byGroup.forEach(g => g.tasks.sort((a, b) => (a.sortOrder - b.sortOrder) || (a.slot_time || '').localeCompare(b.slot_time || '')));
     return { top, groups: byGroup };
   }, [visible]);
@@ -380,7 +386,7 @@ export const useSupportTasks = () => {
   };
 
   return {
-    loading, tasks, checkout, counts, sections, groupNames, activeTasks,
+    loading, tasks, checkout, counts, sections, groupNames, stateChips, activeTasks,
     statusFilter, setStatusFilter, groupFilter, setGroupFilter,
     openId, setOpenId, sheetOpen, setSheetOpen, gotoTask,
     uploads, pendingUploadCount, uploadPhoto, retryUpload, removePhoto,

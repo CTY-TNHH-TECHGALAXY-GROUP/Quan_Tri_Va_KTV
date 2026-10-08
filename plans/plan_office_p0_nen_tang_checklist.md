@@ -548,3 +548,10 @@ Sau khi ghi CHECK_IN thành công: `after(() => EmployeeTasksService.ensureTasks
 - Xoá code chết: `app/api/support/tasks/[id]/{review,status,photos}` + `lib/support-task.service.ts` (route **không kiểm đăng nhập**, ghi bằng service role → RLS không chặn được), `app/api/support/tasks/rework` (xoá ảnh, đã thay bằng supersede), `app/support/dashboard/SupportDashboard.logic.ts`. Grep: không màn nào gọi; WebBooking / WRB nội bộ không dùng.
 - Kiểm: QA29 dùng **khoá anon thật**: đọc được 8 bảng; không thêm/sửa/xoá được nhóm việc, việc, ảnh, kết quả duyệt; không đọc được bảng Office mới.
 - ⚠️ Còn mở (không thuộc P0): `AUTH_ENFORCE_API` chưa bật ở đâu (cả Hobby) → API gọi **không có phiên** vẫn qua. RLS chặn ghi thẳng DB, nhưng API vẫn cần cờ này để chặn người chưa đăng nhập. Bucket Storage `task-photos` chưa siết.
+
+## 18. Chỉnh UI sau khi user xem bản Hobby (09/10/2026)
+
+- Nền trắng: `/support/tasks`, `/admin/support/{reviews,positions,templates}` (không đổi `AppLayout` chung).
+- Tên nhóm bỏ tiền tố "NH01 · " (`1. …` → `7. …`, `8. Việc theo thứ trong tuần`); seed tự đổi tên nhóm cũ (giữ id, bộ việc, việc đã giao). TEST đã đổi.
+- Trạng thái tách khỏi nhóm việc: chip **Trạng thái** sinh từ các trạng thái đang có (chấm màu như thẻ việc, lọc đúng 1 trạng thái); **Nhóm việc** là ô chọn trung tính có biểu tượng thư mục; tiêu đề nhóm dạng thư mục + số việc; thẻ trong nhóm không lặp tên nhóm.
+- **Ảnh mẫu do giám sát đặt, 2 phía cùng thấy** (user chốt): ô trống hiện ảnh mẫu to + nút "Chụp giống mẫu", "Xem mẫu"; đã chụp thì mẫu thu về góc. Không có ảnh tự động thay thế. Đọc mẫu **hiện tại** của việc mẫu (`resolveSlotRefs`) nên đặt xong là việc đã giao hôm nay cũng thấy. Giám sát đặt mẫu ngay trên thẻ duyệt: "Đặt làm ảnh mẫu" (chép ảnh đạt sang `refs/`) hoặc "Tải ảnh mẫu"; API `POST /api/support/task-template-config/sample`.

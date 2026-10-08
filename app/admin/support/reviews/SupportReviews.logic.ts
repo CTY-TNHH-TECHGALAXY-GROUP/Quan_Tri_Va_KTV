@@ -20,6 +20,7 @@ export interface RejectDraft { slot: number; reason?: string; mark?: SlotMark | 
 export interface QueueTask {
   id: string;
   name: string;
+  template_id: string | null;
   task_type: string;
   task_date: string;
   assignee_id: string;
@@ -149,6 +150,21 @@ export const useReviewQueue = () => {
   const cancelDeclined = (taskId: string) =>
     run(() => sendJson(`/api/support/tasks?taskId=${encodeURIComponent(taskId)}&reason=${encodeURIComponent(t.declined.cancelReason)}`, 'DELETE'), t.declined.cancelled);
 
+  /** Sample photo for a template slot — from a submitted photo, or an uploaded file. Both sides see it. */
+  const sampleFromPhoto = (photoId: string) =>
+    run(() => sendJson('/api/support/task-template-config/sample', 'POST', { photoId }), t.review.sampleSet);
+
+  const uploadSample = (templateId: string, slot: number, file: File) =>
+    run(async () => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', 'ref');
+      const res = await fetch('/api/support/tasks/rework-photo', { method: 'POST', body: fd });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.error || t.common.error);
+      await sendJson('/api/support/task-template-config/sample', 'POST', { templateId, slot, refPath: json.path });
+    }, t.review.sampleSet);
+
   const grantOverride = (staffId: string, reason: string) =>
     run(() => sendJson('/api/support/checkout-override', 'POST', { staffId, reason }), t.people.allowed);
 
@@ -170,7 +186,7 @@ export const useReviewQueue = () => {
     selected, toggleSelect, selectAll,
     busy, toast, lightbox, setLightbox,
     nameOf, shiftEndOf, refresh: fetchQueue,
-    approve, returnTask, resolveBlocked, reassign, cancelDeclined, grantOverride,
+    approve, returnTask, resolveBlocked, reassign, cancelDeclined, grantOverride, sampleFromPhoto, uploadSample,
   };
 };
 

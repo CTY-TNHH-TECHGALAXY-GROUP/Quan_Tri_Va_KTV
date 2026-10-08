@@ -22,7 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   DAILY_BLOCKS, WEEKLY_ITEMS, MULTI_TIMES, EVIDENCE_OVERRIDES, buildPhotoSlots,
-  dailyCategoryName, WEEKLY_CATEGORY, SET_DAY, SET_WEEK, POSITION, type Row,
+  dailyCategoryName, legacyCategoryNames, WEEKLY_CATEGORY, SET_DAY, SET_WEEK, POSITION, type Row,
 } from './nh01_checklist.data';
 
 const TEST_REF = 'eknggruuiuadwldacpmb';
@@ -84,7 +84,16 @@ const spec = (row: Row, i: number, weeklyDays: number[] | null): TemplateSpec =>
 };
 
 async function upsertCategory(name: string, repeatMode: 'DAILY' | 'WEEKLY') {
-  const found = await must<any[]>(sb.from('TaskCategories').select('id, repeat_mode').eq('name', name), `find cat ${name}`);
+  let found = await must<any[]>(sb.from('TaskCategories').select('id, repeat_mode').eq('name', name), `find cat ${name}`);
+  if (!found.length) {
+    // Rename a category created under an older name instead of creating a second one.
+    const legacy = await must<any[]>(sb.from('TaskCategories').select('id, repeat_mode, name').in('name', legacyCategoryNames(name)), `find legacy ${name}`);
+    if (legacy.length) {
+      log(`  ~ đổi tên "${legacy[0].name}" → "${name}"`);
+      if (APPLY) await must(sb.from('TaskCategories').update({ name }).eq('id', legacy[0].id).select('id'), 'rename cat');
+      found = legacy;
+    }
+  }
   if (found.length) {
     if (found[0].repeat_mode !== repeatMode && APPLY) await must(sb.from('TaskCategories').update({ repeat_mode: repeatMode }).eq('id', found[0].id).select(), 'cat mode');
     return { id: found[0].id as string, created: false };
