@@ -531,3 +531,10 @@ Sau khi ghi CHECK_IN thành công: `after(() => EmployeeTasksService.ensureTasks
   - Probe chỉ đọc 09/10: NH001 có **120 routine cũ đang bật**, chỉ **3** trùng đúng tên (lời văn cũ khác); 37 không gắn phòng (bản cũ của chính checklist NH01: "Trước 09:00", "Từ 09:00", "Bàn giao kết ca", "Định kỳ tuần") + **83 theo phòng** ("CÔNG VIỆC HẰNG NGÀY": giấy toilet, nước rửa tay, kính… từng phòng).
   - Chỉ tắt theo tên (`name`) → NH001 nhận cả ~45 việc mới lẫn ~117 việc cũ mỗi ngày (trùng ý). **User chốt 09/10/2026: `all`** — NH001 chỉ làm theo checklist của file artifact; tắt cả 120 routine cũ (không xoá).
 - User chốt 09/10/2026: trước mắt chạy trên **Vercel Hobby + DB TEST** (nhánh `test/*` với `vercel.json` crons rỗng, không merge).
+
+## 16. Môi trường thử (09/10/2026)
+
+- Vercel Hobby `test-98d3c5e6/quan-tri-va-ktv`, nhánh `test/office-p0-hobby-20261009` (= `feat/office-p0-checklist-v1` + `vercel.json` crons rỗng, **không merge**). Link: https://quan-tri-va-ktv-git-test-office-p0-hobby-20261009-test-98d3c5e6.vercel.app (sau Vercel SSO).
+- DB TEST: tạo tài khoản thử NH001 (Phát, TECHNICIAN, TYPE_A, giống DB thật, mật khẩu riêng cho TEST), bật `block_checkout_incomplete_tasks_TYPE_A=true` như DB thật, seed NH01 với thành viên NH001.
+- ⚠️ Khi lên thật: DB thật NH001 có `Staff.feature_flags.enable_employee_tasks = false` → không thấy menu "Công việc của tôi" trong khi chấm công vẫn bị chặn. **Phải bật cờ này** cùng lúc seed (thêm vào checklist lên thật).
+- Cập nhật nhánh test: commit trên `feat/office-p0-checklist-v1` rồi merge sang nhánh test và push nhánh test.
