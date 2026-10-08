@@ -4,55 +4,32 @@ import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Legacy endpoint called by the old admin review UI after "Yêu cầu làm lại".
+ * Office P0: photos are NO LONGER deleted (evidence + round history) — they are only
+ * marked superseded so the employee starts the round with empty slots.
+ * New code uses POST /api/support/tasks/review, which does this itself. Remove with the old UI (step 7).
+ */
 export async function POST(request: Request) {
   try {
-    // Xoá toàn bộ ảnh đã nộp của task để làm lại — chỉ admin support.
     await requirePermission('support_tasks_admin');
     const { taskId } = await request.json();
-
     if (!taskId) {
       return NextResponse.json({ success: false, error: 'Missing taskId' }, { status: 400 });
     }
-
     const supabase = getSupabaseAdmin();
     if (!supabase) {
       return NextResponse.json({ success: false, error: 'Supabase not initialized' }, { status: 500 });
     }
-
-    // 1. Fetch existing photos for the task
-    const { data: photos, error: fetchErr } = await supabase
+    const { error } = await supabase
       .from('TaskPhotos')
-      .select('id, storage_path')
-      .eq('task_id', taskId);
-
-    if (fetchErr) {
-      console.error('Error fetching photos to delete:', fetchErr.message);
-      return NextResponse.json({ success: false, error: fetchErr.message }, { status: 500 });
+      .update({ superseded_at: new Date().toISOString() })
+      .eq('task_id', taskId)
+      .is('superseded_at', null);
+    if (error) {
+      console.error('Error superseding photos:', error.message);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
-
-    if (photos && photos.length > 0) {
-      // 2. Delete from Storage
-      const pathsToDelete = photos.map(p => p.storage_path);
-      const { error: storageErr } = await supabase.storage
-        .from('task-photos')
-        .remove(pathsToDelete);
-
-      if (storageErr) {
-        console.error('Error deleting from storage:', storageErr.message);
-      }
-
-      // 3. Delete from Database
-      const { error: dbErr } = await supabase
-        .from('TaskPhotos')
-        .delete()
-        .in('id', photos.map(p => p.id));
-
-      if (dbErr) {
-        console.error('Error deleting from DB:', dbErr.message);
-        return NextResponse.json({ success: false, error: dbErr.message }, { status: 500 });
-      }
-    }
-
     return NextResponse.json({ success: true });
   } catch (error: any) {
     const authRes = authErrorResponse(error);

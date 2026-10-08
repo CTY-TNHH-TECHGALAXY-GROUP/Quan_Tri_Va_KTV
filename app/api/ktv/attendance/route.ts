@@ -1,5 +1,5 @@
 import { isWithdrawIntentAllowed } from '@/lib/attendance/withdrawIntent';
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { AttendanceSchema } from '@/lib/schemas/ktv.schema';
 import { createNotification } from '@/lib/notification-helper';
@@ -12,6 +12,7 @@ import { FEATURE_MAINTENANCE_MESSAGE } from '@/lib/constants/featureMaintenance.
 import { SHIFT_TYPES, addMinutesToTime, hasReachedShiftEnd } from '@/lib/shift.constants';
 import { vnNow } from '@/lib/vn-time';
 import { format } from 'date-fns';
+import { EmployeeTasksService, getCheckoutBlockers } from '@/lib/services/employeeTasks.service';
 
 // 🔧 CONFIG
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -150,33 +151,16 @@ export async function POST(request: Request) {
                 .eq('id', staffCode)
                 .single();
 
-            let shouldBlock = false;
-            if (staffRow?.work_type) {
-                const { data: config } = await supabase
-                    .from('SystemConfigs')
-                    .select('value')
-                    .eq('key', `block_checkout_incomplete_tasks_${staffRow.work_type}`)
-                    .maybeSingle();
-                shouldBlock = !!config?.value;
-            }
-
-            if (shouldBlock) {
-                const nowUtc = new Date();
-                const vnNow = new Date(nowUtc.getTime() + VN_OFFSET_MS);
-                const vnDateStr = vnNow.toISOString().slice(0, 10);
-                const todayStartIso = new Date(`${vnDateStr}T00:00:00+07:00`).toISOString();
-
-                const { data: incompleteTasks, error: taskErr } = await supabase
-                    .from('Tasks')
-                    .select('id')
-                    .eq('assignee_id', staffCode)
-                    .gte('created_at', todayStartIso)
-                    .neq('inspection_status', 'PASSED');
-
-                if (incompleteTasks && incompleteTasks.length > 0) {
-                    return NextResponse.json({ 
-                        success: false, 
-                        error: `Bạn còn ${incompleteTasks.length} công việc trong ngày chưa được Admin nghiệm thu. Vui lòng hoàn thành và chờ Admin xác nhận trước khi tan ca!` 
+            // Office P0: one checkout gate shared with attendance/status and both on-call routes.
+            // "Báo off đột xuất" is exempt (decision 08/10/2026).
+            const isSuddenOffCheckout = selectedShiftType === 'SUDDEN_OFF_CHECKOUT';
+            if (!isSuddenOffCheckout && staffRow?.work_type) {
+                const blockers = await getCheckoutBlockers(supabase, staffCode, staffRow.work_type);
+                if (blockers.count > 0) {
+                    return NextResponse.json({
+                        success: false,
+                        error: `Bạn còn ${blockers.count} việc chưa được duyệt. Mở "Việc của tôi" để xem và hoàn thành trước khi tan ca.`,
+                        taskBlockers: blockers.items,
                     }, { status: 403 });
                 }
             }
@@ -609,6 +593,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: insertError.message }, { status: 500 });
         }
         logCheckpoint('step3_insert_done', { recordId: record?.id });
+
+        // Office P0: generate today's checklist at check-in, after the response — a failure
+        // here must never affect check-in itself.
+        if (checkType === 'CHECK_IN' || checkType === 'LATE_CHECKIN') {
+            after(() => EmployeeTasksService.ensureTasksForDate(staffCode).catch(e => console.error('[attendance] ensureTasksForDate', e)));
+        }
 
         // ─── Step 4: TurnQueue & User Shift Update (if auto-approved) ─────
         if (isAutoApprove) {

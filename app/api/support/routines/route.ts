@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requirePermission, authErrorResponse } from '@/lib/auth-server';
+import { cancelTodayTasksOfRoutine } from '@/lib/services/officeTaskActions.service';
+import { sessionActor } from '../_lib/taskRoute';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +14,7 @@ const supabase = createClient(
 // DELETE: Remove a routine
 export async function GET(request: Request) {
   try {
+    await requirePermission('support_tasks_admin');
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get('employeeId');
 
@@ -32,6 +35,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data });
   } catch (err: any) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     console.error('Unexpected error in GET /api/support/routines:', err.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -39,8 +44,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await requirePermission('support_tasks_admin');
     const body = await request.json();
     const { employeeId, templateId, roomId } = body;
+    // Office P0: ADD = assign on top of the position template, EXCLUDE = remove a template task for this person.
+    const mode = body.mode === 'EXCLUDE' ? 'EXCLUDE' : 'ADD';
 
     if (!employeeId || !templateId) {
       return NextResponse.json({ error: 'employeeId and templateId are required' }, { status: 400 });
@@ -60,14 +68,14 @@ export async function POST(request: Request) {
     let data, error;
     if (existing) {
       const res = await supabase.from('EmployeeRoutines')
-        .update({ is_active: true })
+        .update({ is_active: true, mode })
         .eq('id', existing.id)
         .select()
         .single();
       data = res.data; error = res.error;
     } else {
       const res = await supabase.from('EmployeeRoutines')
-        .insert({ employee_id: employeeId, template_id: templateId, room_id: roomId || null, is_active: true })
+        .insert({ employee_id: employeeId, template_id: templateId, room_id: roomId || null, is_active: true, mode })
         .select()
         .single();
       data = res.data; error = res.error;
@@ -80,6 +88,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data });
   } catch (err: any) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     console.error('Unexpected error in POST /api/support/routines:', err);
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
   }
@@ -87,7 +97,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    // Gỡ routine (kéo theo xoá task hôm nay) → quyền quản trị hỗ trợ.
+    // Gỡ routine (kéo theo huỷ mềm task hôm nay chưa làm) → quyền quản trị hỗ trợ.
     await requirePermission('support_tasks_admin');
 
     const { searchParams } = new URL(request.url);
@@ -105,23 +115,11 @@ export async function DELETE(request: Request) {
       .single();
 
     if (routine) {
-      // 2. Delete generated tasks for today that are NOT_STARTED
-      const d1 = new Date(); d1.setHours(0, 0, 0, 0); const todayStart = d1.toISOString();
-      const d2 = new Date(); d2.setHours(23, 59, 59, 999); const todayEnd = d2.toISOString();
-
-      let q = supabase
-        .from('Tasks')
-        .delete()
-        .eq('assignee_id', routine.employee_id)
-        .eq('template_id', routine.template_id)
-        .eq('status', 'NOT_STARTED')
-        .gte('created_at', todayStart)
-        .lte('created_at', todayEnd);
-        
-      if (routine.room_id) q = q.eq('room_id', routine.room_id);
-      else q = q.is('room_id', null);
-      
-      await q;
+      // 2. Office P0: today's untouched tasks of this routine are soft-cancelled (logged), never deleted.
+      const { data: userRow } = await supabase.from('Users').select('code').eq('id', routine.employee_id).maybeSingle();
+      const staffIds = Array.from(new Set([routine.employee_id, userRow?.code].filter(Boolean))) as string[];
+      const { actorId } = await sessionActor();
+      await cancelTodayTasksOfRoutine(supabase, staffIds, routine.template_id, routine.room_id || null, actorId);
     }
 
     // 3. Delete the routine

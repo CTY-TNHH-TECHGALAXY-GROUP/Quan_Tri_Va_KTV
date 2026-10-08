@@ -1,3 +1,4 @@
+import { getCheckoutBlockers, type CheckoutBlockers } from '@/lib/services/employeeTasks.service';
 import { canRequestWithdrawIntent } from '@/lib/attendance/withdrawIntent';
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -152,8 +153,10 @@ export async function GET(request: Request) {
             }
         }
 
-        // ─── Fetch Incomplete Tasks ───
+        // ─── Fetch Incomplete Tasks (Office P0: shared checkout gate) ───
         let incompleteTasksCount = 0;
+        let taskBlockers: CheckoutBlockers['items'] = [];
+        let checkoutOverride: CheckoutBlockers['override'] = null;
         if (userRow?.code) {
              const { data: staffRow } = await supabase
                  .from('Staff')
@@ -161,30 +164,11 @@ export async function GET(request: Request) {
                  .eq('id', userRow.code)
                  .maybeSingle();
 
-             let shouldBlock = false;
              if (staffRow?.work_type) {
-                 const { data: config } = await supabase
-                     .from('SystemConfigs')
-                     .select('value')
-                     .eq('key', `block_checkout_incomplete_tasks_${staffRow.work_type}`)
-                     .maybeSingle();
-                 shouldBlock = !!config?.value;
-             }
-
-             if (shouldBlock) {
-                 const vnDateStr = vnNow.toISOString().slice(0, 10);
-                 const todayStartIso = new Date(`${vnDateStr}T00:00:00+07:00`).toISOString();
-
-                 const { data: incompleteTasks } = await supabase
-                     .from('Tasks')
-                     .select('id')
-                     .eq('assignee_id', userRow.code)
-                     .gte('created_at', todayStartIso)
-                     .neq('inspection_status', 'PASSED');
-                     
-                 if (incompleteTasks) {
-                     incompleteTasksCount = incompleteTasks.length;
-                 }
+                 const blockers = await getCheckoutBlockers(supabase, userRow.code, staffRow.work_type, { ensure: false });
+                 incompleteTasksCount = blockers.count;
+                 taskBlockers = blockers.items;
+                 checkoutOverride = blockers.override ?? null;
              }
         }
 
@@ -298,11 +282,11 @@ export async function GET(request: Request) {
                     }
                 }
             }
-            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, unlockedToday, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+            return NextResponse.json({ success: true, checkStatus: 'IDLE', record: null, workType, availableUntil, incompleteTasksCount, taskBlockers, checkoutOverride, roomDebt, guestArrivalLock, lockInfo, todayRegistration, unlockedToday, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
         }
 
         const { checkStatus, record } = resolveAttendanceStatus(records, workType);
-        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, roomDebt, guestArrivalLock, lockInfo, todayRegistration, unlockedToday, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
+        return NextResponse.json({ success: true, checkStatus, record, workType, availableUntil, incompleteTasksCount, taskBlockers, checkoutOverride, roomDebt, guestArrivalLock, lockInfo, todayRegistration, unlockedToday, shiftExtension, businessDate: businessDateStr, cutoffHours, canRequestWithdraw: canRequestWithdrawIntent({ flags: withdrawFlags, alreadyCheckedInToday: daDiemDanhHomNay }), withdrawWalletOff });
 
     } catch (error: any) {
         console.error('❌ [Attendance Status] Unhandled error:', error);

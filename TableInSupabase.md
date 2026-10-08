@@ -782,6 +782,8 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `name` | text | Tên hạng mục (VD: Vệ sinh phòng, Châm thêm tinh dầu) |
 | `description` | text | Mô tả chi tiết |
 | `type` | text | Loại nhóm: `ROLE` (Cho nhân sự) hoặc `ROOM` (Cho phòng). Default: `ROLE`. |
+| `repeat_mode` | text | Lặp: `DAILY` / `WEEKLY` (+ `TaskTemplates.cron_schedule` = "1,3,5") / `WEEKLY_<THỨ>`. Default `DAILY`. |
+| `org_id` | text | [OFFICE P0] Tổ chức, default `'ORIA'` |
 | `is_active` | boolean | Trạng thái hiển thị |
 | `created_at` | timestamptz | |
 
@@ -797,6 +799,16 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `min_photo_count` | integer | Số ảnh tối thiểu (Default: 1) |
 | `cron_schedule` | text | Lịch cron chạy ngầm (VD: `0 0 * * *`) |
 | `sort_order` | integer | (MỚI) Thứ tự sắp xếp công việc trong nhóm |
+| `standard_text` | text | [OFFICE P0] Tiêu chuẩn đạt |
+| `sop` | jsonb | [OFFICE P0] Các bước hướng dẫn `["..."]` |
+| `photo_slots` | jsonb | [OFFICE P0] Ô ảnh có nhãn `[{"label":"Sảnh","ref_path":"..."}]`; null → `min_photo_count` ô không nhãn |
+| `evidence_fields` | jsonb | [OFFICE P0] `[{"kind":"check","label":".."},{"kind":"count","label":"..","unit":"cái","min":30}]` |
+| `time_mode` | text | [OFFICE P0] `FREE` / `DEADLINE` / `WINDOW` / `MULTI`. Default `FREE` |
+| `due_time`, `window_start`, `window_end` | time | [OFFICE P0] Hạn / khung giờ |
+| `multi_times` | jsonb | [OFFICE P0] Mốc của `MULTI`, VD `["09:00","13:00","17:00"]` |
+| `blocks_checkout` | boolean | [OFFICE P0] Chặn tan ca khi chưa duyệt. Default true |
+| `requires_review` | boolean | [OFFICE P0] Cần giám sát duyệt. Default true |
+| `allow_carry_over` | boolean | [OFFICE P0] Chưa xong thì tồn sang hôm sau. Default true |
 | `is_active` | boolean | Bật/tắt việc chạy tự động |
 | `created_by` | text | Admin tạo |
 | `created_at` | timestamptz | |
@@ -809,6 +821,7 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `employee_id` | text FK | Trỏ về `Staff` |
 | `template_id` | uuid FK | Trỏ về `TaskTemplates` |
 | `room_id` | text FK | (MỚI) Trỏ về `Rooms`. Để null nếu là việc chung. |
+| `mode` | text | [OFFICE P0] `ADD` (gán thêm — hành vi cũ) / `EXCLUDE` (bỏ việc của template vị trí). Default `ADD` |
 | `is_active` | boolean | Bật/tắt việc chạy tự động |
 | `created_at` | timestamptz | |
 
@@ -831,13 +844,30 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `room_id` | text FK | Phòng phát sinh công việc (Trỏ bảng `Rooms`) |
 | `name` | text | Tên công việc (Lấy từ Template hoặc nhập tay) |
 | `task_type` | text | `FIXED` (Định kỳ) / `AD-HOC` (Đột xuất) |
-| `assignee_id` | text FK | NV được phân công (Trỏ bảng `Staff`) |
-| `status` | text | Trạng thái NV: `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` |
+| `assignee_id` | text FK | NV được phân công (Trỏ bảng `Staff`). ⚠️ FK `Tasks_assignee_id_fkey` **vẫn còn** trên TEST và DB thật (probe 08/10/2026) — migration `20260727182200_drop_tasks_assignee_fk.sql` chưa từng apply. |
+| `status` | text | Trạng thái NV: `NOT_STARTED` / `IN_PROGRESS` / `PAUSED` (= báo vướng, Office P0) / `COMPLETED` / `UNABLE_TO_COMPLETE` |
 | `inspection_status` | text | Trạng thái QL: `PENDING_REVIEW` / `PASSED` / `REWORK_REQUIRED` / `FAILED` |
 | `due_at` | timestamptz | Hạn chót hoàn thành |
 | `priority` | text | `LOW` / `NORMAL` / `HIGH` |
 | `sort_order` | integer | (MỚI) Thứ tự sắp xếp lấy từ Template |
 | `current_review_round` | integer | Vòng nghiệm thu hiện tại (Khởi tạo 0) |
+| `min_photo_count` | integer | Số ảnh tối thiểu snapshot (migration 20260804) |
+| `task_date` | date | [OFFICE P0] Ngày nghiệp vụ VN (backfill từ `created_at`) |
+| `slot_time` | text | [OFFICE P0] Mốc của việc `MULTI` |
+| `dedupe_key` | text UNIQUE | [OFFICE P0] Chống sinh trùng: `F\|staff\|template\|room\|date\|slot`; NULL với dữ liệu cũ / đột xuất |
+| `position_id` | uuid | [OFFICE P0] Vị trí sinh ra việc |
+| `standard_text`, `sop`, `photo_slots`, `evidence_fields`, `time_mode`, `blocks_checkout`, `requires_review`, `allow_carry_over` | | [OFFICE P0] Snapshot cấu hình việc mẫu lúc giao |
+| `evidence_values` | jsonb | [OFFICE P0] Giá trị số liệu / xác nhận, default `{}` |
+| `window_start_at`, `window_end_at` | timestamptz | [OFFICE P0] Khung nộp của `WINDOW` |
+| `acceptance_status` | text | [OFFICE P0] `AUTO` / `PENDING` / `ACCEPTED` / `DECLINED`. Default `AUTO` |
+| `accepted_at` | timestamptz | [OFFICE P0] |
+| `declined_reason` | text | [OFFICE P0] |
+| `assigned_by` | text | [OFFICE P0] Người giao (đột xuất) |
+| `submitted_at` | timestamptz | [OFFICE P0] Lúc gửi duyệt |
+| `reviewed_by`, `reviewed_at` | text, timestamptz | [OFFICE P0] Người / lúc duyệt gần nhất |
+| `rejected_slots` | jsonb | [OFFICE P0] Ô bị trả lại vòng hiện tại `[{"slot":1,"reason":"..","mark":{"x":62,"y":48}}]` |
+| `blocked_reason`, `blocked_at` | text, timestamptz | [OFFICE P0] Báo vướng |
+| `cancelled_at`, `cancel_reason` | timestamptz, text | [OFFICE P0] Huỷ mềm (thay DELETE) |
 | `created_by` | text | Admin/Cron tạo |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
@@ -852,6 +882,8 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `storage_path` | text | Đường dẫn trên Supabase Storage |
 | `is_submitted` | boolean | Cờ lưu nháp. `false` = NV mới chụp chưa bấm Nộp. `true` = Đã nộp. |
 | `review_round` | integer | Vòng nộp ảnh (dành cho Rework) |
+| `slot_index` | integer | [OFFICE P0] Ô ảnh (theo `Tasks.photo_slots`) |
+| `superseded_at` | timestamptz | [OFFICE P0] Ảnh đã bị thay — giữ làm lịch sử, không xoá |
 | `created_at` | timestamptz | |
 
 ### 24. TaskReviews
@@ -866,6 +898,24 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | `note` | text | Ghi chú/Lý do yêu cầu làm lại |
 | `photo_url` | text | Ảnh minh chứng khi yêu cầu làm lại (Lưu đường dẫn Storage) |
 | `created_at` | timestamptz | |
+| `reason_code` | text | [OFFICE P0] Lý do chọn sẵn (Chưa sạch / Sai vị trí / ...) |
+| `rejected_slots` | jsonb | [OFFICE P0] Ô bị trả lại + vị trí khoanh |
+
+### 24.1. Office P0 — bảng mới
+**[OFFICE P0 — migration `20261009090000_office_p0_checklist_foundation.sql`: đã apply TEST 08/10/2026, CHƯA apply DB thật → coi như chưa tồn tại trên production]**
+Chỉ đi qua API (service role); RLS bật, không mở policy cho client.
+
+| Bảng | Cột chính | Nhiệm vụ |
+|---|---|---|
+| `OfficePositions` | `id`, `org_id`, `branch`, `name`, `shift_start`, `shift_end`, `fixed_accept_policy`, `adhoc_accept_policy`, `is_active` | Vị trí. Chính sách nhận việc do **admin cấu hình**: `MANDATORY` (bắt buộc, không từ chối) / `ACCEPT_REQUIRED` (phải bấm Nhận) / `ACCEPT_OR_DECLINE` |
+| `OfficePositionMembers` | `position_id`, `staff_id`, `is_active` — UNIQUE(position_id, staff_id) | Ai thuộc vị trí |
+| `OfficeTemplateSets` | `id`, `org_id`, `name`, `description`, `version`, `is_active` | Template = bộ việc |
+| `OfficeTemplateSetCategories` | `set_id`, `category_id`, `sort_order` | Bộ việc gồm các nhóm việc (`TaskCategories`) |
+| `OfficePositionTemplateSets` | `position_id`, `set_id` | Vị trí dùng bộ việc nào |
+| `TaskEvents` | `task_id`, `actor_id`, `type`, `payload`, `created_at` | Nhật ký chỉ ghi thêm (giao, nhận, từ chối, nộp, duyệt, trả lại, vướng, huỷ) |
+| `CheckoutOverrides` | `staff_id`, `business_date`, `reason`, `granted_by` — UNIQUE(staff_id, business_date) | Giám sát cho tan ca khi còn việc chưa duyệt |
+
+Realtime: `Tasks` được thêm vào `supabase_realtime`.
 
 
 ### 9. KTVMonthlyLedger (Cuốn Tháng)
@@ -1057,4 +1107,56 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 **RPC đọc [v2]**: `promo_order_candidates` (đơn mở cả spa trong ngày làm việc + `canApply` từ `promo_check_apply`), `promo_search_passes`, `promo_list_usages`, `promo_search_customers`, `promo_overview`, `promo_public_vouchers_by_email` (Web Booking History).
 **Cron**: `promo_expire_passes_job` 00:05 VN — pass quá hạn → EXPIRED, campaign quá hạn → ENDED (apply vẫn luôn kiểm `now()`).
 **Item KM trên `BookingItems`**: `options = {isPromotion, promotionUsageId, promotionPassId, promotionCampaignCode, duration, discountAmount, isAddon, isPaid}`. FREE_MINUTES: giá 0, `WAITING`. Giảm giá: dịch vụ `is_utility`, giá âm, `DONE`, `Bookings.totalAmount` trừ tương ứng.
+
+### [v15] E-Voucher giới hạn số lượng phát trên Web Booking — migration `20261008100000_promotion_web_claim_v15.sql`
+
+> ⚠️ **Đã chạy trên TEST (08/10/2026), CHƯA chạy trên DB thật.** Plan: `plans/plan_evoucher_webbooking_gioi_han.md`. QA: `scripts/qa/qa_promotion_web_claim.ts`.
+
+**PromotionCampaigns (thêm cột)**:
+
+| Cột | Kiểu | Mô tả |
+|-----|------|-------|
+| `distribution_channel` | text NOT NULL DEFAULT `'ADMIN_ISSUE'` | `ADMIN_ISSUE` (admin phát như cũ) / `WEB_CLAIM` (khách tự lưu trên Web Booking) |
+| `total_quantity` | int | Tổng số voucher của chương trình (bắt buộc khi `WEB_CLAIM`). Không giảm được xuống dưới số đã cấp |
+| `reservation_minutes` | int DEFAULT 30 | Thời gian giữ chỗ sau khi bấm Lưu (5–1440) |
+| `max_open_per_phone` | int DEFAULT 1 | Số voucher ACTIVE (chưa dùng) tối đa của 1 SĐT |
+| `max_total_per_phone` | int NULL | Tổng voucher (ACTIVE + REDEEMED) tối đa của 1 SĐT; NULL = không giới hạn |
+| `web_claim_paused` | bool DEFAULT false | Tạm dừng phát: chặn Lưu mới, voucher đang giữ vẫn kích hoạt được |
+| `public_slug` | text UNIQUE NULL | Đường dẫn công khai, `^[a-z0-9][a-z0-9-]{1,59}$` |
+
+CHECK `promo_campaign_distribution_chk`. `CustomerPromotionPasses.issue_source` nhận thêm `WEB_CLAIM`. Pass `WEB_CLAIM`: `voucher_code` = mã web, `ONE_TIME`, `one_pass_per_customer = false`, `email_status = SKIPPED`.
+
+**PromotionWebClaims** (RLS bật, không policy — chỉ `service_role`):
+
+| Cột | Kiểu | Mô tả |
+|-----|------|-------|
+| `id` | uuid PK | |
+| `campaign_id` | uuid FK → PromotionCampaigns | |
+| `voucher_code` | text UNIQUE | `<voucher_prefix>-XXXXXX` |
+| `status` | text | `RESERVED` → `ACTIVE` → `REDEEMED`, hoặc `EXPIRED` / `CANCELLED` |
+| `device_hash`, `ip_hash` | text | Chống bot: 1 lượt giữ / thiết bị (bấm lại trả mã cũ), tối đa 3 lượt giữ / IP |
+| `reserved_at`, `reservation_expires_at` | timestamptz | |
+| `activated_at`, `activation_booking_id` (FK Bookings), `activation_channel` | | Kích hoạt trong transaction ghi đơn web; `activation_channel = 'WEB_BOOKING'` (không đọc lại `Bookings.source` vì quầy ghi đè) |
+| `customer_id`, `phone` | text | Gắn lúc kích hoạt (SĐT chuẩn hoá `0…`) |
+| `pass_id`, `usage_id` | uuid FK | Pass + usage tạo lúc kích hoạt |
+| `redeemed_at`, `ended_at`, `end_reason`, `ended_by` | | |
+
+Index: UNIQUE `activation_booking_id` (ACTIVE/REDEEMED), UNIQUE `usage_id`. Số đã cấp = RESERVED + ACTIVE + REDEEMED ≤ `total_quantity`, bảo đảm bằng khoá dòng campaign (thứ tự khoá: campaign → claim → pass → booking).
+
+**PromotionCampaignStock** (bảng **công khai duy nhất**: anon/authenticated SELECT, có trong `supabase_realtime`): `campaign_id` PK, `public_slug`, `status` (`OPEN` / `PAUSED` / `SOLD_OUT` / `ENDED` / `INACTIVE`), `benefit_type`, `benefit_value`, `total`, `available`, `valid_from`, `valid_until`, `updated_at`, `version` (tăng mỗi lần đổi — realtime **không đảm bảo thứ tự**, client giữ bản ghi version cao nhất). Chỉ RPC ghi.
+
+**RPC [v15]** (chỉ `service_role`): `promo_web_reserve(slug, device_hash, ip_hash)`, `promo_web_voucher_status(code)` (công khai, không SĐT / tên, mã đơn chỉ 3 ký tự cuối), `promo_web_activate(code, booking_id)` (**chỉ gọi trong transaction ghi đơn web**), `promo_web_configure`, `promo_web_set_paused`, `promo_web_release` (thu hồi 1 / mọi lượt giữ), `promo_web_campaign_stats`, `promo_web_list_claims`, `promo_web_expire_all`.
+**Triggers [v15]**: `tr_promo_web_on_usage_status` (usage COMPLETED → claim REDEEMED; CANCELLED → claim + pass CANCELLED, trả suất), `tr_promo_web_on_campaign_change` (ENDED/INACTIVE → lượt giữ EXPIRED; mọi sửa → cập nhật kho).
+**Cron [v15]**: `promo_web_expire_job` mỗi 2 phút (dự phòng — mọi RPC đã tự cho hết hạn).
+**SystemConfigs [v15]**: `promotion_web_claim_enabled` (mặc định **tắt** khi không có dòng).
+**RPC [v16]** `20261008150000_webbooking_commit_with_voucher_v16.sql` (⚠️ TEST, chưa chạy DB thật): `webbooking_commit_booking_with_voucher(p_booking, p_items, p_voucher_code)`. Chỉ `service_role`, **không sửa** `webbooking_commit_booking`.
+- Không có mã → gọi y nguyên `webbooking_commit_booking`.
+- Lần ghi đầu: ghi đơn + `promo_web_activate` trong 1 transaction. Voucher bị từ chối → `RAISE 'VOUCHER_REJECTED:<mã lỗi>'` và **đơn cũng rollback**.
+- Gửi lại cùng `idLegacy`: so sánh bỏ dòng `isPromotion`, tổng trước giảm = `totalAmount` + `discount_amount` → `idempotent: true`. Khác ý định (đổi mã / giờ / dịch vụ) → `IDEMPOTENCY_KEY_REUSED`. Lần đầu không mã mà gửi lại kèm mã → `voucher.applied = false, reason = REPLAY_WITHOUT_VOUCHER`, không đổi đơn.
+- Kết quả thêm `voucher: {applied, voucherCode, discountAmount, totalAmount (sau giảm), subtotalAmount (trước giảm)}`.
+- `promo_web_preview(p_code, p_items)` (chỉ `service_role`): số tiền giảm **xem trước** ở checkout cho giỏ `[{serviceId, quantity, options}]`.
+  - Giá lấy từ `Services`, không tin client.
+  - Ghi một đơn tạm `WB-PREVIEW-…` trong subtransaction, chấm bằng engine rồi **rollback**: không lưu gì, không phát realtime.
+  - Trả về `{eligible, unmetReasons, discountAmount, appliedMinutes, subtotalAmount, totalAmount}`.
+- `promo_compute_discount_core(campaign, benefit_type, benefit_value, booking, override)`: công thức giảm tách từ `promo_compute_discount_ex` (thân hàm **không đổi**), dùng chung cho áp thật và xem trước.
 

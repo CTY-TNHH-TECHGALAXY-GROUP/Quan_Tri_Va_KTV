@@ -1,3 +1,4 @@
+import { getCheckoutBlockers } from '@/lib/services/employeeTasks.service';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvOnlineService } from '@/lib/services/KtvOnlineService';
@@ -97,35 +98,14 @@ export async function POST(req: NextRequest) {
     };
 
     if (!is_on_call) {
-      // ─── Check pending tasks before turning off on-call ─────────────
-      const { data: config } = await supabase
-          .from('SystemConfigs')
-          .select('value')
-          // Loại C đọc cấu hình chặn của chính nó; loại khác giữ key TYPE_B như trước.
-          .eq('key', data?.work_type === 'TYPE_C' ? 'block_checkout_incomplete_tasks_TYPE_C' : 'block_checkout_incomplete_tasks_TYPE_B')
-          .maybeSingle();
-
-      if (config?.value) {
-          const nowUtc = new Date();
-          const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-          const vnNow = new Date(nowUtc.getTime() + VN_OFFSET_MS);
-          const vnDateStr = vnNow.toISOString().slice(0, 10);
-          const todayStartIso = new Date(`${vnDateStr}T00:00:00+07:00`).toISOString();
-
-          const { data: incompleteTasks } = await supabase
-              .from('Tasks')
-              .select('id')
-              .eq('assignee_id', techCode)
-              .gte('created_at', todayStartIso)
-              .neq('inspection_status', 'PASSED');
-
-          if (incompleteTasks && incompleteTasks.length > 0) {
-              return NextResponse.json({ 
-                  error: `Bạn còn ${incompleteTasks.length} công việc trong ngày chưa được Admin nghiệm thu. Vui lòng hoàn thành và chờ Admin xác nhận trước khi Tắt Nhận Đơn!` 
-              }, { status: 403 });
-          }
+      // Office P0: shared checkout gate (fail-open, includes carry-over and supervisor override).
+      const blockers = await getCheckoutBlockers(supabase, techCode, data?.work_type === 'TYPE_C' ? 'TYPE_C' : 'TYPE_B');
+      if (blockers.count > 0) {
+          return NextResponse.json({
+              error: `Bạn còn ${blockers.count} việc chưa được duyệt. Hoàn thành và chờ duyệt trước khi Tắt Nhận Đơn!`,
+              taskBlockers: blockers.items,
+          }, { status: 403 });
       }
-
       // Dùng service chuẩn để xóa TurnQueue và đóng KTVShifts
       const res = await KtvOnlineService.goOffline(supabase, techCode);
       if (!res.success) {
