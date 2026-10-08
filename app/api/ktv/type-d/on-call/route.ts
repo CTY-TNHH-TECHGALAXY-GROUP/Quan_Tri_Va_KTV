@@ -41,6 +41,25 @@ export async function GET(req: NextRequest) {
     const { data: dailyReg } = await supabase.from('KTVTypeDDailyRegistration').select('status').eq('staff_id', techCode).eq('work_date', todayStr).maybeSingle();
     const isOffToday = dailyReg?.status === 'OFF_REGISTERED';
 
+    // Is "Báo khách" on right now? The attendance screen polls this route every
+    // 30 s and re-reads its full status when the answer changes — realtime on
+    // GuestArrivalEvents never reaches browsers (RLS on, no policy). Separate
+    // query, failure → undefined so the screen just skips the check.
+    let guestArrivalLockActive: boolean | undefined;
+    try {
+      const { isGuestArrivalEnabled } = await import('@/lib/guest-arrival.logic');
+      if (await isGuestArrivalEnabled(supabase)) {
+        const { data: locks, error: lockErr } = await supabase
+          .from('GuestArrivalEvents')
+          .select('id')
+          .is('released_at', null)
+          .limit(1);
+        if (!lockErr) guestArrivalLockActive = (locks?.length ?? 0) > 0;
+      } else {
+        guestArrivalLockActive = false;
+      }
+    } catch { /* skip */ }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -51,7 +70,8 @@ export async function GET(req: NextRequest) {
         // Client KHÔNG tự tính ngày làm việc nữa — server nói ngày nào thì theo ngày đó.
         businessDate: todayStr,
         cutoffHours,
-        isOffToday
+        isOffToday,
+        guestArrivalLockActive
       }
     });
 

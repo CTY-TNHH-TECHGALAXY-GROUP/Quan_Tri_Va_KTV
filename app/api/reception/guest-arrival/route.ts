@@ -33,11 +33,25 @@ export async function GET(request: Request) {
             }
         }
 
+        // Minutes before the dispatch board nags the front desk to turn the lock
+        // off (0 = never). Read on its own so a bad row can't break this route.
+        let reminderMinutes = 15;
+        try {
+            const { data: cfg } = await supabase
+                .from('SystemConfigs')
+                .select('value')
+                .eq('key', 'guest_arrival_reminder_minutes')
+                .maybeSingle();
+            const m = Number(String(cfg?.value ?? '').replace(/"/g, ''));
+            if (cfg && Number.isFinite(m) && m >= 0) reminderMinutes = m;
+        } catch { /* keep default */ }
+
         return NextResponse.json({
             success: true,
             active: !!data,
             enabled: isEnabled,
-            data: data || null
+            data: data || null,
+            reminderMinutes
         });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -198,6 +212,49 @@ export async function DELETE(request: Request) {
         }
 
         return NextResponse.json({ success: true, message: 'Lock released' });
+    } catch (error: any) {
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+}
+
+/**
+ * "Vẫn còn khách" on the reminder popup: push the next reminder X minutes out
+ * for EVERY front-desk device (they pick it up via the GuestArrivalEvents
+ * realtime UPDATE). Needs column reminder_snoozed_until
+ * (migration 20261008200000) — without it this returns 500 and the popup
+ * falls back to snoozing on the clicking device only.
+ */
+export async function PATCH(request: Request) {
+    try {
+        try {
+            await requirePermission('dispatch_board');
+        } catch {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const supabase = getSupabaseAdmin();
+        if (!supabase) throw new Error('Supabase admin not initialized');
+
+        const body = await request.json().catch(() => ({}));
+        const minutes = Number(body?.minutes);
+        if (!Number.isFinite(minutes) || minutes <= 0) {
+            return NextResponse.json({ success: false, error: 'Invalid minutes' }, { status: 400 });
+        }
+
+        const snoozedUntil = new Date(Date.now() + minutes * 60_000).toISOString();
+        const { data, error } = await supabase
+            .from('GuestArrivalEvents')
+            .update({ reminder_snoozed_until: snoozedUntil })
+            .is('released_at', null)
+            .select('id')
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error snoozing guest arrival reminder:', error);
+            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true, active: !!data, snoozedUntil });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

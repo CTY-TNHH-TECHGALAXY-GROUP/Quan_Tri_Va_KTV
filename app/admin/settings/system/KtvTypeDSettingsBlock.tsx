@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, CheckCircle2, DollarSign, Star, Coins, AlertTriangle, ShieldCheck, Trophy } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, DollarSign, Star, Coins, AlertTriangle, ShieldCheck, Trophy, BellRing } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
 import { TYPE_D_DISCIPLINE_CASES, type TypeDDisciplineCaseKey } from '@/lib/constants/staff.constants';
@@ -364,6 +364,28 @@ export function KtvTypeDSettingsBlock() {
                     <Toggle
                         value={boolConfig(configs.ktv_type_d_hours_ranking_enabled, true)}
                         onChange={(v: any) => handleChange('ktv_type_d_hours_ranking_enabled', v)}
+                    />
+                </div>
+            </div>
+
+            {/* 7. Bao khach - nhac quay tat */}
+            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
+                            <BellRing size={20} className="text-amber-500" />
+                        </div>
+                        <h2 className="text-lg font-black text-gray-900">Báo khách</h2>
+                    </div>
+                    <SaveButton group="guestArrival" savingGroup={savingGroup} saveStatus={saveStatus} onClick={() => handleSaveGroup(['guest_arrival_reminder_minutes'], 'guestArrival')} />
+                </div>
+                <div className="max-w-2xl">
+                    <NumberInput
+                        label="Nhắc quầy tắt Báo khách sau"
+                        value={configs.guest_arrival_reminder_minutes ?? 15}
+                        onChange={(v: any) => handleChange('guest_arrival_reminder_minutes', v)}
+                        suffix="phút"
+                        hint="Báo khách bật quá ngần này phút mà quầy chưa tắt thì Bảng điều phối hiện popup nhắc (KTV Loại D đang không tan ca được). 0 = không nhắc."
                     />
                 </div>
             </div>

@@ -922,6 +922,10 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 | released_at | timestamptz | Th?i di?m t?t |
 | released_by | text | Ngu?i t?t |
 | note | text | Ghi ch� |
+| has_seen_pending | boolean | Đã từng thấy đơn chờ điều phối — chỉ khi `true` khoá mới được tự nhả lúc hết đơn chờ (`maybeAutoRelease`). |
+| reminder_snoozed_until | timestamptz NULL | Quầy bấm "Vẫn còn khách" trên popup nhắc → mốc nhắc lại, dùng chung mọi máy quầy. NULL = chưa hoãn. **Migration `20261008200000` — đã apply TEST + PROD ngày 08/10/2026.** |
+
+**SystemConfigs liên quan**: `guest_arrival_lock_enabled` (mặc định bật), `guest_arrival_reminder_minutes` (mặc định **15**; `0` = không nhắc) — Báo khách bật quá ngần này phút mà quầy chưa tắt thì Bảng điều phối hiện popup nhắc (`app/reception/dispatch/_components/GuestArrivalReminder`). Sửa ở Admin → Cài đặt hệ thống → tab Loại D → Báo khách.
 
 ### KTVOfficeCriteria
 **Nhiệm vụ**: Bộ tiêu chí chấm điểm Office cho KTV Loại D. Quản lý sửa được ngay trên trang `/admin/ktv-office` (tab Cài đặt), không cần deploy.

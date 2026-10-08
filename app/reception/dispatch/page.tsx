@@ -91,6 +91,7 @@ import { SubOrder, buildOrderTimeline } from './_components/dispatch-timeline';
 import { calcEndTime, recalculateAllTimes } from './dispatch-time.logic';
 import { remainingHandoffMinutes, plannedHandoffStartAt, suggestedHandoffMinutes } from '@/lib/dispatch-handoff';
 import { KtvCommentModal } from './_components/KtvCommentModal';
+import { GuestArrivalReminder } from './_components/GuestArrivalReminder';
 
 // 🔧 UI CONFIGURATION
 // After a stale save refetches, wait this long for the draft-reconcile render before retrying.
@@ -2461,6 +2462,7 @@ if (!hasPermission('dispatch_board')) {
 
   return (
     <AppLayout title="Điều Phối" headerRight={renderSoundToggle(true)} onBeforeNavigate={() => { if (!confirmLeaveDraft()) return false; draftItemsRef.current.clear(); updateDirtyRows(new Set()); return true; }}>
+      <GuestArrivalReminder active={guestArrivalLock.active} lockedAt={guestArrivalLock.lockedAt} lockedBy={guestArrivalLock.lockedBy} onTurnOff={toggleGuestArrivalLock} onResync={fetchGuestArrivalLock} />
       <div className="h-[calc(100dvh-3.5rem)] lg:h-[calc(100vh-3rem)] flex flex-col overflow-hidden" style={{ overscrollBehaviorY: 'contain' }}>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 mb-2 lg:mb-4 px-1 lg:px-0 mt-1 sm:mt-0">

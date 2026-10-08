@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LogIn, LogOut, BellRing, MapPin, Loader2, AlertCircle, Clock, CheckCircle2, CalendarX2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/apiClient';
@@ -160,11 +160,23 @@ export default function AttendanceTypeD({
   const hienNutBaoTre = chuaDiemDanh && !daBaoTre && !daBaoOff;
   const coTheBaoTre = hienNutBaoTre && !daQuaGioDangKy;
 
+  // Latest props for the 30 s poll below (its interval closure is created once).
+  const lockSyncRef = useRef({ lockActive: !!guestArrivalLock?.active, checkStatus, onRefreshStatus });
+  lockSyncRef.current = { lockActive: !!guestArrivalLock?.active, checkStatus, onRefreshStatus };
+
   const fetchState = async () => {
     try {
       const res = await apiClient.get<any>(`${API.KTV.TYPE_D_ON_CALL}?techCode=${ktvId}`);
       if (res.success && res.data) {
         setState(res.data);
+        // Front desk turned "Báo khách" on/off → re-read the full status once so
+        // the checkout button unlocks without a page reload. Never while a
+        // check-in/out is being submitted (the refresh would overwrite it).
+        const lockNow = res.data.guestArrivalLockActive;
+        const sync = lockSyncRef.current;
+        if (typeof lockNow === 'boolean' && lockNow !== sync.lockActive && sync.checkStatus !== 'LOADING_GPS') {
+          sync.onRefreshStatus?.();
+        }
         if (res.data.travel_time_mins) {
             setTempMins(res.data.travel_time_mins);
         }

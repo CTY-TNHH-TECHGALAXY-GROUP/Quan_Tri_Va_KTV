@@ -50,6 +50,8 @@ const DEFAULT_CONFIGS = {
     // Minutes an order waits for the customer's rating after handover; past it the
     // DB job auto-completes the order (migration 20260914120000). 0 = right away.
     customer_rating_timeout_minutes: 5,
+    // Báo khách bật quá ngần này phút thì bảng điều phối nhắc quầy tắt. 0 = không nhắc.
+    guest_arrival_reminder_minutes: 15,
     ktv_discipline_rules: [
         { code: 'ORDER_REJECT', name: 'Từ chối đơn', points: 10 },
         { code: 'LATE', name: 'Đi làm trễ', points: 5 },
