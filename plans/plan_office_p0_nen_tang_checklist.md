@@ -2,7 +2,7 @@
 
 > **Mức 2** — chạm DB (migration), chấm công / chặn tan ca, phân quyền, cron, "xoá" dữ liệu (đổi sang huỷ mềm).
 > Trạng thái: **ĐÃ DUYỆT 08/10** — đang làm. Nhánh: `feat/office-p0-checklist-v1` (worktree `.worktrees/office-p0-v1`, `.env.local` = Supabase TEST).
-> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ — commit `6a09fa3a` · bước 4 UI nhân viên ✅ — commit `da7c3aa2` · bước 5 UI giám sát/admin ✅ (QA27 82/82 trên TEST, typecheck, dev server TEST biên dịch được; **chưa xem bằng mắt khi đăng nhập**) · bước 6–7 chưa làm. DB thật: **chưa apply**.
+> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ — `6a09fa3a` · bước 4 UI nhân viên ✅ — `da7c3aa2` · bước 5 UI giám sát/admin ✅ — `ca5e40c3` · bước 6 seed NH01 ✅ trên TEST (QA28 đạt, chạy lại không trùng) · bước 7 chưa làm. DB thật: **chưa apply** migration, **chưa seed**. UI **chưa xem bằng mắt khi đăng nhập**.
 > Thay thế: `plans/plan_nang_cap_giao_viec.md` (giữ làm lịch sử; các quyết định ở mục 9 của file đó vẫn áp dụng).
 > Bối cảnh: `plans/context_giao_viec_v2.md`. Demo duyệt UX: https://claude.ai/artifact/YJcAZMkAGQZbHNZtj5vGk3
 
@@ -516,3 +516,18 @@ Sau khi ghi CHECK_IN thành công: `after(() => EmployeeTasksService.ensureTasks
 - "Giao việc nóng" ở `/admin/support/dashboard` trước đây gửi id giả tới endpoint bỏ qua chúng → nay dùng form giao việc đột xuất thật.
 - `EmployeeDetail`: đọc việc qua `GET /api/support/tasks` (theo mã Staff, không theo Users.id); duyệt / trả lại / giao đột xuất / xoá đều qua API (xoá = huỷ mềm); thêm nút "Bỏ khỏi người này" (EXCLUDE).
 - **Dời sang bước 7** (phải xong TRƯỚC khi siết RLS, nếu không sẽ gãy): form "Kho việc" (`SupportTemplates.logic.ts` `saveCategoryWithTemplates`) còn ghi thẳng `TaskCategories` / `TaskTemplates`; đánh dấu đã đọc `TaskNotifications` ở màn nhân viên; `app/support/dashboard/SupportDashboard.logic.ts` là code chết (trang đã redirect).
+
+## 15. Ghi chú bước 6 (09/10/2026)
+
+- Dữ liệu: `scripts/office/nh01_checklist.data.ts` (chép từ `NH01_Checklist_Tracker_v2.html`), chạy bằng `scripts/office/seed_nh01_checklist.ts` — mặc định chạy thử, `--apply` mới ghi, DB thật cần `--prod-approved`. Khớp theo tên nên chạy lại không trùng; việc mẫu admin đã cấu hình (có `photo_slots`) thì giữ nguyên.
+- Kết quả: 7 nhóm việc ngày (theo khung giờ, tên `NH01 · n. …`) + 1 nhóm tuần; 43 việc ngày + 7 việc tuần (việc lặp nhiều thứ gộp 1 mẫu, `cron_schedule` liệt kê thứ). Mỗi ngày sinh 45 việc (khăn lau tay = 3 mốc 09:00/13:00/17:00 × 4 ô khu vực) + việc tuần: T2 3 · T3 3 · T4 1 · T5 0 · T6 2 · T7 0 · CN 1.
+- Quyết định mặc định (admin sửa được trên màn hình):
+  - Mọi việc **giờ tự do** (đúng ý "không ép giờ, miễn hoàn thành"); khung giờ chỉ dùng để xếp nhóm. Riêng khăn lau tay là 3 mốc.
+  - **Việc ngày không tồn sang hôm sau** (`allow_carry_over=false`) vì hôm sau đã có bản mới — tồn sẽ thành 2 bản cùng việc. Việc tuần cho tồn.
+  - Vị trí "Quầy hỗ trợ NH01": việc cố định **Bắt buộc làm**, đột xuất **Bắt buộc làm**; giờ ca để trống.
+  - Ô ảnh: số ảnh = số khu vực → mỗi khu vực 1 ô; có nhãn rõ trong nội dung thì dùng nhãn đó; còn lại "<khu vực> · ảnh i". Ghế tròn: ô số lượng tối thiểu 5.
+- TEST: đã seed (không có NH001 trên TEST → vị trí chưa có thành viên). Cron `/api/cron/generate-tasks` đã đăng ký từ bước 3 (`5 17 * * *` UTC = 00:05 VN).
+- DB thật (cần duyệt riêng, sau migration): `seed … --apply --prod-approved --member=NH001 --deactivate-old-routines=<name|role|all>`.
+  - Probe chỉ đọc 09/10: NH001 có **120 routine cũ đang bật**, chỉ **3** trùng đúng tên (lời văn cũ khác); 37 không gắn phòng (bản cũ của chính checklist NH01: "Trước 09:00", "Từ 09:00", "Bàn giao kết ca", "Định kỳ tuần") + **83 theo phòng** ("CÔNG VIỆC HẰNG NGÀY": giấy toilet, nước rửa tay, kính… từng phòng).
+  - Chỉ tắt theo tên (`name`) → NH001 nhận cả ~45 việc mới lẫn ~117 việc cũ mỗi ngày (trùng ý). **User chốt 09/10/2026: `all`** — NH001 chỉ làm theo checklist của file artifact; tắt cả 120 routine cũ (không xoá).
+- User chốt 09/10/2026: trước mắt chạy trên **Vercel Hobby + DB TEST** (nhánh `test/*` với `vercel.json` crons rỗng, không merge).
