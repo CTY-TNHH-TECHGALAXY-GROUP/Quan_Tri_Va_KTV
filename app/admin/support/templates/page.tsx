@@ -5,7 +5,11 @@ import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useSupportTemplates, ActiveTab } from './SupportTemplates.logic';
 import { useSupportDashboard } from '../dashboard/SupportDashboard.logic';
-import { useSupportReviews } from '../reviews/SupportReviews.logic';
+import ReviewQueue from '../reviews/_components/ReviewQueue';
+import PositionsPanel from '../positions/_components/PositionsPanel';
+import TemplateConfigSheet from './_components/TemplateConfigSheet';
+import { useTemplateConfig } from './TemplateConfig.logic';
+import { t as officeT } from '../_shared/officeAdmin.i18n';
 
 // 🔧 UI CONFIGURATION
 const CARD_BORDER_RADIUS = 'rounded-2xl';
@@ -15,7 +19,8 @@ const TAB_ITEMS: { key: ActiveTab; label: string; icon: string }[] = [
   { key: 'EMPLOYEES', label: 'Nhân Viên', icon: '👥' },
   { key: 'TEMPLATES', label: 'Kho Việc Tương Tác', icon: '📋' },
   { key: 'ROOM_MATRIX', label: 'Ma Trận Phòng', icon: '🏢' },
-  { key: 'REVIEWS', label: 'Nghiệm Thu', icon: '✅' },
+  { key: 'REVIEWS', label: officeT.queue.title, icon: '✅' },
+  { key: 'POSITIONS', label: officeT.positions.title, icon: '🧭' },
   { key: 'DASHBOARD', label: 'Thống Kê Phòng', icon: '📊' },
 ];
 
@@ -129,7 +134,10 @@ export default function SupportTemplatesPage() {
 
 
       {/* ======================= TAB: REVIEWS ======================= */}
-      {logic.activeTab === 'REVIEWS' && <ReviewsTabContent />}
+      {logic.activeTab === 'REVIEWS' && <ReviewQueue />}
+
+      {/* ======================= TAB: POSITIONS ======================= */}
+      {logic.activeTab === 'POSITIONS' && <PositionsPanel />}
 
       {/* ======================= TAB: DASHBOARD ======================= */}
       {logic.activeTab === 'DASHBOARD' && <DashboardTabContent />}
@@ -140,61 +148,6 @@ export default function SupportTemplatesPage() {
     </AppLayout>
   );
 }
-
-// ============================================================
-// Embedded Tab: Nghiệm Thu
-// ============================================================
-const ReviewsTabContent = () => {
-  const logic = useSupportReviews();
-
-  if (logic.loading) {
-    return <div className="text-center py-12 text-slate-400">Đang tải...</div>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {logic.tasks.length === 0 ? (
-        <div className="text-center py-16 text-slate-400">
-          <p className="text-4xl mb-3">✅</p>
-          <p>Không có công việc nào chờ nghiệm thu.</p>
-        </div>
-      ) : (
-        logic.tasks.map((task: any) => (
-          <div key={task.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                {task.roomName && (
-                  <span className="bg-orange-50 text-orange-600 font-semibold px-2 py-0.5 rounded text-xs border border-orange-100 mb-2 inline-block">
-                    {task.roomName}
-                  </span>
-                )}
-                <h3 className="font-bold text-slate-800">{task.name}</h3>
-                <p className="text-sm text-slate-500 mt-1">👤 {task.assigneeName || 'Chưa giao'}</p>
-                {task.photoCount > 0 && <p className="text-xs text-slate-400 mt-1">📷 {task.photoCount} ảnh minh chứng</p>}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => logic.reviewTask(task.id, 'PASSED')}
-                  disabled={logic.submitting}
-                  className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-green-600 transition-colors disabled:opacity-50"
-                >
-                  ✓ Đạt
-                </button>
-                <button
-                  onClick={() => logic.reviewTask(task.id, 'REWORK_REQUIRED')}
-                  disabled={logic.submitting}
-                  className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50"
-                >
-                  ↩ Làm lại
-                </button>
-              </div>
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
-};
 
 // ============================================================
 // Embedded Tab: Thống Kê Phòng
@@ -256,6 +209,7 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
   ]);
   const [submitting, setSubmitting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const config = useTemplateConfig();
 
   const allTemplates = [...logic.templates, ...logic.virtualTemplates];
   const allCategories = [...logic.categories, ...logic.virtualCategories];
@@ -385,6 +339,12 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
                       {tpl.requires_photo && <span className="text-[11px] text-green-600 font-bold">📷 Tối thiểu {tpl.min_photo_count} ảnh</span>}
                     </div>
                   </div>
+                  {!String(tpl.id).startsWith('virtual_') && (
+                    <button type="button" onClick={() => config.open(tpl.id)}
+                      className="shrink-0 min-h-[40px] px-3 rounded-lg text-xs font-bold border border-stone-300 text-stone-600 hover:border-emerald-700 hover:text-emerald-800">
+                      {officeT.config.button}
+                    </button>
+                  )}
                 </div>
               ))}
               </div>
@@ -392,6 +352,9 @@ const TemplatesTabContent = ({ logic }: { logic: ReturnType<typeof useSupportTem
           </div>
         );
       })}
+
+      <TemplateConfigSheet logic={config} onSaved={logic.refetchTemplates} />
+      {config.error && !config.draft && <p role="alert" className="text-sm text-rose-700">{config.error}</p>}
 
       {/* ======================== MODAL: THÊM / SỬA TIÊU ĐỀ ======================== */}
       {showModal && (

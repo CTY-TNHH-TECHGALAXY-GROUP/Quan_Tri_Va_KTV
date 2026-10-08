@@ -44,7 +44,7 @@ interface TemplateItem {
   assignedEmployees: string[]; // fullName list
 }
 
-export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'ROOM_MATRIX' | 'REVIEWS' | 'DASHBOARD';
+export type ActiveTab = 'EMPLOYEES' | 'TEMPLATES' | 'ROOM_MATRIX' | 'REVIEWS' | 'POSITIONS' | 'DASHBOARD';
 
 export interface MatrixCellData {
   active: boolean;

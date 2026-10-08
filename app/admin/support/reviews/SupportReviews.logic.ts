@@ -1,134 +1,177 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getJson, sendJson } from '../_shared/officeApi';
+import { t } from '../_shared/officeAdmin.i18n';
+
+// 🔧 UI CONFIGURATION
+const REFRESH_DEBOUNCE_MS = 800;
+const POLL_FALLBACK_MS = 60_000;
+const TOAST_MS = 2600;
 
 // ============================================================
-// Types
+// Types — mirror getReviewQueue() in lib/services/officeTaskActions.service.ts
 // ============================================================
-interface ReviewTask {
+export interface PhotoSlotDef { label: string; ref_path?: string | null }
+export interface EvidenceFieldDef { kind: 'check' | 'count'; label: string; unit?: string; min?: number }
+export interface QueuePhoto { id: string; slot: number | null; url: string | null }
+export interface SlotMark { x: number; y: number }
+export interface RejectDraft { slot: number; reason?: string; mark?: SlotMark | null }
+
+export interface QueueTask {
   id: string;
   name: string;
-  roomName: string | null;
-  roomHasGuest: boolean;
-  assigneeName: string;
-  photoCount: number;
-  completed_at: string;
-  photos: { photo_url: string; taken_at: string }[];
+  task_type: string;
+  task_date: string;
+  assignee_id: string;
+  state: string;
+  standard_text: string | null;
+  photo_slots: PhotoSlotDef[] | null;
+  evidence_fields: EvidenceFieldDef[] | null;
+  evidence_values: Record<string, unknown> | null;
+  submitted_at: string | null;
+  current_review_round: number | null;
+  blocked_reason: string | null;
+  blocked_at: string | null;
+  declined_reason: string | null;
+  priority: string | null;
+  photos?: QueuePhoto[];
+  refs?: (string | null)[];
 }
 
-export const useSupportReviews = () => {
-  const [tasks, setTasks] = useState<ReviewTask[]>([]);
+export interface QueuePerson {
+  staffId: string;
+  name: string;
+  position: string | null;
+  shiftEnd: string | null;
+  total: number;
+  approved: number;
+  staffToDo: number;
+  supervisorToReview: number;
+  override: { reason: string; granted_by: string | null } | null;
+}
+
+export type QueueTab = 'waiting' | 'blocked' | 'declined' | 'people';
+
+const todayVN = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+export const useReviewQueue = () => {
+  const [waiting, setWaiting] = useState<QueueTask[]>([]);
+  const [blocked, setBlocked] = useState<QueueTask[]>([]);
+  const [declined, setDeclined] = useState<QueueTask[]>([]);
+  const [people, setPeople] = useState<QueuePerson[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<ReviewTask | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [tab, setTab] = useState<QueueTab>('waiting');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const openReviewModal = (task: ReviewTask) => setSelectedTask(task);
-  const closeReviewModal = () => setSelectedTask(null);
-
-  // Fetch tasks that are COMPLETED + PENDING_REVIEW
-  const fetchPendingReview = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('Tasks')
-      .select('id, name, assignee_id, room_id, status, inspection_status, updated_at, Users(fullName), Rooms(name, has_guests)')
-      .eq('status', 'COMPLETED')
-      .in('inspection_status', ['PENDING_REVIEW', 'NOT_REVIEWED'])
-      .order('updated_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching pending reviews:', error.message, error.code);
-      setLoading(false);
-      return;
-    }
-
-    // Get photo counts
-    const taskIds = (data || []).map(t => t.id);
-    let photoCounts: Record<string, number> = {};
-    let taskPhotosMap: Record<string, any[]> = {};
-    if (taskIds.length > 0) {
-      const { data: photos } = await supabase
-        .from('TaskPhotos')
-        // Bang khong co `photo_url`/`taken_at` — anh luu duong dan o `storage_path`,
-        // link cong phai dung getPublicUrl (giong EmployeeDetail.logic.ts). Truy van
-        // cu loi nen o "Anh Minh Chung" luon trong.
-        .select('id, task_id, storage_path, created_at')
-        .in('task_id', taskIds)
-        .eq('is_submitted', true);
-      (photos || []).forEach(p => {
-        photoCounts[p.task_id] = (photoCounts[p.task_id] || 0) + 1;
-        if (!taskPhotosMap[p.task_id]) taskPhotosMap[p.task_id] = [];
-        const { data: pub } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
-        taskPhotosMap[p.task_id].push({ id: p.id, url: pub.publicUrl, created_at: p.created_at });
-      });
-    }
-
-    const mapped: ReviewTask[] = (data || []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      roomName: t.room_id ? `Phòng ${t.Rooms?.name ? t.Rooms.name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL') : t.room_id}` : null,
-      roomHasGuest: t.Rooms?.has_guests || false,
-      assigneeName: t.Users?.fullName || 'Chưa rõ',
-      photoCount: photoCounts[t.id] || 0,
-      completed_at: t.updated_at,
-      photos: taskPhotosMap[t.id] || []
-    }));
-
-    setTasks(mapped);
-    setLoading(false);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), TOAST_MS);
   }, []);
 
-  // Review a task
-  const reviewTask = async (taskId: string, decision: 'PASSED' | 'REWORK_REQUIRED') => {
-    setSubmitting(true);
+  const fetchQueue = useCallback(async () => {
     try {
-      const task = tasks.find(t => t.id === taskId);
-
-      const updatePayload: any = {
-        inspection_status: decision,
-      };
-      if (decision === 'REWORK_REQUIRED') {
-        updatePayload.status = 'IN_PROGRESS';
-      }
-
-      const { error } = await supabase
-        .from('Tasks')
-        .update(updatePayload)
-        .eq('id', taskId);
-
-      if (error) {
-        console.error('Error reviewing task:', error.message, error.code);
-        return;
-      }
-
-      // Send notification for rework
-      if (decision === 'REWORK_REQUIRED' && task) {
-        const taskData = await supabase.from('Tasks').select('assignee_id').eq('id', taskId).single();
-        if (taskData.data?.assignee_id) {
-          await supabase.from('TaskNotifications').insert({
-            task_id: taskId,
-            employee_id: taskData.data.assignee_id,
-            type: 'REWORK',
-            message: `Quản lý yêu cầu làm lại: ${task.name}`,
-          });
-        }
-      }
-
-      // Remove from list
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      const json = await getJson('/api/support/review-queue');
+      setWaiting(json.waiting || []);
+      setBlocked(json.blocked || []);
+      setDeclined(json.declined || []);
+      setPeople(json.people || []);
+      setLoadError(null);
+      // Drop selections that are no longer waiting.
+      setSelected(prev => new Set(Array.from(prev).filter(id => (json.waiting || []).some((w: QueueTask) => w.id === id))));
+    } catch (e: any) {
+      setLoadError(e.message || t.common.error);
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
-  };
+  }, []);
+
+  const scheduleRefresh = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchQueue, REFRESH_DEBOUNCE_MS);
+  }, [fetchQueue]);
 
   useEffect(() => {
-    fetchPendingReview();
-  }, [fetchPendingReview]);
+    fetchQueue();
+    // Realtime on Tasks (published by the Office P0 migration); polling covers RLS / dropped sockets.
+    const channel = supabase
+      .channel('office-review-queue')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Tasks' }, scheduleRefresh)
+      .subscribe();
+    const poll = setInterval(fetchQueue, POLL_FALLBACK_MS);
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [fetchQueue, scheduleRefresh]);
+
+  const nameOf = useCallback((staffId: string) => people.find(p => p.staffId === staffId)?.name || staffId, [people]);
+  const shiftEndOf = useCallback((staffId: string) => people.find(p => p.staffId === staffId)?.shiftEnd || null, [people]);
+
+  // ------------------------------------------------------------
+  // Actions
+  // ------------------------------------------------------------
+  const run = useCallback(async (fn: () => Promise<unknown>, okMsg: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      showToast(okMsg);
+      await fetchQueue();
+      return true;
+    } catch (e: any) {
+      showToast(e.message || t.common.error);
+      await fetchQueue();
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [fetchQueue, showToast]);
+
+  const approve = (ids: string[]) =>
+    run(() => sendJson('/api/support/tasks/review', 'POST', { taskIds: ids, decision: 'PASSED' }), t.queue.approved(ids.length));
+
+  const returnTask = (id: string, reasonCode: string, note: string, rejectedSlots: RejectDraft[]) =>
+    run(() => sendJson('/api/support/tasks/review', 'POST', {
+      taskIds: [id], decision: 'REWORK_REQUIRED', reasonCode, note, rejectedSlots,
+    }), t.review.returned);
+
+  const resolveBlocked = (taskId: string, waiveToday: boolean) =>
+    run(() => sendJson('/api/support/review-queue', 'POST', { taskId, waiveToday }), waiveToday ? t.blocked.waived : t.blocked.resumed);
+
+  const reassign = (taskId: string, assigneeId: string) =>
+    run(() => sendJson('/api/support/tasks/reassign', 'POST', { taskId, assigneeId }), t.declined.reassigned);
+
+  const cancelDeclined = (taskId: string) =>
+    run(() => sendJson(`/api/support/tasks?taskId=${encodeURIComponent(taskId)}&reason=${encodeURIComponent(t.declined.cancelReason)}`, 'DELETE'), t.declined.cancelled);
+
+  const grantOverride = (staffId: string, reason: string) =>
+    run(() => sendJson('/api/support/checkout-override', 'POST', { staffId, reason }), t.people.allowed);
+
+  const toggleSelect = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const selectAll = () => setSelected(prev => (prev.size === waiting.length ? new Set() : new Set(waiting.map(w => w.id))));
+
+  const counts = useMemo(() => ({
+    waiting: waiting.length, blocked: blocked.length, declined: declined.length,
+    people: people.filter(p => p.staffToDo + p.supervisorToReview > 0 && !p.override).length,
+  }), [waiting, blocked, declined, people]);
 
   return {
-    tasks,
-    loading,
-    submitting,
-    reviewTask,
-    selectedTask,
-    openReviewModal,
-    closeReviewModal,
+    loading, loadError, tab, setTab, counts,
+    waiting, blocked, declined, people, today: todayVN(),
+    selected, toggleSelect, selectAll,
+    busy, toast, lightbox, setLightbox,
+    nameOf, shiftEndOf, refresh: fetchQueue,
+    approve, returnTask, resolveBlocked, reassign, cancelDeclined, grantOverride,
   };
 };
+
+export type ReviewQueueLogic = ReturnType<typeof useReviewQueue>;

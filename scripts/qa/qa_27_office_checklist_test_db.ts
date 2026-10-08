@@ -322,6 +322,45 @@ async function main() {
     check(polEv.length === 1 && (await fresh(bTask[1].id)).acceptance_status === 'ACCEPTED', 'đổi chính sách vị trí: ghi nhật ký, việc đã giao giữ nguyên');
     const positions = await act.listPositions(sb);
     check(positions.find((p: any) => p.id === posB.id)?.memberIds?.[0] === STAFF_B, 'listPositions trả thành viên');
+
+    // ---------- 8. Bước 5: giao lại việc bị từ chối, cấu hình việc mẫu, trả lại cả việc ----------
+    console.log('\n[8] Giám sát / admin (bước 5)');
+    await expectErr(() => act.reassignTask(sb, bTask[0].id, STAFF_B, ACTOR), 400, 'giao lại cho chính người đã từ chối bị chặn');
+    await act.reassignTask(sb, bTask[0].id, STAFF_C, ACTOR);
+    const re = await fresh(bTask[0].id);
+    check(re.assignee_id === STAFF_C && re.acceptance_status === 'AUTO' && !re.declined_reason, 'việc bị từ chối giao lại → người mới, nhận theo vị trí của họ (không vị trí = bắt buộc)');
+    await expectErr(() => act.reassignTask(sb, bTask[0].id, STAFF_A, ACTOR), 409, 'chỉ giao lại việc đang bị từ chối');
+    const reEv = await must(sb.from('TaskEvents').select('payload').eq('task_id', bTask[0].id).eq('type', 'REASSIGNED'), 're ev');
+    check(reEv.length === 1 && reEv[0].payload.from === STAFF_B && reEv[0].payload.to === STAFF_C, 'nhật ký ghi giao lại từ ai sang ai');
+
+    await expectErr(() => act.saveTemplateConfig(sb, T7.id, { time_mode: 'WINDOW', window_start: '10:00', window_end: '09:00' }, ACTOR), 400, 'khung giờ ngược bị từ chối');
+    await expectErr(() => act.saveTemplateConfig(sb, T7.id, { time_mode: 'DEADLINE' }, ACTOR), 400, 'hạn chót thiếu giờ bị từ chối');
+    await expectErr(() => act.saveTemplateConfig(sb, T7.id, { photo_slots: [{ label: 'A', ref_path: 'reviews/x.jpg' }] }, ACTOR), 400, 'ảnh mẫu ngoài thư mục refs/ bị từ chối');
+    await act.saveTemplateConfig(sb, T7.id, {
+        standard_text: '  Đèn sáng đủ chữ ', sop: ['Bật CB', ''], time_mode: 'MULTI', multi_times: ['17:00', '09:00', '09:00', 'abc'],
+        photo_slots: [{ label: 'Mặt tiền', ref_path: 'refs/qa27.jpg' }, { label: '  ' }],
+        evidence_fields: [{ kind: 'count', label: 'Bóng hỏng', unit: 'bóng', min: '0' as any }, { kind: 'check', label: '' }],
+        blocks_checkout: false, requires_review: true, allow_carry_over: false,
+    }, ACTOR);
+    const cfg = await act.getTemplateConfig(sb, T7.id);
+    check(cfg.time_mode === 'MULTI' && JSON.stringify(cfg.multi_times) === '["09:00","17:00"]' && cfg.due_time === null, 'MULTI: mốc giờ lọc trùng, sắp xếp, xoá giờ của chế độ cũ', JSON.stringify(cfg.multi_times));
+    check(cfg.photo_slots.length === 1 && cfg.min_photo_count === 1 && cfg.requires_photo === true && cfg.refUrls[0]?.includes('refs/qa27.jpg'), 'ô ảnh rỗng bị bỏ, đồng bộ số ảnh tối thiểu, trả link ảnh mẫu');
+    check(cfg.evidence_fields.length === 1 && cfg.evidence_fields[0].min === 0 && cfg.standard_text === 'Đèn sáng đủ chữ' && cfg.sop.length === 1, 'trường số liệu chuẩn hoá');
+    check(cfg.blocks_checkout === false && cfg.allow_carry_over === false, 'lưu cờ chặn tan ca / cho tồn');
+    const tplEv = await must(sb.from('TaskEvents').select('id').eq('type', 'TEMPLATE_CONFIG_CHANGED').eq('actor_id', ACTOR), 'tpl ev');
+    check(tplEv.length === 1, 'đổi cấu hình việc mẫu được ghi nhật ký');
+
+    const whole = await act.createAdhocTask(sb, { assigneeId: STAFF_A, name: `${P}Trả cả việc`, photoSlots: ['Trước', 'Sau'] }, ACTOR);
+    let w = await fresh(whole);
+    await act.onPhotoUploaded(sb, w, await addPhoto(whole, 0), 0, ACTOR);
+    w = await fresh(whole);
+    await act.onPhotoUploaded(sb, w, await addPhoto(whole, 1), 1, ACTOR);
+    rv = await act.reviewTasks(sb, { taskIds: [whole], decision: 'REWORK_REQUIRED', reasonCode: 'OTHER', note: 'Làm lại', allSlots: true }, { userId: null, actorId: ACTOR });
+    w = await fresh(whole);
+    check(rv[0].ok && w.rejected_slots?.length === 2 && svc.deriveTaskState(w) === 'FIX', 'trả lại cả việc (màn nhân viên) → mọi ô phải chụp lại', rv[0].error);
+
+    const opts = await act.listOfficeOptions(sb);
+    check(opts.staff.some((x: any) => x.id === STAFF_A) && opts.categories.some((c: any) => c.id === catDaily.id), 'danh sách chọn nhân viên / nhóm việc');
 }
 
 main()

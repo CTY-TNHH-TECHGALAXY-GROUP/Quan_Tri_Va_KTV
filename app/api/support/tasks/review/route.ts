@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 /**
  * Approve one or many tasks, or return ONE task with the slots that failed.
  * Body: { taskIds: string[], decision: 'PASSED'|'REWORK_REQUIRED', reasonCode?, note?,
- *         rejectedSlots?: [{ slot, reason?, mark?: {x,y} }], photoPath? }
+ *         rejectedSlots?: [{ slot, reason?, mark?: {x,y} }], allSlots?: boolean, photoPath? }
  * Replaces the direct client writes in EmployeeDetail.logic.ts / SupportReviews.logic.ts.
  */
 export async function POST(request: Request) {
@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       reasonCode: body.reasonCode,
       note: body.note,
       rejectedSlots: body.rejectedSlots,
+      allSlots: body.allSlots === true,
       photoPath: body.photoPath ?? null,
     }, reviewer);
     const failed = results.filter(r => !r.ok);

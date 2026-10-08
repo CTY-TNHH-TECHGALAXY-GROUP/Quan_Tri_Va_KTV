@@ -257,6 +257,8 @@ export interface ReviewInput {
   reasonCode?: string;
   note?: string;
   rejectedSlots?: RejectedSlot[];
+  /** Return every photo slot (screens without per-slot marking, e.g. the employee detail page). */
+  allSlots?: boolean;
   photoPath?: string | null;
 }
 
@@ -276,7 +278,9 @@ export const reviewTasks = async (sb: any, input: ReviewInput, reviewer: { userI
       const slots: PhotoSlot[] = Array.isArray(task.photo_slots) ? task.photo_slots : [];
       let rejected: RejectedSlot[] | null = null;
       if (input.decision === 'REWORK_REQUIRED') {
-        rejected = (input.rejectedSlots || []).filter(r => Number.isInteger(r.slot) && (slots.length === 0 || r.slot < slots.length));
+        rejected = input.allSlots
+          ? slots.map((_, slot) => ({ slot, reason: input.note?.trim() || undefined }))
+          : (input.rejectedSlots || []).filter(r => Number.isInteger(r.slot) && (slots.length === 0 || r.slot < slots.length));
         if (slots.length > 0 && rejected.length === 0) throw new TaskActionError('Đánh dấu ít nhất 1 ô ảnh chưa đạt.');
         if (slots.length === 0) rejected = null;   // legacy task without slots: whole task is redone
       }
@@ -568,4 +572,142 @@ export const saveTemplateSet = async (sb: any, input: TemplateSetInput) => {
     if (rows.length) await sb.from('OfficeTemplateSetCategories').insert(rows);
   }
   return id;
+};
+
+/** Pickers for the admin screens: working staff, task categories, template sets. */
+export const listOfficeOptions = async (sb: any) => {
+  const [{ data: staff }, { data: categories }] = await Promise.all([
+    sb.from('Staff').select('id, full_name, work_type, position').eq('status', 'ĐANG LÀM').order('id'),
+    sb.from('TaskCategories').select('id, name, type').order('name'),
+  ]);
+  return {
+    staff: (staff || []).map((s: any) => ({ id: s.id, name: s.full_name || s.id, workType: s.work_type, title: s.position || null })),
+    categories: categories || [],
+  };
+};
+
+// ============================================================
+// Declined task → back to the assigner, who reassigns or cancels (decision 08/10/2026)
+// ============================================================
+
+export const reassignTask = async (sb: any, taskId: string, newAssigneeId: string, actorId: string | null) => {
+  if (!newAssigneeId) throw new TaskActionError('Chọn người nhận mới.');
+  const task = await loadTask(sb, taskId);
+  if (task.cancelled_at) throw new TaskActionError('Việc đã huỷ.', 409);
+  if (task.acceptance_status !== 'DECLINED') throw new TaskActionError('Chỉ giao lại việc đã bị từ chối.', 409);
+  if (newAssigneeId === task.assignee_id) throw new TaskActionError('Chọn người khác với người đã từ chối.');
+  const { data: staff } = await sb.from('Staff').select('id').eq('id', newAssigneeId).maybeSingle();
+  if (!staff) throw new TaskActionError('Không tìm thấy nhân viên nhận việc.', 404);
+
+  // The new person's own position decides whether they must press "Nhận".
+  const position = await positionOfStaff(sb, newAssigneeId);
+  const policy: AcceptPolicy = (task.task_type === 'AD-HOC' ? position?.adhoc_accept_policy : position?.fixed_accept_policy) || 'MANDATORY';
+  await sb.from('Tasks').update({
+    assignee_id: newAssigneeId,
+    acceptance_status: policy === 'MANDATORY' ? 'AUTO' : 'PENDING',
+    declined_reason: null,
+    accepted_at: null,
+    position_id: position?.id || null,
+  }).eq('id', taskId);
+  await logTaskEvent(sb, taskId, actorId, 'REASSIGNED', { from: task.assignee_id, to: newAssigneeId, policy });
+  await notify(sb, taskId, newAssigneeId, 'NEW_TASK', `Việc mới: ${task.name}`);
+};
+
+// ============================================================
+// Task template detail config (admin) — applies to tasks generated after the save;
+// tasks already generated keep their snapshot.
+// ============================================================
+
+const TIME_MODES = ['FREE', 'DEADLINE', 'WINDOW', 'MULTI'] as const;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MAX_SLOTS = 12;
+const MAX_FIELDS = 10;
+
+export interface TemplateConfigInput {
+  standard_text?: string | null;
+  sop?: string[] | null;
+  photo_slots?: PhotoSlot[] | null;
+  evidence_fields?: EvidenceField[] | null;
+  time_mode?: typeof TIME_MODES[number];
+  due_time?: string | null;
+  window_start?: string | null;
+  window_end?: string | null;
+  multi_times?: string[] | null;
+  blocks_checkout?: boolean;
+  requires_review?: boolean;
+  allow_carry_over?: boolean;
+}
+
+const TEMPLATE_CONFIG_COLUMNS =
+  'id, name, category_id, requires_photo, min_photo_count, standard_text, sop, photo_slots, evidence_fields, ' +
+  'time_mode, due_time, window_start, window_end, multi_times, blocks_checkout, requires_review, allow_carry_over, is_active';
+
+export const getTemplateConfig = async (sb: any, templateId: string) => {
+  const { data, error } = await sb.from('TaskTemplates').select(TEMPLATE_CONFIG_COLUMNS).eq('id', templateId).maybeSingle();
+  if (error) throw new TaskActionError(error.message, 500);
+  if (!data) throw new TaskActionError('Không tìm thấy việc mẫu.', 404);
+  const slots: PhotoSlot[] = Array.isArray(data.photo_slots) ? data.photo_slots : [];
+  return {
+    ...data,
+    refUrls: slots.map(s => (s.ref_path ? sb.storage.from(PHOTO_BUCKET).getPublicUrl(s.ref_path).data.publicUrl : null)),
+  };
+};
+
+const hhmm = (v: unknown) => (typeof v === 'string' ? v.slice(0, 5) : '');
+
+export const saveTemplateConfig = async (sb: any, templateId: string, input: TemplateConfigInput, actorId: string | null) => {
+  const mode = input.time_mode || 'FREE';
+  if (!TIME_MODES.includes(mode)) throw new TaskActionError('Chế độ thời gian không hợp lệ.');
+
+  const slots = (input.photo_slots || [])
+    .map(s => ({ label: String(s?.label || '').trim(), ref_path: s?.ref_path ? String(s.ref_path) : null }))
+    .filter(s => s.label);
+  if (slots.length > MAX_SLOTS) throw new TaskActionError(`Tối đa ${MAX_SLOTS} ô ảnh.`);
+  if (slots.some(s => s.ref_path && !s.ref_path.startsWith('refs/'))) throw new TaskActionError('Ảnh mẫu không hợp lệ.');
+
+  const fields: EvidenceField[] = [];
+  for (const f of input.evidence_fields || []) {
+    const label = String(f?.label || '').trim();
+    if (!label) continue;
+    if (f.kind === 'check') fields.push({ kind: 'check', label });
+    else if (f.kind === 'count') {
+      const min = f.min === undefined || f.min === null || (f.min as any) === '' ? undefined : Number(f.min);
+      if (min !== undefined && (!Number.isFinite(min) || min < 0)) throw new TaskActionError(`Mức tối thiểu của "${label}" không hợp lệ.`);
+      fields.push({ kind: 'count', label, ...(f.unit?.trim() ? { unit: f.unit.trim() } : {}), ...(min !== undefined ? { min } : {}) });
+    }
+  }
+  if (fields.length > MAX_FIELDS) throw new TaskActionError(`Tối đa ${MAX_FIELDS} trường số liệu.`);
+
+  const row: any = {
+    standard_text: input.standard_text?.trim() || null,
+    sop: (input.sop || []).map(s => String(s).trim()).filter(Boolean),
+    photo_slots: slots.length ? slots : null,
+    evidence_fields: fields.length ? fields : null,
+    time_mode: mode,
+    due_time: null, window_start: null, window_end: null, multi_times: null,
+    blocks_checkout: input.blocks_checkout !== false,
+    requires_review: input.requires_review !== false,
+    allow_carry_over: input.allow_carry_over !== false,
+  };
+  if (!row.sop.length) row.sop = null;
+  // Named slots define the photo requirement; keep the legacy columns consistent for old readers.
+  if (slots.length) { row.requires_photo = true; row.min_photo_count = slots.length; }
+
+  if (mode === 'DEADLINE') {
+    if (!HHMM.test(hhmm(input.due_time))) throw new TaskActionError('Nhập giờ hạn chót (HH:mm).');
+    row.due_time = hhmm(input.due_time);
+  } else if (mode === 'WINDOW') {
+    const a = hhmm(input.window_start), b = hhmm(input.window_end);
+    if (!HHMM.test(a) || !HHMM.test(b)) throw new TaskActionError('Nhập khung giờ nộp (HH:mm).');
+    if (a >= b) throw new TaskActionError('Giờ bắt đầu khung phải trước giờ kết thúc.');
+    row.window_start = a; row.window_end = b;
+  } else if (mode === 'MULTI') {
+    const times = Array.from(new Set((input.multi_times || []).map(hhmm).filter(t => HHMM.test(t)))).sort();
+    if (!times.length) throw new TaskActionError('Nhập ít nhất 1 mốc giờ lặp.');
+    row.multi_times = times;
+  }
+
+  const { error } = await sb.from('TaskTemplates').update(row).eq('id', templateId);
+  if (error) throw new TaskActionError(error.message, 500);
+  await logTaskEvent(sb, null, actorId, 'TEMPLATE_CONFIG_CHANGED', { template_id: templateId, time_mode: mode, slots: slots.length, fields: fields.length });
 };

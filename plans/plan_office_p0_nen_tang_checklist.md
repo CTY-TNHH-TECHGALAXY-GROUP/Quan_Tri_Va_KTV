@@ -2,7 +2,7 @@
 
 > **Mức 2** — chạm DB (migration), chấm công / chặn tan ca, phân quyền, cron, "xoá" dữ liệu (đổi sang huỷ mềm).
 > Trạng thái: **ĐÃ DUYỆT 08/10** — đang làm. Nhánh: `feat/office-p0-checklist-v1` (worktree `.worktrees/office-p0-v1`, `.env.local` = Supabase TEST).
-> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ (QA27 66/66 trên TEST, `TZ=UTC`) — commit `6a09fa3a` · bước 4 UI nhân viên ✅ (typecheck + dev server TEST biên dịch được; **chưa xem bằng mắt khi đăng nhập**) · bước 5–7 chưa làm. DB thật: **chưa apply**.
+> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ — commit `6a09fa3a` · bước 4 UI nhân viên ✅ — commit `da7c3aa2` · bước 5 UI giám sát/admin ✅ (QA27 82/82 trên TEST, typecheck, dev server TEST biên dịch được; **chưa xem bằng mắt khi đăng nhập**) · bước 6–7 chưa làm. DB thật: **chưa apply**.
 > Thay thế: `plans/plan_nang_cap_giao_viec.md` (giữ làm lịch sử; các quyết định ở mục 9 của file đó vẫn áp dụng).
 > Bối cảnh: `plans/context_giao_viec_v2.md`. Demo duyệt UX: https://claude.ai/artifact/YJcAZMkAGQZbHNZtj5vGk3
 
@@ -505,3 +505,14 @@ Sau khi ghi CHECK_IN thành công: `after(() => EmployeeTasksService.ensureTasks
 1. **NH016** (8 việc cũ): (a) tắt các routine cũ trước khi lên P0 — **khuyến nghị**, rồi gán lại qua vị trí nếu cần; hay (b) giữ và để bị chặn tan ca?
 2. Việc **từ chối** ở vị trí `ACCEPT_OR_DECLINE`: quay về **người giao** để giao lại (khuyến nghị) hay tự chuyển người dự phòng (P1)?
 3. ~~Mặc định chính sách~~ → **Đã chốt 08/10:** chính sách nhận việc là **nút cấu hình theo vị trí, admin chọn** (mục 6). Vị trí "Quầy hỗ trợ NH01" seed = Bắt buộc làm / Bắt buộc làm; admin đổi được.
+
+
+---
+
+## 14. Ghi chú bước 5 (09/10/2026)
+
+- **Không thêm mục Sidebar / quyền mới**: menu "Giao Việc" (`support_tasks_admin`) đã mở trang tab `/admin/support/templates`. Tab "Nghiệm Thu" cũ → **"Cần tôi xử lý"**, thêm tab **"Vị trí & bộ việc"**. Hai trang riêng `/admin/support/reviews`, `/admin/support/positions` dùng cùng component. Lý do: thêm module vào `MODULES` = thêm quyền mới (vùng Mức 2 phân quyền) mà không cần thiết.
+- API mới: `PATCH/GET /api/support/task-template-config` (cấu hình chi tiết việc mẫu), `POST /api/support/tasks/reassign` (giao lại việc bị từ chối). `rework-photo` nhận `kind=ref` → lưu ảnh mẫu ở `refs/`. `GET /api/support/positions` trả thêm `staff`, `categories` cho ô chọn. `reviewTasks` thêm `allSlots` (màn chi tiết nhân viên không khoanh theo ô → trả cả việc).
+- "Giao việc nóng" ở `/admin/support/dashboard` trước đây gửi id giả tới endpoint bỏ qua chúng → nay dùng form giao việc đột xuất thật.
+- `EmployeeDetail`: đọc việc qua `GET /api/support/tasks` (theo mã Staff, không theo Users.id); duyệt / trả lại / giao đột xuất / xoá đều qua API (xoá = huỷ mềm); thêm nút "Bỏ khỏi người này" (EXCLUDE).
+- **Dời sang bước 7** (phải xong TRƯỚC khi siết RLS, nếu không sẽ gãy): form "Kho việc" (`SupportTemplates.logic.ts` `saveCategoryWithTemplates`) còn ghi thẳng `TaskCategories` / `TaskTemplates`; đánh dấu đã đọc `TaskNotifications` ở màn nhân viên; `app/support/dashboard/SupportDashboard.logic.ts` là code chết (trang đã redirect).

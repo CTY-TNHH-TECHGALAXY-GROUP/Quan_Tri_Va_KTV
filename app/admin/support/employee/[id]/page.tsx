@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { t as officeT } from '../../_shared/officeAdmin.i18n';
 import { useEmployeeDetail } from './EmployeeDetail.logic';
 import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -265,7 +266,7 @@ export default function EmployeeDetailPage() {
                                       <button onClick={() => { setReviewingTaskId(null); logic.setReviewFile(null); setReviewNote(''); }} className="text-slate-500 hover:text-slate-700 text-xs font-bold px-3 py-1.5 bg-slate-100 rounded-lg">Hủy</button>
                                       <button 
                                         onClick={() => { logic.reviewTask(task.id, 'REWORK_REQUIRED', reviewNote, logic.reviewFile); setReviewingTaskId(null); setReviewNote(''); logic.setReviewFile(null); }}
-                                        disabled={!reviewNote.trim() || !logic.reviewFile || logic.submitting}
+                                        disabled={!reviewNote.trim() || logic.submitting}
                                         className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-600 disabled:opacity-50"
                                       >
                                         Gửi yêu cầu
@@ -308,6 +309,7 @@ export default function EmployeeDetailPage() {
               <div>
                 <h2 className="font-bold text-lg text-slate-800">Cấu hình Checklist Cố Định</h2>
                 <p className="text-sm text-slate-500">Gán các công việc định kỳ hằng ngày cho nhân viên {logic.employee?.fullName}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{officeT.employee.personalHint}</p>
               </div>
               <button onClick={() => logic.setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl font-light">✕</button>
             </div>
@@ -382,16 +384,26 @@ export default function EmployeeDetailPage() {
                                       disabled={logic.submitting}
                                       className="text-green-600 hover:text-green-800 text-[10px] font-bold bg-green-50 px-2 py-0.5 rounded shadow-sm border border-green-200 shrink-0"
                                     >
-                                      ✓ Đã gán (Bỏ)
+                                      {assignedRoutine.mode === 'EXCLUDE' ? `✕ ${officeT.employee.excluded}` : '✓ Đã gán (Bỏ)'}
                                     </button>
                                   ) : (
-                                    <button
-                                      onClick={() => logic.addRoutine(tpl.templateId, tpl.roomId)}
-                                      disabled={logic.submitting}
-                                      className="text-cyan-600 hover:text-cyan-800 text-[10px] font-bold bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200 shrink-0"
-                                    >
-                                      + Gán lẻ
-                                    </button>
+                                    <span className="flex gap-1 shrink-0">
+                                      <button
+                                        onClick={() => logic.addRoutine(tpl.templateId, tpl.roomId)}
+                                        disabled={logic.submitting}
+                                        className="text-cyan-600 hover:text-cyan-800 text-[10px] font-bold bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200"
+                                      >
+                                        + Gán lẻ
+                                      </button>
+                                      <button
+                                        onClick={() => logic.addRoutine(tpl.templateId, tpl.roomId, 'EXCLUDE')}
+                                        disabled={logic.submitting}
+                                        title={officeT.employee.personalHint}
+                                        className="text-slate-500 hover:text-rose-700 text-[10px] font-bold bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200"
+                                      >
+                                        {officeT.employee.exclude}
+                                      </button>
+                                    </span>
                                   )}
                                 </div>
                               );
@@ -424,9 +436,10 @@ export default function EmployeeDetailPage() {
                         {routines.map((r) => (
                           <div key={r.id} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between group">
                             <div className="flex flex-col pr-2">
-                              <p className="text-sm font-medium text-slate-700 truncate">
+                              <p className={`text-sm font-medium truncate ${r.mode === 'EXCLUDE' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
                                 {r.templateName}
                               </p>
+                              {r.mode === 'EXCLUDE' && <span className="text-[10px] font-bold text-rose-600">{officeT.employee.excluded}</span>}
                             </div>
                             <button
                               onClick={() => logic.removeRoutine(r.id)}

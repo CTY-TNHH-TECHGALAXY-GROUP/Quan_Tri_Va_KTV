@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { requirePermission } from '@/lib/auth-server';
-import { listPositions, savePosition } from '@/lib/services/officeTaskActions.service';
+import { listOfficeOptions, listPositions, savePosition } from '@/lib/services/officeTaskActions.service';
 import { sessionActor, taskErrorResponse } from '../_lib/taskRoute';
 
 export const dynamic = 'force-dynamic';
 
-/** Positions with their accept policies (admin-configured), members and template sets. */
+/** Positions with their accept policies (admin-configured), members and template sets, plus pickers. */
 export async function GET() {
   try {
     await requirePermission('support_tasks_admin');
     const sb = getSupabaseAdmin();
     if (!sb) throw new Error('Supabase not initialized');
-    return NextResponse.json({ success: true, data: await listPositions(sb) });
+    const [data, options] = await Promise.all([listPositions(sb), listOfficeOptions(sb)]);
+    return NextResponse.json({ success: true, data, ...options });
   } catch (error: any) {
     return taskErrorResponse(error, '/api/support/positions GET');
   }

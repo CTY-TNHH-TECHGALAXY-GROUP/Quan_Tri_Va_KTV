@@ -3,16 +3,16 @@
 import React from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { t } from '../_shared/officeAdmin.i18n';
-import ReviewQueue from './_components/ReviewQueue';
+import PositionsPanel from './_components/PositionsPanel';
 
-const SupportReviewsPage = () => (
-  <AppLayout title={t.queue.title}>
+const SupportPositionsPage = () => (
+  <AppLayout title={t.positions.title}>
     <div className="min-h-screen bg-stone-50">
       <div className="max-w-6xl mx-auto px-4 py-5">
-        <ReviewQueue />
+        <PositionsPanel />
       </div>
     </div>
   </AppLayout>
 );
 
-export default SupportReviewsPage;
+export default SupportPositionsPage;

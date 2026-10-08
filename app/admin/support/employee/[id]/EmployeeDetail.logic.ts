@@ -1,32 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-
-// ============================================================
-// 🔧 UI CONFIGURATION
-// ============================================================
-const getVietnamTime = () => {
-  return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"}));
-};
-
-const getTodayStart = () => {
-  const d = getVietnamTime();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-};
-
-const getTodayEnd = () => {
-  const d = getVietnamTime();
-  d.setHours(23, 59, 59, 999);
-  return d.toISOString();
-};
-
-const CARRY_OVER_MAX_DAYS = 1;
-const getCarryOverStart = () => {
-  const d = getVietnamTime();
-  d.setDate(d.getDate() - CARRY_OVER_MAX_DAYS);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-};
 
 // ============================================================
 // Types
@@ -40,6 +13,8 @@ interface RoutineItem {
   categoryName: string;
   requiresPhoto: boolean;
   minPhotoCount: number;
+  /** ADD = extra task on top of the position template; EXCLUDE = template task removed for this person. */
+  mode: 'ADD' | 'EXCLUDE';
 }
 
 interface TodayTask {
@@ -71,6 +46,8 @@ interface TemplateOption {
 
 export const useEmployeeDetail = (employeeId: string) => {
   const [employee, setEmployee] = useState<{ id: string; fullName: string; role: string } | null>(null);
+  // Staff code (Users.code) — undefined until looked up; tasks are keyed by it.
+  const staffCodeRef = useRef<string | null | undefined>(undefined);
   const [routines, setRoutines] = useState<RoutineItem[]>([]);
   const [todayTasks, setTodayTasks] = useState<TodayTask[]>([]);
   const [availableTemplates, setAvailableTemplates] = useState<TemplateOption[]>([]);
@@ -117,7 +94,7 @@ export const useEmployeeDetail = (employeeId: string) => {
   const fetchRoutines = useCallback(async () => {
     const { data, error } = await supabase
       .from('EmployeeRoutines')
-      .select('id, template_id, room_id, Rooms(name), TaskTemplates(id, name, requires_photo, min_photo_count, category_id, TaskCategories(name))')
+      .select('id, template_id, room_id, mode, Rooms(name), TaskTemplates(id, name, requires_photo, min_photo_count, category_id, TaskCategories(name))')
       .eq('employee_id', employeeId)
       .eq('is_active', true);
 
@@ -159,6 +136,7 @@ export const useEmployeeDetail = (employeeId: string) => {
         roomName: r.Rooms?.name || null,
         requiresPhoto: r.TaskTemplates?.requires_photo || false,
         minPhotoCount: customPhotoMap.get(`${r.template_id}_${r.room_id}`) ?? r.TaskTemplates?.min_photo_count ?? 1,
+        mode: r.mode === 'EXCLUDE' ? 'EXCLUDE' : 'ADD',
       };
     });
 
@@ -169,117 +147,40 @@ export const useEmployeeDetail = (employeeId: string) => {
   // Fetch today's tasks for this employee
   // ============================================================
   const fetchTodayTasks = useCallback(async () => {
-    // 1. Tự động sinh các task mới từ Checklist Cố định (nếu có) thông qua API
+    // Same source as the staff screen: the API ensures today's tasks, then returns today + carry-over
+    // keyed by the staff code (Tasks.assignee_id → Staff.id), not by Users.id.
+    let code = staffCodeRef.current;
+    if (code === undefined) {
+      const { data: u } = await supabase.from('Users').select('code').eq('id', employeeId).maybeSingle();
+      code = u?.code || null;
+      staffCodeRef.current = code;
+    }
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
-      await fetch(`/api/support/tasks?employeeId=${employeeId}&t=${Date.now()}`, { 
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-    } catch (e: any) {
-      if (e.name !== 'AbortError') {
-        console.error('Lỗi khi đồng bộ API Tasks:', e);
-      }
-    }
-
-    const { data, error } = await supabase
-      .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, room_id, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name), Rooms(name, has_guests)')
-      .eq('assignee_id', employeeId)
-      .gte('created_at', getTodayStart())
-      .lte('created_at', getTodayEnd())
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching today tasks:', error.message, error.code);
-      return;
-    }
-
-    // Fetch photo counts
-    const taskIds = (data || []).map(t => t.id);
-    let photoCounts: Record<string, number> = {};
-
-    if (taskIds.length > 0) {
-      const { data: photos } = await supabase
-        .from('TaskPhotos')
-        .select('task_id')
-        .in('task_id', taskIds)
-        .eq('is_submitted', true);
-
-      (photos || []).forEach(p => {
-        photoCounts[p.task_id] = (photoCounts[p.task_id] || 0) + 1;
-      });
-    }
-
-    // Helper function to format room names consistently
-    const formatRoomName = (name: string) => {
-      if (!name) return '';
-      return name.replace(/Nhà vệ sinh [Ll]ầu /g, 'NVS').replace(/Nhà tắm [Ll]ầu /g, 'NTL');
-    };
-
-    const mapped: TodayTask[] = (data || []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      status: t.status,
-      inspection_status: t.inspection_status,
-      task_type: t.task_type,
-      priority: t.priority,
-      completedAt: t.status === 'COMPLETED' ? t.updated_at : null,
-      photoCount: photoCounts[t.id] || 0,
-      current_review_round: t.current_review_round || 0,
-      categoryName: t.room_id 
-        ? `Phòng ${t.Rooms?.name ? formatRoomName(t.Rooms.name) : t.room_id}` 
-        : (t.TaskCategories?.name || 'Khác'),
-      categoryOrder: t.room_id ? 0 : 999,
-      roomHasGuest: t.Rooms?.has_guests || false,
-    }));
-
-    setTodayTasks(mapped);
-
-    // Fetch carry-over tasks from previous days
-    const { data: carryOverData } = await supabase
-      .from('Tasks')
-      .select('id, name, status, inspection_status, task_type, priority, updated_at, current_review_round, room_id, created_at, TaskTemplates(requires_photo, min_photo_count), TaskCategories(name), Rooms(name, has_guests)')
-      .eq('assignee_id', employeeId)
-      .gte('created_at', getCarryOverStart())
-      .lt('created_at', getTodayStart())
-      .or('status.in.(NOT_STARTED,IN_PROGRESS),and(status.eq.COMPLETED,inspection_status.in.(REWORK_REQUIRED,PENDING_REVIEW))')
-      .order('created_at', { ascending: true });
-
-    if (carryOverData && carryOverData.length > 0) {
-      const coTaskIds = carryOverData.map(t => t.id);
-      let coPhotoCounts: Record<string, number> = {};
-      const { data: coPhotos } = await supabase
-        .from('TaskPhotos')
-        .select('task_id')
-        .in('task_id', coTaskIds)
-        .eq('is_submitted', true);
-      (coPhotos || []).forEach(p => {
-        coPhotoCounts[p.task_id] = (coPhotoCounts[p.task_id] || 0) + 1;
-      });
-
-      const carryOverMapped: TodayTask[] = carryOverData.map((t: any) => ({
+      const qs = new URLSearchParams({ employeeId, t: String(Date.now()) });
+      if (code) qs.set('userCode', code);
+      const res = await fetch(`/api/support/tasks?${qs}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
+      const mapped: TodayTask[] = (json.data || []).map((t: any) => ({
         id: t.id,
         name: t.name,
-        status: t.status === 'COMPLETED' && t.inspection_status === 'REWORK_REQUIRED' ? 'IN_PROGRESS' : t.status,
+        status: t.status,
         inspection_status: t.inspection_status,
         task_type: t.task_type,
         priority: t.priority,
-        completedAt: null,
-        photoCount: coPhotoCounts[t.id] || 0,
+        completedAt: t.completedAt,
+        photoCount: t.photoCount || 0,
         current_review_round: t.current_review_round || 0,
-        categoryName: t.room_id
-          ? `Phòng ${t.Rooms?.name ? formatRoomName(t.Rooms.name) : t.room_id}`
-          : (t.TaskCategories?.name || 'Khác'),
-        categoryOrder: t.room_id ? 0 : 999,
-        roomHasGuest: t.Rooms?.has_guests || false,
-        isCarryOver: true,
-        carryOverDate: t.created_at,
+        categoryName: t.categoryName,
+        categoryOrder: t.categoryOrder,
+        isCarryOver: t.isCarryOver,
+        carryOverDate: t.carryOverDate,
+        roomHasGuest: t.roomHasGuest,
+        roomHasGuestUpdatedAt: t.roomHasGuestUpdatedAt,
       }));
-
-      setTodayTasks(prev => [...carryOverMapped, ...prev]);
+      setTodayTasks(mapped);
+    } catch (e: any) {
+      console.error('Error fetching today tasks:', e?.message || e);
     }
   }, [employeeId]);
 
@@ -341,6 +242,7 @@ export const useEmployeeDetail = (employeeId: string) => {
       .select('storage_path, created_at')
       .eq('task_id', taskId)
       .eq('is_submitted', true)
+      .is('superseded_at', null)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -371,6 +273,7 @@ export const useEmployeeDetail = (employeeId: string) => {
       .select('task_id, storage_path, created_at')
       .in('task_id', taskIds)
       .eq('is_submitted', true)
+      .is('superseded_at', null)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -416,39 +319,22 @@ export const useEmployeeDetail = (employeeId: string) => {
   // Batch review: Approve all pending tasks
   // ==========================================
   const reviewAllPending = async (tasks: TodayTask[]) => {
-    const pending = tasks.filter(t => 
-      t.status === 'COMPLETED' && 
+    const pending = tasks.filter(t =>
+      t.status === 'COMPLETED' &&
       (t.inspection_status === 'PENDING_REVIEW' || t.inspection_status === 'NOT_REVIEWED')
     );
     if (pending.length === 0) return;
 
     setSubmitting(true);
     try {
-      const pendingIds = pending.map(t => t.id);
-
-      // 1. Batch update tasks
-      const { error: taskErr } = await supabase
-        .from('Tasks')
-        .update({ inspection_status: 'PASSED' })
-        .in('id', pendingIds);
-
-      if (taskErr) {
-        console.error('Error batch reviewing:', taskErr.message);
-        return;
-      }
-
-      // 2. Batch insert reviews
-      const reviews = pending.map(t => ({
-        task_id: t.id,
-        round_number: (t.current_review_round || 0) + 1,
-        reviewer_id: null,
-        decision: 'PASSED' as const,
-        note: 'Duyệt hàng loạt',
-      }));
-
-      await supabase.from('TaskReviews').insert(reviews);
-
-      // 3. Refresh UI
+      // Server records TaskReviews with the reviewer and appends TaskEvents.
+      const res = await fetch('/api/support/tasks/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskIds: pending.map(t => t.id), decision: 'PASSED', note: 'Duyệt hàng loạt' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!json.success && json.error) alert(json.error);
       await fetchTodayTasks();
     } finally {
       setSubmitting(false);
@@ -458,13 +344,13 @@ export const useEmployeeDetail = (employeeId: string) => {
   // ============================================================
   // Add routine
   // ============================================================
-  const addRoutine = async (templateId: string, roomId?: string | null) => {
+  const addRoutine = async (templateId: string, roomId?: string | null, mode: 'ADD' | 'EXCLUDE' = 'ADD') => {
     setSubmitting(true);
     try {
       const res = await fetch('/api/support/routines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId, templateId, roomId }),
+        body: JSON.stringify({ employeeId, templateId, roomId, mode }),
       });
 
       if (!res.ok) {
@@ -546,20 +432,16 @@ export const useEmployeeDetail = (employeeId: string) => {
   const createAdhocTask = async (name: string) => {
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('Tasks').insert({
-        name,
-        assignee_id: employeeId,
-        task_type: 'AD-HOC',
-        priority: 'HIGH',
-        status: 'NOT_STARTED',
-        inspection_status: 'NOT_REVIEWED',
+      const res = await fetch('/api/support/tasks/adhoc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigneeId: staffCodeRef.current || employeeId, name, priority: 'HIGH' }),
       });
-      
-      if (error) {
-        console.error('Error creating adhoc task:', error.message);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        alert('Lỗi giao việc: ' + (json.error || res.status));
         return;
       }
-      
       await fetchTodayTasks();
       setShowAdhocModal(false);
     } finally {
@@ -573,96 +455,34 @@ export const useEmployeeDetail = (employeeId: string) => {
   const reviewTask = async (taskId: string, decision: 'PASSED' | 'REWORK_REQUIRED', note?: string, currentReviewFile?: File | null) => {
     setSubmitting(true);
     try {
-      const task = todayTasks.find(t => t.id === taskId);
-      if (!task) return;
-
-      const roundNumber = task.current_review_round + 1;
-
-      // 0. Upload review photo if needed
-      let uploadedPhotoUrl: string | null = null;
+      // Optional "photo of the mistake".
+      let photoPath: string | null = null;
       if (decision === 'REWORK_REQUIRED' && currentReviewFile) {
         const formData = new FormData();
         formData.append('file', currentReviewFile);
-        
-        const res = await fetch('/api/support/tasks/rework-photo', {
-          method: 'POST',
-          body: formData
-        });
+        const res = await fetch('/api/support/tasks/rework-photo', { method: 'POST', body: formData });
         const json = await res.json();
-        
         if (!json.success) {
-          console.error('Error uploading review photo:', json.error);
           alert('Lỗi tải ảnh lên: ' + json.error);
-          setSubmitting(false);
           return;
         }
-        uploadedPhotoUrl = json.path;
+        photoPath = json.path;
       }
 
-      // 1. Insert review record
-      const { error: reviewErr } = await supabase
-        .from('TaskReviews')
-        .insert({
-          task_id: taskId,
-          round_number: roundNumber,
-          reviewer_id: null, // TODO: Get current admin user
+      // This screen has no per-slot marking → returning redoes every slot (photos are kept as history).
+      const res = await fetch('/api/support/tasks/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskIds: [taskId],
           decision,
           note: note || null,
-          photo_url: uploadedPhotoUrl,
-        });
-
-      if (reviewErr) {
-        console.error('Error creating review:', reviewErr.message, reviewErr.code);
-        return;
-      }
-
-      // 2. Update task status
-      const updatePayload: any = {
-        current_review_round: roundNumber,
-        inspection_status: decision,
-      };
-
-      if (decision === 'REWORK_REQUIRED') {
-        updatePayload.status = 'IN_PROGRESS';
-      }
-
-      const { error: taskErr } = await supabase
-        .from('Tasks')
-        .update(updatePayload)
-        .eq('id', taskId);
-
-      if (taskErr) {
-        console.error('Error updating task:', taskErr.message, taskErr.code);
-        return;
-      }
-
-      // 3. Send notification to employee and delete old photos (REWORK only)
-      if (decision === 'REWORK_REQUIRED') {
-        const { error: notifErr } = await supabase
-          .from('TaskNotifications')
-          .insert({
-            task_id: taskId,
-            employee_id: employeeId,
-            type: 'REWORK',
-            message: `Quản lý yêu cầu làm lại: ${task.name}${note ? ` — ${note}` : ''}`,
-          });
-
-        if (notifErr) {
-          console.error('Error sending rework notification:', notifErr.message, notifErr.code);
-        }
-
-        // Call API to delete photos from storage and DB
-        try {
-          await fetch('/api/support/tasks/rework', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId }),
-          });
-        } catch (apiErr) {
-          console.error('Error calling rework API:', apiErr);
-        }
-      }
-
+          photoPath,
+          ...(decision === 'REWORK_REQUIRED' ? { reasonCode: 'OTHER', allSlots: true } : {}),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!json.success) alert(json.error || 'Lỗi nghiệm thu');
       await fetchTodayTasks();
     } finally {
       setSubmitting(false);
@@ -710,10 +530,10 @@ export const useEmployeeDetail = (employeeId: string) => {
     if (!confirm('Bạn có chắc muốn xóa công việc này?')) return;
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('Tasks').delete().eq('id', taskId);
-      if (error) {
-        console.error('Error deleting task:', error.message);
-        alert('Lỗi xóa công việc: ' + error.message);
+      const res = await fetch(`/api/support/tasks?taskId=${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        alert('Lỗi xóa công việc: ' + (json.error || res.status));
         return;
       }
       await fetchTodayTasks();
