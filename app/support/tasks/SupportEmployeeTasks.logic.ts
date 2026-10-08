@@ -71,7 +71,7 @@ export type StatusFilter = 'all' | 'open' | 'fix' | 'waiting' | 'approved';
 type UploadStatus = 'uploading' | 'queued' | 'failed';
 export interface PendingUpload { taskId: string; slot: number | null; previewUrl: string; status: UploadStatus; file: File }
 
-interface TaskNotification { id: string; message: string; type: string; created_at: string }
+interface TaskNotification { id: string; message: string; type: string; created_at: string; employee_id?: string }
 
 // ============================================================
 // Helpers
@@ -171,8 +171,17 @@ export const useSupportTasks = () => {
   }, [employeeId, userCode]);
 
   const dismissNotification = async (notifId: string) => {
-    await supabase.from('TaskNotifications').update({ is_read: true }).eq('id', notifId);
     setNotifications(prev => prev.filter(n => n.id !== notifId));
+    const owner = notifications.find(n => n.id === notifId)?.employee_id || userCode || employeeId;
+    try {
+      await fetch('/api/support/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: owner, notificationIds: [notifId] }),
+      });
+    } catch (e) {
+      console.error('Error marking notification read:', e);
+    }
   };
 
   useEffect(() => {

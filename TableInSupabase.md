@@ -774,6 +774,8 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 ## NHÓM 8: HẬU CẦN (Support) - MỚI
 **Lưu ý**: Các bảng cũ (`SupportAreas`, `SupportTasks`, `SupportTaskTemplates`) đã được deprecate. Module Hậu cần giờ sẽ link trực tiếp với bảng `Rooms`.
 
+**[OFFICE P0 bước 7] RLS — CHƯA apply DB thật (TEST đã apply 09/10/2026)**: `Tasks`, `TaskPhotos`, `TaskReviews`, `TaskNotifications`, `TaskTemplates`, `TaskCategories`, `EmployeeRoutines`, `RoomTaskTemplates` bỏ policy "Allow all access" / "Enable all for authenticated users", thay bằng `office_client_read_only` (SELECT cho anon + authenticated). Mọi ghi qua `/api/support/*` (service role). Migration `20261009150000_office_p0_task_rls_read_only.sql`. DB thật hiện vẫn là "Allow all access" cho public.
+
 ### 20. TaskCategories
 **Nhiệm vụ**: Danh mục phân loại công việc hậu cần (Vệ sinh, Bảo trì, Vật tư...).
 | Cột | Kiểu | Mô tả chức năng |

@@ -1,64 +1,51 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireStaffOrPermission } from '@/lib/auth-server';
+import { taskErrorResponse } from '../_lib/taskRoute';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-);
+export const dynamic = 'force-dynamic';
 
-// GET: Fetch task notifications for an employee
+/** Unread task notifications of one employee — that employee or a support admin. */
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const employeeId = searchParams.get('employeeId');
-
-    if (!employeeId) {
-      return NextResponse.json({ error: 'employeeId is required' }, { status: 400 });
-    }
-
-    const { data, error } = await supabase
+    const employeeId = new URL(request.url).searchParams.get('employeeId');
+    if (!employeeId) return NextResponse.json({ error: 'employeeId is required' }, { status: 400 });
+    const denied = await requireStaffOrPermission(employeeId, 'support_tasks_admin');
+    if (denied) return denied;
+    const sb = getSupabaseAdmin();
+    if (!sb) throw new Error('Supabase not initialized');
+    const { data, error } = await sb
       .from('TaskNotifications')
       .select('*')
       .eq('employee_id', employeeId)
       .eq('is_read', false)
       .order('created_at', { ascending: false })
       .limit(20);
-
-    if (error) {
-      console.error('Error fetching task notifications:', error.message, error.code);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
+    if (error) throw error;
     return NextResponse.json({ data });
   } catch (err: any) {
-    console.error('Unexpected error in GET /api/support/notifications:', err.message);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return taskErrorResponse(err, '/api/support/notifications GET');
   }
 }
 
-// POST: Mark notifications as read
+/**
+ * Mark notifications as read. Body: { employeeId, notificationIds: string[] }.
+ * Only rows that belong to employeeId are touched (replaces the client-side UPDATE removed with RLS).
+ */
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { notificationIds } = body;
-
-    if (!notificationIds || !Array.isArray(notificationIds)) {
-      return NextResponse.json({ error: 'notificationIds array is required' }, { status: 400 });
+    const { employeeId, notificationIds } = (await request.json()) || {};
+    if (!employeeId || !Array.isArray(notificationIds) || !notificationIds.length) {
+      return NextResponse.json({ error: 'employeeId and notificationIds are required' }, { status: 400 });
     }
-
-    const { error } = await supabase
-      .from('TaskNotifications')
-      .update({ is_read: true })
-      .in('id', notificationIds);
-
-    if (error) {
-      console.error('Error marking notifications read:', error.message, error.code);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
+    const denied = await requireStaffOrPermission(employeeId, 'support_tasks_admin');
+    if (denied) return denied;
+    const sb = getSupabaseAdmin();
+    if (!sb) throw new Error('Supabase not initialized');
+    const { error } = await sb.from('TaskNotifications').update({ is_read: true }).in('id', notificationIds).eq('employee_id', employeeId);
+    if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error('Unexpected error in POST /api/support/notifications:', err.message);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return taskErrorResponse(err, '/api/support/notifications POST');
   }
 }

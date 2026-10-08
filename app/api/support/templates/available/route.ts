@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
+/** Template picker for the employee detail page — support admin only (was open). */
 export async function GET() {
   try {
+    await requirePermission('support_tasks_admin');
     const supabase = getSupabaseAdmin();
     if (!supabase) throw new Error('Supabase not initialized');
 
@@ -38,6 +41,8 @@ export async function GET() {
 
     return NextResponse.json({ success: true, roleData, roomData: formattedRoomData });
   } catch (error: any) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     console.error('API Error /api/support/templates/available GET:', error.message);
     return NextResponse.json({ success: false, error: error.message || 'Internal Server Error' }, { status: 500 });
   }
