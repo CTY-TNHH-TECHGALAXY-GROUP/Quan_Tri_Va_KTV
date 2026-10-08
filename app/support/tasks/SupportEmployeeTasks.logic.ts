@@ -71,6 +71,16 @@ export interface CheckoutPicture {
 /** 'all' or one concrete task state — the chips are generated from the states present today. */
 export type StatusFilter = 'all' | TaskState;
 
+export type GroupSort = 'shift' | 'remaining';
+
+export interface GroupStat { name: string; order: string | null; title: string; time: string | null; total: number; done: number; remaining: number }
+
+/** "1. Chuẩn bị sân ngoài (Trước 09:00)" → order "1", title, time. Names without that shape keep the whole text as title. */
+export const parseGroupName = (name: string) => {
+  const m = name.match(/^(\d+)\.\s*(.*?)\s*(?:\(([^()]*)\))?$/);
+  return m ? { order: m[1], title: m[2] || name, time: m[3] || null } : { order: null, title: name, time: null };
+};
+
 /** Display order of state chips (most urgent first). */
 export const STATE_CHIP_ORDER: TaskState[] = ['FIX', 'OFFERED', 'BLOCKED', 'TODO', 'DOING', 'WAITING', 'APPROVED', 'DECLINED'];
 type UploadStatus = 'uploading' | 'queued' | 'failed';
@@ -125,6 +135,7 @@ export const useSupportTasks = () => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
+  const [groupSort, setGroupSort] = useState<GroupSort>('shift');
   const [openId, setOpenId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [uploads, setUploads] = useState<Record<string, PendingUpload>>({});
@@ -348,6 +359,18 @@ export const useSupportTasks = () => {
   // Group names sort "1. …", "2. …" in numeric order so the list follows the shift.
   const byName = (a: string, b: string) => a.localeCompare(b, 'vi', { numeric: true });
   const groupNames = useMemo(() => Array.from(new Set(tasks.map(x => x.categoryName))).sort(byName), [tasks]);
+  // Per-group progress for the group rail; "remaining" = not approved yet (waiting counts as remaining for the shift).
+  const groupStats = useMemo<GroupStat[]>(() => {
+    const live = tasks.filter(x => x.state !== 'CANCELLED' && x.state !== 'DECLINED');
+    const stats = groupNames.map(name => {
+      const mine = live.filter(x => x.categoryName === name);
+      const done = mine.filter(x => x.state === 'APPROVED').length;
+      return { name, ...parseGroupName(name), total: mine.length, done, remaining: mine.length - done };
+    }).filter(g => g.total > 0);
+    return groupSort === 'remaining'
+      ? [...stats].sort((a, b) => (b.remaining - a.remaining) || byName(a.name, b.name))
+      : stats;
+  }, [tasks, groupNames, groupSort]);
   const stateChips = useMemo(() => STATE_CHIP_ORDER.filter(st => counts[st]).map(st => ({ state: st, count: counts[st] })), [counts]);
 
   const visible = useMemo(() => tasks.filter(x => {
@@ -369,10 +392,12 @@ export const useSupportTasks = () => {
       if (!g) { g = { name: x.categoryName, tasks: [] }; byGroup.push(g); }
       g.tasks.push(x);
     });
-    byGroup.sort((a, b) => byName(a.name, b.name));
+    // Sections follow the same order as the group rail.
+    const rank = (n: string) => { const i = groupStats.findIndex(g => g.name === n); return i < 0 ? 999 : i; };
+    byGroup.sort((a, b) => rank(a.name) - rank(b.name));
     byGroup.forEach(g => g.tasks.sort((a, b) => (a.sortOrder - b.sortOrder) || (a.slot_time || '').localeCompare(b.slot_time || '')));
     return { top, groups: byGroup };
-  }, [visible]);
+  }, [visible, groupStats]);
 
   const activeTasks = tasks.filter(x => x.state !== 'CANCELLED' && x.state !== 'DECLINED');
   const pendingUploadCount = Object.values(uploads).length;
@@ -387,7 +412,7 @@ export const useSupportTasks = () => {
 
   return {
     loading, tasks, checkout, counts, sections, groupNames, stateChips, activeTasks,
-    statusFilter, setStatusFilter, groupFilter, setGroupFilter,
+    statusFilter, setStatusFilter, groupFilter, setGroupFilter, groupStats, groupSort, setGroupSort,
     openId, setOpenId, sheetOpen, setSheetOpen, gotoTask,
     uploads, pendingUploadCount, uploadPhoto, retryUpload, removePhoto,
     acceptTask, declineTask, blockTask, unblockTask, setEvidence, toggleRoomHasGuest,

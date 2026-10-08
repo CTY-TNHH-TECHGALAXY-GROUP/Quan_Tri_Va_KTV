@@ -1,13 +1,14 @@
 'use client';
 
 import React from 'react';
-import { AlertCircle, FolderOpen } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
-import { useSupportTasks } from './SupportEmployeeTasks.logic';
+import { parseGroupName, useSupportTasks } from './SupportEmployeeTasks.logic';
 import { t } from './SupportTasks.i18n';
 import ShiftHeader from './_components/ShiftHeader';
 import TaskFilters from './_components/TaskFilters';
+import { GroupBadge } from './_components/GroupRail';
 import TaskCard from './_components/TaskCard';
 import CheckoutCheckSheet from './_components/CheckoutCheckSheet';
 
@@ -55,17 +56,24 @@ const SupportEmployeeTasksPage = () => {
             </section>
           )}
 
-          {logic.sections.groups.map(g => (
-            <section key={g.name} className="flex flex-col gap-2">
-              {/* Group = where the task sits in the shift; neutral folder header, never a status colour. */}
-              <h2 className="flex items-center gap-2 border-b border-stone-200 pb-1.5 text-sm font-bold text-stone-800">
-                <FolderOpen size={16} className="text-stone-400 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1">{g.name}</span>
-                <span className="text-xs font-normal text-stone-400 tabular-nums">{t.groups.count(g.tasks.length)}</span>
-              </h2>
-              {g.tasks.map(task => <TaskCard key={task.id} task={task} logic={logic} showGroup={false} />)}
-            </section>
-          ))}
+          {logic.sections.groups.map(g => {
+            const info = parseGroupName(g.name);
+            const stat = logic.groupStats.find(x => x.name === g.name);
+            return (
+              <section key={g.name} className="flex flex-col gap-2">
+                {/* Group = place in the shift: number badge + title + time + progress, never a status colour. */}
+                <h2 className="flex items-center gap-2.5 border-b border-stone-200 pb-2">
+                  <GroupBadge order={info.order} done={!!stat && stat.total > 0 && stat.done === stat.total} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-stone-800 leading-snug">{info.title}</span>
+                    {info.time && <span className="block text-[11px] font-normal text-stone-500">{info.time}</span>}
+                  </span>
+                  {stat && <span className="text-xs font-semibold text-stone-500 tabular-nums">{stat.done}/{stat.total}</span>}
+                </h2>
+                {g.tasks.map(task => <TaskCard key={task.id} task={task} logic={logic} showGroup={false} />)}
+              </section>
+            );
+          })}
 
           {logic.tasks.length === 0 && <p className="text-center text-stone-500 py-16">{t.empty}</p>}
           {logic.tasks.length > 0 && logic.sections.top.length === 0 && logic.sections.groups.length === 0 && (
