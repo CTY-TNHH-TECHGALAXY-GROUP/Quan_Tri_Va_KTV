@@ -66,6 +66,39 @@ const shouldGenerateOn = (dateStr: string, repeatMode?: string | null, cronSched
 };
 
 // ============================================================
+// 🖼️ SAMPLE PHOTOS — set by the supervisor, the same picture on both sides
+// ============================================================
+
+export interface SlotRef { url: string | null }
+
+/**
+ * Sample photo per slot: the template's CURRENT sample (so a sample the supervisor sets shows at once,
+ * also on tasks already generated today), else the sample snapshotted on the task.
+ * Only supervisor-set samples are used — no automatic fallback.
+ * Side data only: any error returns the snapshot samples (never breaks the task list).
+ */
+export const resolveSlotRefs = async (sb: any, tasks: any[]): Promise<Record<string, SlotRef[]>> => {
+  const urlOf = (path?: string | null) => (path ? sb.storage.from('task-photos').getPublicUrl(path).data.publicUrl : null);
+  const slotsOf = (t: any): any[] => (Array.isArray(t.photo_slots) ? t.photo_slots : []);
+  const out: Record<string, SlotRef[]> = {};
+  tasks.forEach(t => { out[t.id] = slotsOf(t).map(sl => ({ url: urlOf(sl?.ref_path) })); });
+
+  try {
+    const templateIds = Array.from(new Set(tasks.filter(t => t.template_id && slotsOf(t).length).map(t => t.template_id)));
+    if (!templateIds.length) return out;
+    const { data: tpls } = await sb.from('TaskTemplates').select('id, photo_slots').in('id', templateIds);
+    tasks.forEach(t => {
+      if (!t.template_id) return;
+      const live = (tpls || []).find((x: any) => x.id === t.template_id)?.photo_slots;
+      out[t.id] = slotsOf(t).map((sl, i) => ({ url: urlOf((Array.isArray(live) ? live[i]?.ref_path : null) || sl?.ref_path) }));
+    });
+  } catch (e: any) {
+    console.error('[resolveSlotRefs] fallback to snapshot samples:', e?.message || e);
+  }
+  return out;
+};
+
+// ============================================================
 // 🧭 TASK STATE — the single source for every screen and the checkout gate
 // ============================================================
 
@@ -366,6 +399,8 @@ export class EmployeeTasksService {
       (events || []).forEach((e: any) => { (eventsByTask[e.task_id] ||= []).push({ type: e.type, payload: e.payload, at: e.created_at }); });
     }
 
+    const refsByTask = await resolveSlotRefs(supabase, all);
+
     // Admin-configured accept policy per position → may this person decline a pending task?
     const positionIds = Array.from(new Set(all.map((t: any) => t.position_id).filter(Boolean)));
     const { data: positionRows } = positionIds.length
@@ -399,7 +434,7 @@ export class EmployeeTasksService {
         min_photo_count: t.min_photo_count ?? t.TaskTemplates?.min_photo_count ?? 1,
         photo_slots: t.photo_slots,
         photos,
-        refs: (Array.isArray(t.photo_slots) ? t.photo_slots : []).map((sl: any) => urlOf(sl?.ref_path)),
+        refs: (refsByTask[t.id] || []).map(r => r.url),
         history: (eventsByTask[t.id] || []).slice(-15),
         evidence_fields: t.evidence_fields,
         evidence_values: t.evidence_values || {},

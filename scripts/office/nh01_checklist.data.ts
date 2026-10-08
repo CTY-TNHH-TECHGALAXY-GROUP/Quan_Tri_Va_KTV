@@ -110,8 +110,11 @@ export const buildPhotoSlots = ([area, content, photos]: Row): { label: string }
 
 // Tên hiển thị trên DB
 export const PREFIX = 'NH01';
-export const dailyCategoryName = (b: DailyBlock, i: number) => `${PREFIX} · ${i + 1}. ${b.title} (${b.time})`;
-export const WEEKLY_CATEGORY = `${PREFIX} · Việc tuần`;
+// Group names are what staff read as section headers — no branch prefix (the position already says NH01).
+export const dailyCategoryName = (b: DailyBlock, i: number) => `${i + 1}. ${b.title} (${b.time})`;
+export const WEEKLY_CATEGORY = '8. Việc theo thứ trong tuần';
+/** Names used by the first seed (09/10/2026) — renamed in place so ids, sets and tasks stay linked. */
+export const legacyCategoryNames = (newName: string) => [`${PREFIX} · ${newName}`, ...(newName === WEEKLY_CATEGORY ? [`${PREFIX} · Việc tuần`] : [])];
 export const SET_DAY = 'Quầy hỗ trợ NH01 — Ngày';
 export const SET_WEEK = 'Quầy hỗ trợ NH01 — Tuần';
 export const POSITION = 'Quầy hỗ trợ NH01';

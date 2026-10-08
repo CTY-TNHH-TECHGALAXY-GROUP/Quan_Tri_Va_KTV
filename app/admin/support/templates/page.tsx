@@ -29,7 +29,7 @@ export default function SupportTemplatesPage() {
 
   if (logic.loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-slate-500">Đang tải dữ liệu...</p>
@@ -40,7 +40,7 @@ export default function SupportTemplatesPage() {
 
   return (
     <AppLayout title="Giao Việc">
-    <div className="p-4 md:p-6 max-w-7xl mx-auto min-h-screen">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto min-h-screen bg-white">
       {/* Tabs — Friendly large buttons */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
         {TAB_ITEMS.map((tab) => (

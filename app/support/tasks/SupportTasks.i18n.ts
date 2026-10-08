@@ -19,13 +19,14 @@ export const t = {
     CANCELLED: 'Đã huỷ',
   } as Record<string, string>,
 
-  filters: { all: 'Tất cả', open: 'Chưa xong', fix: 'Cần sửa', waiting: 'Chờ duyệt', approved: 'Đã duyệt' },
+  filters: { all: 'Tất cả', statusLabel: 'Trạng thái', groupLabel: 'Nhóm việc' },
   allGroups: 'Mọi nhóm',
 
   groups: {
     attention: 'Cần chú ý',
     attentionHint: 'cần sửa, chờ nhận, đột xuất, tồn',
     suggestion: 'thứ tự gợi ý, không khoá',
+    count: (n: number) => `${n} việc`,
   },
 
   tags: {
@@ -66,7 +67,10 @@ export const t = {
 
   slot: {
     tapToShoot: 'Chạm để chụp',
+    shootLikeSample: 'Chụp giống mẫu',
     sample: 'Ảnh mẫu',
+    viewSample: 'Xem mẫu',
+    noSample: 'Giám sát chưa đặt ảnh mẫu — chụp rõ khu vực theo tiêu chuẩn',
     uploading: 'Đang gửi…',
     queued: 'Chờ mạng',
     failed: 'Gửi lỗi — chạm để thử lại',

@@ -371,6 +371,17 @@ async function main() {
     check((await must(sb.from('TaskTemplates').select('name').eq('id', T1.id), 't1'))[0].name !== 'Lấn nhóm khác', 'không sửa được việc mẫu của nhóm khác qua form này');
     await expectErr(() => act.saveCategoryWithTemplates(sb, { name: ' ', tasks: [] }, ACTOR), 400, 'nhóm việc bắt buộc có tên');
 
+    // Ảnh mẫu do giám sát đặt → cả 2 phía thấy, kể cả việc đã sinh hôm nay
+    await expectErr(() => act.setSlotSample(sb, T1.id, 0, 'reviews/x.jpg', ACTOR), 400, 'ảnh mẫu ngoài refs/ bị từ chối');
+    await expectErr(() => act.setSlotSample(sb, T1.id, 9, 'refs/qa27_s.jpg', ACTOR), 409, 'ô không tồn tại bị từ chối');
+    await act.setSlotSample(sb, T1.id, 1, 'refs/qa27_s.jpg', ACTOR);
+    const t1Today = (await must(sb.from('Tasks').select('*').eq('assignee_id', STAFF_A).eq('template_id', T1.id).eq('task_date', today), 't1 today'))[0];
+    const refs = await svc.resolveSlotRefs(sb, [t1Today]);
+    check(!t1Today.photo_slots?.[1]?.ref_path && String(refs[t1Today.id]?.[1]?.url).includes('refs/qa27_s.jpg') && !refs[t1Today.id]?.[0]?.url,
+        'giám sát đặt ảnh mẫu → việc đã sinh hôm nay cũng thấy ngay, đúng ô');
+    const staffView = await svc.EmployeeTasksService.fetchTasks([STAFF_A]);
+    check(String(staffView.data.find((x: any) => x.id === t1Today.id)?.refs?.[1]).includes('refs/qa27_s.jpg'), 'màn nhân viên nhận đúng ảnh mẫu giám sát đặt');
+
     const opts = await act.listOfficeOptions(sb);
     check(opts.staff.some((x: any) => x.id === STAFF_A) && opts.categories.some((c: any) => c.id === catDaily.id), 'danh sách chọn nhân viên / nhóm việc');
 }

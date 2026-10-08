@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, FolderOpen } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/lib/auth-context';
 import { useSupportTasks } from './SupportEmployeeTasks.logic';
@@ -18,7 +18,7 @@ const SupportEmployeeTasksPage = () => {
   if (logic.loading) {
     return (
       <AppLayout title={t.pageTitle}>
-        <div className="flex items-center justify-center min-h-[70vh] bg-stone-50">
+        <div className="flex items-center justify-center min-h-[70vh] bg-white">
           <div className="text-center">
             <div className="w-10 h-10 border-4 border-emerald-700 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             <p className="text-stone-500">{t.loading}</p>
@@ -32,7 +32,7 @@ const SupportEmployeeTasksPage = () => {
 
   return (
     <AppLayout title={t.pageTitle}>
-      <div className="min-h-screen bg-stone-50 pb-28">
+      <div className="min-h-screen bg-white pb-28">
         <div className="max-w-3xl mx-auto px-4 py-4 flex flex-col gap-4">
           <ShiftHeader logic={logic} name={user?.name || user?.code || ''} code={user?.code || ''} />
 
@@ -57,10 +57,13 @@ const SupportEmployeeTasksPage = () => {
 
           {logic.sections.groups.map(g => (
             <section key={g.name} className="flex flex-col gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-600">
-                {g.name} <span className="normal-case font-normal tracking-normal text-stone-400">· {t.groups.suggestion}</span>
+              {/* Group = where the task sits in the shift; neutral folder header, never a status colour. */}
+              <h2 className="flex items-center gap-2 border-b border-stone-200 pb-1.5 text-sm font-bold text-stone-800">
+                <FolderOpen size={16} className="text-stone-400 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1">{g.name}</span>
+                <span className="text-xs font-normal text-stone-400 tabular-nums">{t.groups.count(g.tasks.length)}</span>
               </h2>
-              {g.tasks.map(task => <TaskCard key={task.id} task={task} logic={logic} />)}
+              {g.tasks.map(task => <TaskCard key={task.id} task={task} logic={logic} showGroup={false} />)}
             </section>
           ))}
 

@@ -1,5 +1,5 @@
 import { getVnDateStr } from '@/lib/time.logic';
-import { deriveTaskState, shiftVnDate, type AcceptPolicy, type TaskState } from '@/lib/services/employeeTasks.service';
+import { deriveTaskState, resolveSlotRefs, shiftVnDate, type AcceptPolicy, type TaskState } from '@/lib/services/employeeTasks.service';
 
 // ============================================================
 // Office P0 — every write on a task goes through here (plans/plan_office_p0_nen_tang_checklist.md §3.5).
@@ -410,7 +410,7 @@ export const getReviewQueue = async (sb: any) => {
 
   const { data: tasks, error } = await sb
     .from('Tasks')
-    .select('id, name, task_type, task_date, assignee_id, status, inspection_status, acceptance_status, requires_review, cancelled_at, blocks_checkout, allow_carry_over, photo_slots, evidence_fields, evidence_values, standard_text, submitted_at, current_review_round, blocked_reason, blocked_at, declined_reason, assigned_by, position_id, priority')
+    .select('id, name, template_id, task_type, task_date, assignee_id, status, inspection_status, acceptance_status, requires_review, cancelled_at, blocks_checkout, allow_carry_over, photo_slots, evidence_fields, evidence_values, standard_text, submitted_at, current_review_round, blocked_reason, blocked_at, declined_reason, assigned_by, position_id, priority')
     .gte('task_date', from)
     .is('cancelled_at', null)
     .not('assignee_id', 'is', null);
@@ -425,10 +425,11 @@ export const getReviewQueue = async (sb: any) => {
   const { data: photos } = ids.length
     ? await sb.from('TaskPhotos').select('id, task_id, slot_index, storage_path, created_at').in('task_id', ids).eq('is_submitted', true).is('superseded_at', null)
     : { data: [] };
+  const refsByTask = await resolveSlotRefs(sb, waiting);
   const withPhotos = waiting.map((t: any) => ({
     ...t,
     photos: (photos || []).filter((p: any) => p.task_id === t.id).map((p: any) => ({ id: p.id, slot: p.slot_index, url: publicUrl(p.storage_path) })),
-    refs: (Array.isArray(t.photo_slots) ? t.photo_slots : []).map((s: PhotoSlot) => publicUrl(s.ref_path)),
+    refs: (refsByTask[t.id] || []).map(r => r.url),
   }));
 
   // Per-person picture for the checkout tab: today's tasks + yesterday's carry-over.
@@ -770,4 +771,36 @@ export const saveCategoryWithTemplates = async (sb: any, input: CategoryTemplate
   if (removed.length) await sb.from('TaskTemplates').update({ is_active: false }).in('id', removed);
   await logTaskEvent(sb, null, actorId, 'CATEGORY_SAVED', { category_id: categoryId, templates: kept.length, deactivated: removed.length });
   return { categoryId, deactivated: removed.length };
+};
+
+// ============================================================
+// Sample photo from a real submission (supervisor, while reviewing)
+// ============================================================
+
+/** Point one template slot at a sample already stored under refs/. Every task of the template shows it (both sides). */
+export const setSlotSample = async (sb: any, templateId: string, slot: number, refPath: string, actorId: string | null, taskId: string | null = null) => {
+  if (!templateId) throw new TaskActionError('Việc đột xuất không có việc mẫu để gắn ảnh mẫu.');
+  if (!String(refPath || '').startsWith('refs/')) throw new TaskActionError('Ảnh mẫu không hợp lệ.');
+  const { data: tpl } = await sb.from('TaskTemplates').select('id, photo_slots').eq('id', templateId).maybeSingle();
+  const slots: PhotoSlot[] = Array.isArray(tpl?.photo_slots) ? tpl.photo_slots : [];
+  if (!Number.isInteger(slot) || !slots[slot]) throw new TaskActionError('Việc mẫu không có ô ảnh này.', 409);
+  const next = slots.map((s, i) => (i === slot ? { ...s, ref_path: refPath } : s));
+  const { error } = await sb.from('TaskTemplates').update({ photo_slots: next }).eq('id', templateId);
+  if (error) throw new TaskActionError(error.message, 500);
+  await logTaskEvent(sb, taskId, actorId, 'SAMPLE_SET', { template_id: templateId, slot, ref_path: refPath });
+  return { refPath, url: sb.storage.from(PHOTO_BUCKET).getPublicUrl(refPath).data.publicUrl };
+};
+
+/** Copy a submitted slot photo to refs/ and make it that template slot's sample. */
+export const setSlotSampleFromPhoto = async (sb: any, photoId: string, actorId: string | null) => {
+  const { data: photo } = await sb.from('TaskPhotos').select('id, task_id, slot_index, storage_path, superseded_at').eq('id', photoId).maybeSingle();
+  if (!photo || photo.superseded_at) throw new TaskActionError('Không tìm thấy ảnh.', 404);
+  if (photo.slot_index === null || photo.slot_index === undefined) throw new TaskActionError('Ảnh này không thuộc ô có nhãn.');
+  const task = await loadTask(sb, photo.task_id);
+  if (!task.template_id) throw new TaskActionError('Việc đột xuất không có việc mẫu để gắn ảnh mẫu.');
+  const ext = String(photo.storage_path).split('.').pop() || 'jpg';
+  const target = `refs/${task.template_id}_${photo.slot_index}_${Date.now()}.${ext}`;
+  const { error: cpErr } = await sb.storage.from(PHOTO_BUCKET).copy(photo.storage_path, target);
+  if (cpErr) throw new TaskActionError(cpErr.message, 500);
+  return setSlotSample(sb, task.template_id, photo.slot_index, target, actorId, task.id);
 };

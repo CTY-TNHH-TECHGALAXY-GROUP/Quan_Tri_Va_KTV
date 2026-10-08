@@ -11,7 +11,8 @@ import { AcceptBar, StuckControl } from './TaskActions';
 
 const shortDate = (d: string) => d.slice(8, 10) + '/' + d.slice(5, 7);
 
-const TaskCard = ({ task, logic }: { task: TaskItem; logic: SupportTasksLogic }) => {
+/** showGroup: false when the card already sits under its group header. */
+const TaskCard = ({ task, logic, showGroup = true }: { task: TaskItem; logic: SupportTasksLogic; showGroup?: boolean }) => {
   const open = logic.openId === task.id;
   const progress = slotProgress(task);
   const editable = ['TODO', 'DOING', 'FIX'].includes(task.state);
@@ -19,7 +20,7 @@ const TaskCard = ({ task, logic }: { task: TaskItem; logic: SupportTasksLogic })
   const tags: { text: string; cls?: string }[] = [];
   if (task.task_type === 'AD-HOC') tags.push({ text: t.tags.adhoc + (task.priority === 'HIGH' ? ` · ${t.tags.priority}` : ''), cls: 'text-rose-700 font-bold' });
   if (task.isCarryOver) tags.push({ text: t.tags.carry(shortDate(task.task_date)), cls: 'text-amber-700 font-bold' });
-  tags.push({ text: task.categoryName });
+  if (showGroup) tags.push({ text: task.categoryName, cls: 'text-stone-400' });
   if (task.time_mode === 'DEADLINE' && task.due_at) tags.push({ text: t.tags.deadline(hhmmVN(task.due_at)) });
   if (task.time_mode === 'WINDOW' && task.window_start_at && task.window_end_at) tags.push({ text: t.tags.window(hhmmVN(task.window_start_at), hhmmVN(task.window_end_at)) });
   if (task.time_mode === 'MULTI' && task.slot_time) tags.push({ text: t.tags.multi(task.slot_time) });
