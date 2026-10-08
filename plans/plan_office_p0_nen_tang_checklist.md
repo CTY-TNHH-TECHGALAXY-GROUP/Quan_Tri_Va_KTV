@@ -2,7 +2,7 @@
 
 > **Mức 2** — chạm DB (migration), chấm công / chặn tan ca, phân quyền, cron, "xoá" dữ liệu (đổi sang huỷ mềm).
 > Trạng thái: **ĐÃ DUYỆT 08/10** — đang làm. Nhánh: `feat/office-p0-checklist-v1` (worktree `.worktrees/office-p0-v1`, `.env.local` = Supabase TEST).
-> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ (QA27 66/66 trên TEST, `TZ=UTC`) · bước 4–7 chưa làm. DB thật: **chưa apply**.
+> Tiến độ: bước 1 migration ✅ TEST · bước 2 service + cổng tan ca ✅ · bước 3 API ✅ (QA27 66/66 trên TEST, `TZ=UTC`) — commit `6a09fa3a` · bước 4 UI nhân viên ✅ (typecheck + dev server TEST biên dịch được; **chưa xem bằng mắt khi đăng nhập**) · bước 5–7 chưa làm. DB thật: **chưa apply**.
 > Thay thế: `plans/plan_nang_cap_giao_viec.md` (giữ làm lịch sử; các quyết định ở mục 9 của file đó vẫn áp dụng).
 > Bối cảnh: `plans/context_giao_viec_v2.md`. Demo duyệt UX: https://claude.ai/artifact/YJcAZMkAGQZbHNZtj5vGk3
 

@@ -1,460 +1,385 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { compressImageWithWatermark } from '@/lib/camera.logic';
+import { useAuth } from '@/lib/auth-context';
+import { t } from './SupportTasks.i18n';
 
 // ============================================================
 // 🔧 UI CONFIGURATION
 // ============================================================
-const TODAY_START = new Date();
-TODAY_START.setHours(0, 0, 0, 0);
-
-const TODAY_END = new Date();
-TODAY_END.setHours(23, 59, 59, 999);
+const TOAST_MS = 2800;
+const PHOTO_MAX_WIDTH = 1280;
+const PHOTO_QUALITY = 0.72;
 
 // ============================================================
-// Types
+// Types (shape returned by GET /api/support/tasks — Office P0)
 // ============================================================
-interface TaskItem {
+export type TaskState = 'OFFERED' | 'TODO' | 'DOING' | 'WAITING' | 'FIX' | 'APPROVED' | 'BLOCKED' | 'DECLINED' | 'CANCELLED';
+export interface PhotoSlotDef { label: string; ref_path?: string | null }
+export interface EvidenceFieldDef { kind: 'check' | 'count'; label: string; unit?: string; min?: number }
+export interface TaskPhoto { id: string; slot: number | null; url: string | null; createdAt: string }
+export interface RejectedSlot { slot: number; reason?: string; mark?: { x: number; y: number } | null }
+
+export interface TaskItem {
   id: string;
   name: string;
+  state: TaskState;
   status: string;
   inspection_status: string;
   task_type: string;
   priority: string;
-  completedAt: string | null;
-  photoCount: number;
-  requires_photo: boolean;
   min_photo_count: number;
-  category_id?: string;
-  room_id?: string | null;
-  categoryName?: string;
-  roomHasGuest?: boolean;
-  categoryOrder?: number;
-  sortOrder?: number;
-  isCarryOver?: boolean;
-  carryOverDate?: string;
+  requires_photo: boolean;
+  photo_slots: PhotoSlotDef[] | null;
+  photos: TaskPhoto[];
+  refs: (string | null)[];
+  evidence_fields: EvidenceFieldDef[] | null;
+  evidence_values: Record<string, boolean | number>;
+  standard_text: string | null;
+  sop: string[] | null;
+  time_mode: string;
+  due_at: string | null;
+  window_start_at: string | null;
+  window_end_at: string | null;
+  blocks_checkout: boolean;
+  acceptance_status: string;
+  canDecline: boolean;
+  rejected_slots: RejectedSlot[] | null;
+  blocked_reason: string | null;
+  slot_time: string | null;
+  task_date: string;
+  room_id: string | null;
+  categoryName: string;
+  roomHasGuest: boolean;
+  roomHasGuestUpdatedAt: string | null;
+  sortOrder: number;
+  isCarryOver: boolean;
+  reworkNote: string | null;
+  reworkPhotoUrl: string | null;
+  history: { type: string; payload: any; at: string }[];
+  completedAt: string | null;
 }
 
-interface TaskNotification {
-  id: string;
-  message: string;
-  type: string;
-  created_at: string;
+export interface CheckoutPicture {
+  enabled: boolean;
+  count: number;
+  items: { id: string; name: string; state: TaskState; carry: boolean }[];
+  override?: { reason: string; granted_by: string | null } | null;
 }
 
-import { useAuth } from '@/lib/auth-context';
+export type StatusFilter = 'all' | 'open' | 'fix' | 'waiting' | 'approved';
+type UploadStatus = 'uploading' | 'queued' | 'failed';
+export interface PendingUpload { taskId: string; slot: number | null; previewUrl: string; status: UploadStatus; file: File }
 
+interface TaskNotification { id: string; message: string; type: string; created_at: string }
+
+// ============================================================
+// Helpers
+// ============================================================
+const slotKey = (taskId: string, slot: number | null) => `${taskId}:${slot ?? 'x'}`;
+
+const dataUriToFile = (dataUri: string, filename: string): File => {
+  const [head, body] = dataUri.split(',');
+  const mime = head.match(/:(.*?);/)?.[1] || 'image/jpeg';
+  const bin = atob(body);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+};
+
+/** HH:mm in Vietnam time for an ISO instant (device timezone independent). */
+export const hhmmVN = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) : '';
+
+/** Number of evidence slots a task needs and how many are filled — display only, the server decides submission. */
+export const slotProgress = (task: TaskItem) => {
+  const named = task.photo_slots?.length || 0;
+  const photoNeed = named || (task.requires_photo ? task.min_photo_count : 0);
+  const photoDone = named
+    ? task.photo_slots!.filter((_, i) => task.photos.some(p => p.slot === i)).length
+    : Math.min(task.photos.length, photoNeed);
+  const fields = task.evidence_fields || [];
+  const fieldDone = fields.filter((f, i) => {
+    const v = task.evidence_values?.[String(i)];
+    return f.kind === 'check' ? v === true : typeof v === 'number';
+  }).length;
+  return { done: photoDone + fieldDone, total: photoNeed + fields.length };
+};
+
+// ============================================================
+// Hook
+// ============================================================
 export const useSupportTasks = () => {
   const { user } = useAuth();
-  
+  const employeeId = user?.id || null;
+  const userCode = user?.code || null;
+
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [checkout, setCheckout] = useState<CheckoutPicture | null>(null);
   const [notifications, setNotifications] = useState<TaskNotification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [viewingTaskPhotos, setViewingTaskPhotos] = useState<{ taskId: string, photos: { id: string, url: string, created_at: string, storage_path: string }[] } | null>(null);
-  
-  const employeeId = user?.id || null;
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [groupFilter, setGroupFilter] = useState<string>('all');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [uploads, setUploads] = useState<Record<string, PendingUpload>>({});
+  const [toast, setToast] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Track if we already generated today's tasks
-  const hasGeneratedRef = useRef(false);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+  }, []);
 
-  // ============================================================
-  // Fetch today's tasks & Auto-generate via API
-  // ============================================================
-  const fetchTasks = useCallback(async (empId: string) => {
+  // ------------------------------------------------------------
+  // Load
+  // ------------------------------------------------------------
+  const fetchTasks = useCallback(async () => {
+    if (!employeeId) return;
     try {
-      const userCodeParam = user?.code ? `&userCode=${user.code}` : '';
-      const res = await fetch(`/api/support/tasks?employeeId=${empId}${userCodeParam}&t=${Date.now()}`, { cache: 'no-store' });
+      const codeParam = userCode ? `&userCode=${encodeURIComponent(userCode)}` : '';
+      const res = await fetch(`/api/support/tasks?employeeId=${encodeURIComponent(employeeId)}${codeParam}&t=${Date.now()}`, { cache: 'no-store' });
       const json = await res.json();
       if (json.success) {
         setTasks(json.data || []);
+        setCheckout(json.checkout || null);
       } else {
         console.error('API error fetching tasks:', json.error);
       }
     } catch (error) {
-      console.error('Failed to fetch tasks via API:', error);
+      console.error('Failed to fetch tasks:', error);
     }
-  }, []);
+  }, [employeeId, userCode]);
 
-  // We can just alias generateTodayTasks to fetchTasks since the GET API does both
-  const generateTodayTasks = useCallback(async (empId: string) => {
-    if (hasGeneratedRef.current) return;
-    hasGeneratedRef.current = true;
-    // The fetchTasks will hit the GET endpoint which auto-generates tasks
-  }, []);
-
-  // ============================================================
-  // Fetch unread notifications
-  // ============================================================
-  const fetchNotifications = useCallback(async (empId: string) => {
+  const fetchNotifications = useCallback(async () => {
+    if (!employeeId) return;
+    const ids = Array.from(new Set([employeeId, userCode].filter(Boolean))) as string[];
     const { data, error } = await supabase
       .from('TaskNotifications')
       .select('*')
-      .eq('employee_id', empId)
+      .in('employee_id', ids)
       .eq('is_read', false)
       .order('created_at', { ascending: false })
       .limit(10);
-
     if (error) {
-      console.error('Error fetching task notifications:', error.message, error.code);
+      console.error('Error fetching task notifications:', error.message);
       return;
     }
     setNotifications(data || []);
-  }, []);
+  }, [employeeId, userCode]);
 
-  // ============================================================
-  // Mark notification as read
-  // ============================================================
   const dismissNotification = async (notifId: string) => {
     await supabase.from('TaskNotifications').update({ is_read: true }).eq('id', notifId);
     setNotifications(prev => prev.filter(n => n.id !== notifId));
   };
 
-  // ============================================================
-  // Start task
-  // ============================================================
-  const startTask = async (taskId: string) => {
-    try {
-      const res = await fetch('/api/support/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'START', taskId })
-      });
-      const json = await res.json();
-      if (json.success && employeeId) {
-        await fetchTasks(employeeId);
-      } else {
-        console.error('API error starting task:', json.error);
-      }
-    } catch (error) {
-      console.error('Failed to start task via API:', error);
-    }
-  };
-
-  // ============================================================
-  // Complete task
-  // ============================================================
-  const completeTask = async (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (task && task.requires_photo && task.photoCount < task.min_photo_count) {
-      alert(`Cần chụp tối thiểu ${task.min_photo_count} ảnh trước khi hoàn thành.`);
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/support/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'COMPLETE', taskId })
-      });
-      const json = await res.json();
-      if (json.success) {
-        setSelectedTask(null);
-        if (employeeId) await fetchTasks(employeeId);
-      } else {
-        console.error('API error completing task:', json.error);
-      }
-    } catch (error) {
-      console.error('Failed to complete task via API:', error);
-    }
-  };
-
-  // ============================================================
-  // Toggle Has Guest
-  // ============================================================
-  const toggleRoomHasGuest = async (roomId: string, currentStatus: boolean) => {
-    try {
-      // Optimistic UI update
-      setTasks(prev => prev.map(t => t.room_id === roomId ? { ...t, roomHasGuest: !currentStatus } : t));
-      
-      const res = await fetch('/api/rooms', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, has_guests: !currentStatus })
-      });
-      const json = await res.json();
-      
-      if (!json.success) {
-        console.error('API error toggling room guest status:', json.error);
-        // Revert on error
-        setTasks(prev => prev.map(t => t.room_id === roomId ? { ...t, roomHasGuest: currentStatus } : t));
-      }
-    } catch (error) {
-      console.error('Failed to toggle room guest status via API:', error);
-      // Revert on error
-      setTasks(prev => prev.map(t => t.room_id === roomId ? { ...t, roomHasGuest: currentStatus } : t));
-    }
-  };
-
-  // ============================================================
-  // Submit Task (Complete)
-  // ============================================================
-  const submitTask = async (taskId: string) => {
-    try {
-      const res = await fetch('/api/support/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'COMPLETE', taskId }),
-      });
-      if (res.ok) {
-        await fetchTasks(employeeId!);
-      }
-    } catch (error) {
-      console.error('Failed to submit task:', error);
-    }
-  };
-
-  // ============================================================
-  // Helper: Convert data URI to File
-  // ============================================================
-  const dataURItoFile = (dataURI: string, filename: string): File => {
-    const arr = dataURI.split(',');
-    const mime = arr[0].match(/:(.*?);/)?.[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new File([u8arr], filename, { type: mime });
-  };
-
-  // ============================================================
-  // Upload photo via API (server-side, bypasses RLS)
-  // ============================================================
-  const uploadPhoto = async (taskId: string, file: File) => {
-    if (!employeeId) return;
-    setUploading(true);
-
-    try {
-      let finalFile = file;
-      try {
-        const watermarkText = `Task ${taskId.substring(0, 5)}`;
-        const base64 = await compressImageWithWatermark(file, { watermarkText });
-        finalFile = dataURItoFile(base64, file.name);
-      } catch (err: any) {
-        if (err?.message === 'TOO_DARK') {
-          alert('⚠️ Ảnh quá tối! Vui lòng chụp lại ở nơi đủ ánh sáng.');
-          setUploading(false);
-          return;
-        }
-        console.warn('Failed to compress, using original file', err);
-      }
-
-      const formData = new FormData();
-      formData.append('file', finalFile);
-      formData.append('taskId', taskId);
-      formData.append('employeeId', employeeId);
-
-      const res = await fetch('/api/support/tasks/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const json = await res.json();
-      if (!json.success) {
-        console.error('Error uploading photo:', json.error);
-        return;
-      }
-
-      await fetchTasks(employeeId);
-    } catch (error) {
-      console.error('Failed to upload photo:', error);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // ============================================================
-  // Fetch Task Photos for viewing
-  // ============================================================
-  const fetchTaskPhotos = async (taskId: string) => {
-    const { data, error } = await supabase
-      .from('TaskPhotos')
-      .select('id, storage_path, created_at')
-      .eq('task_id', taskId)
-      .eq('is_submitted', true)
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching task photos:', error.message);
-      return;
-    }
-
-    if (data) {
-      const photosWithUrls = data.map((p) => {
-        const { data: publicUrlData } = supabase.storage.from('task-photos').getPublicUrl(p.storage_path);
-        return { id: p.id, url: publicUrlData.publicUrl, created_at: p.created_at, storage_path: p.storage_path };
-      });
-      setViewingTaskPhotos({ taskId, photos: photosWithUrls });
-    }
-  };
-
-  // ============================================================
-  // Delete Photo
-  // ============================================================
-  const deletePhoto = async (photoId: string, storagePath: string, taskId: string) => {
-    try {
-      setUploading(true);
-      // Delete from storage
-      const { error: storageError } = await supabase.storage.from('task-photos').remove([storagePath]);
-      if (storageError) {
-        console.error('Error deleting from storage:', storageError);
-      }
-      // Delete from database
-      const { error: dbError } = await supabase.from('TaskPhotos').delete().eq('id', photoId);
-      if (dbError) throw dbError;
-
-      // Update local state if currently viewing this task's photos
-      setViewingTaskPhotos(prev => {
-        if (!prev || prev.taskId !== taskId) return prev;
-        return {
-          ...prev,
-          photos: prev.photos.filter(p => p.id !== photoId)
-        };
-      });
-
-      // Update task's photoCount in main list
-      setTasks(prev => prev.map(t => 
-        t.id === taskId ? { ...t, photoCount: Math.max(0, t.photoCount - 1) } : t
-      ));
-    } catch (err: any) {
-      console.error('Failed to delete photo:', err);
-      alert('Lỗi khi xoá ảnh: ' + err.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // ============================================================
-  // Initialize
-  // ============================================================
   useEffect(() => {
     if (!employeeId) return;
-
-    const init = async () => {
+    (async () => {
       setLoading(true);
-      await generateTodayTasks(employeeId);
-      await Promise.all([fetchTasks(employeeId), fetchNotifications(employeeId)]);
+      await Promise.all([fetchTasks(), fetchNotifications()]);
       setLoading(false);
-    };
+    })();
+  }, [employeeId, fetchTasks, fetchNotifications]);
 
-    init();
-  }, [employeeId, generateTodayTasks, fetchTasks, fetchNotifications]);
-
-  // ============================================================
-  // Realtime: Listen to TaskNotifications
-  // ============================================================
+  // Realtime: new task / returned task / approval for this employee
   useEffect(() => {
-    if (!employeeId) return;
-
+    if (!userCode && !employeeId) return;
     const channel = supabase
-      .channel('task-notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'TaskNotifications',
-          filter: `employee_id=eq.${employeeId}`,
-        },
-        (payload) => {
-          const newNotif = payload.new as TaskNotification;
-          setNotifications(prev => [newNotif, ...prev]);
-          // Refresh tasks (in case of rework)
-          fetchTasks(employeeId);
-        }
-      )
+      .channel(`task-notifications-${userCode || employeeId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'TaskNotifications',
+        filter: `employee_id=eq.${userCode || employeeId}`,
+      }, (payload) => {
+        setNotifications(prev => [payload.new as TaskNotification, ...prev]);
+        fetchTasks();
+      })
       .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [employeeId, userCode, fetchTasks]);
 
-    return () => {
-      supabase.removeChannel(channel);
+  // ------------------------------------------------------------
+  // Actions
+  // ------------------------------------------------------------
+  const postAction = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/support/tasks', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.success === false) throw new Error(json.error || t.toast.error);
+    return json;
+  }, []);
+
+  const runAction = useCallback(async (body: Record<string, unknown>, okMsg?: string) => {
+    try {
+      const json = await postAction(body);
+      if (json.submitted) showToast(t.toast.submitted);
+      else if (okMsg) showToast(okMsg);
+      await fetchTasks();
+      return true;
+    } catch (e: any) {
+      showToast(e.message || t.toast.error);
+      return false;
+    }
+  }, [postAction, fetchTasks, showToast]);
+
+  const acceptTask = (taskId: string) => runAction({ action: 'ACCEPT', taskId }, t.toast.accepted);
+  const declineTask = (taskId: string, reason: string) => runAction({ action: 'DECLINE', taskId, reason }, t.toast.declined);
+  const blockTask = (taskId: string, reasonCode: string, note: string) => runAction({ action: 'BLOCK', taskId, reasonCode, note }, t.toast.stuckSent);
+  const unblockTask = (taskId: string) => runAction({ action: 'UNBLOCK', taskId });
+  const setEvidence = (taskId: string, index: number, value: boolean | number) =>
+    runAction({ action: 'EVIDENCE', taskId, values: { [String(index)]: value } });
+
+  const removePhoto = async (photoId: string) => {
+    const res = await fetch(`/api/support/tasks/photo?id=${encodeURIComponent(photoId)}`, { method: 'DELETE' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.success === false) showToast(json.error || t.toast.error);
+    await fetchTasks();
+  };
+
+  /** Send one queued/new upload. Network failure → stays queued; server refusal → dropped with a message. */
+  const sendUpload = useCallback(async (u: PendingUpload) => {
+    const key = slotKey(u.taskId, u.slot);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setUploads(prev => ({ ...prev, [key]: { ...u, status: 'queued' } }));
+      return;
+    }
+    setUploads(prev => ({ ...prev, [key]: { ...u, status: 'uploading' } }));
+    const form = new FormData();
+    form.append('file', u.file);
+    form.append('taskId', u.taskId);
+    form.append('employeeId', userCode || employeeId || '');
+    if (u.slot !== null) form.append('slotIndex', String(u.slot));
+    let res: Response;
+    try {
+      res = await fetch('/api/support/tasks/upload', { method: 'POST', body: form });
+    } catch {
+      setUploads(prev => ({ ...prev, [key]: { ...u, status: 'queued' } }));
+      showToast(t.toast.queued);
+      return;
+    }
+    const json = await res.json().catch(() => ({}));
+    if (res.status >= 500) {
+      setUploads(prev => ({ ...prev, [key]: { ...u, status: 'failed' } }));
+      return;
+    }
+    setUploads(prev => { const next = { ...prev }; delete next[key]; return next; });
+    if (!res.ok || json.success === false) {
+      showToast(json.error || t.toast.error);
+    } else if (json.submitted) {
+      showToast(t.toast.submitted);
+    }
+    await fetchTasks();
+  }, [employeeId, userCode, fetchTasks, showToast]);
+
+  const uploadPhoto = async (taskId: string, slot: number | null, file: File) => {
+    let finalFile = file;
+    let previewUrl = '';
+    try {
+      const dataUri = await compressImageWithWatermark(file, {
+        maxWidth: PHOTO_MAX_WIDTH, quality: PHOTO_QUALITY, watermarkText: `${userCode || ''} ${hhmmVN(new Date().toISOString())}`,
+      });
+      finalFile = dataUriToFile(dataUri, file.name || 'photo.jpg');
+      previewUrl = dataUri;
+    } catch (err: any) {
+      if (err?.message === 'TOO_DARK') { showToast(t.toast.tooDark); return; }
+      previewUrl = URL.createObjectURL(file);
+    }
+    await sendUpload({ taskId, slot, previewUrl, status: 'uploading', file: finalFile });
+  };
+
+  const retryUpload = (taskId: string, slot: number | null) => {
+    const u = uploads[slotKey(taskId, slot)];
+    if (u) sendUpload(u);
+  };
+
+  // Flush the queue when the connection comes back
+  const uploadsRef = useRef(uploads);
+  uploadsRef.current = uploads;
+  useEffect(() => {
+    const onOnline = () => {
+      const queued = Object.values(uploadsRef.current).filter(u => u.status === 'queued' || u.status === 'failed');
+      if (queued.length) showToast(t.toast.online);
+      queued.forEach(u => sendUpload(u));
     };
-  }, [employeeId, fetchTasks]);
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [sendUpload, showToast]);
 
-  // ============================================================
-  // Group tasks by category
-  // ============================================================
-  
-  // Separate carry-over tasks from today's tasks
-  const carryOverTasks = tasks.filter(t => t.isCarryOver);
-  const todayTasks = tasks.filter(t => !t.isCarryOver);
-  
-  const urgentTasks = todayTasks.filter(t => t.task_type === 'AD-HOC');
-  const normalTasks = todayTasks.filter(t => t.task_type !== 'AD-HOC');
-
-  // Group carry-over tasks by category
-  const carryOverGrouped: Record<string, { categoryName: string; categoryOrder: number; carryOverDate: string; tasks: TaskItem[] }> = {};
-  carryOverTasks.forEach(t => {
-    const groupKey = t.categoryName || 'Khác';
-    if (!carryOverGrouped[groupKey]) {
-      carryOverGrouped[groupKey] = {
-        categoryName: t.categoryName || 'Công việc khác',
-        categoryOrder: t.categoryOrder || 999,
-        carryOverDate: t.carryOverDate || '',
-        tasks: []
-      };
+  const toggleRoomHasGuest = async (roomId: string, current: boolean) => {
+    setTasks(prev => prev.map(x => x.room_id === roomId ? { ...x, roomHasGuest: !current } : x));
+    try {
+      const res = await fetch('/api/rooms', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, has_guests: !current }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+    } catch {
+      setTasks(prev => prev.map(x => x.room_id === roomId ? { ...x, roomHasGuest: current } : x));
     }
-    carryOverGrouped[groupKey].tasks.push(t);
-  });
+  };
 
-  const sortedCarryOver = Object.values(carryOverGrouped).map(cat => ({
-    ...cat,
-    tasks: cat.tasks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-  })).sort((a, b) => {
-    if (a.categoryOrder !== b.categoryOrder) return a.categoryOrder - b.categoryOrder;
-    return a.categoryName.localeCompare(b.categoryName);
-  });
+  // ------------------------------------------------------------
+  // Derived view
+  // ------------------------------------------------------------
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    tasks.forEach(x => { c[x.state] = (c[x.state] || 0) + 1; });
+    return c;
+  }, [tasks]);
 
-  const groupedTasks: Record<string, { categoryName: string; categoryOrder: number; tasks: TaskItem[] }> = {};
-  
-  normalTasks.forEach(t => {
-    // Use categoryName as group key to ensure room tasks are separated per room
-    const groupKey = t.categoryName || `${t.category_id || 'OTHER'}_${t.room_id || 'NOROOM'}`;
-    if (!groupedTasks[groupKey]) {
-      groupedTasks[groupKey] = {
-        categoryName: t.categoryName || 'Công việc khác',
-        categoryOrder: t.categoryOrder || 999,
-        tasks: []
-      };
-    }
-    groupedTasks[groupKey].tasks.push(t);
-  });
+  const groupNames = useMemo(() => Array.from(new Set(tasks.map(x => x.categoryName))), [tasks]);
 
-  const sortedCategories = Object.values(groupedTasks).map(cat => ({
-    ...cat,
-    tasks: cat.tasks.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-  })).sort((a, b) => {
-    if (a.categoryOrder !== b.categoryOrder) {
-      return a.categoryOrder - b.categoryOrder;
-    }
-    return a.categoryName.localeCompare(b.categoryName);
-  });
+  const visible = useMemo(() => tasks.filter(x => {
+    if (x.state === 'CANCELLED') return false;
+    if (statusFilter === 'open' && !['OFFERED', 'TODO', 'DOING', 'BLOCKED'].includes(x.state)) return false;
+    if (statusFilter === 'fix' && x.state !== 'FIX') return false;
+    if (statusFilter === 'waiting' && x.state !== 'WAITING') return false;
+    if (statusFilter === 'approved' && x.state !== 'APPROVED') return false;
+    if (groupFilter !== 'all' && x.categoryName !== groupFilter) return false;
+    return true;
+  }), [tasks, statusFilter, groupFilter]);
 
-  // Progress only counts today's tasks (exclude carry-over)
-  const totalTasks = todayTasks.length;
-  const doneCount = todayTasks.filter(t => t.status === 'COMPLETED').length;
-  const pct = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
+  const sections = useMemo(() => {
+    const needsAttention = (x: TaskItem) =>
+      x.state !== 'APPROVED' && x.state !== 'DECLINED'
+      && (x.state === 'FIX' || x.state === 'OFFERED' || x.state === 'BLOCKED' || x.task_type === 'AD-HOC' || x.isCarryOver);
+    const top = visible.filter(needsAttention);
+    const rest = visible.filter(x => !needsAttention(x));
+    const byGroup: { name: string; tasks: TaskItem[] }[] = [];
+    rest.forEach(x => {
+      let g = byGroup.find(b => b.name === x.categoryName);
+      if (!g) { g = { name: x.categoryName, tasks: [] }; byGroup.push(g); }
+      g.tasks.push(x);
+    });
+    byGroup.forEach(g => g.tasks.sort((a, b) => (a.sortOrder - b.sortOrder) || (a.slot_time || '').localeCompare(b.slot_time || '')));
+    return { top, groups: byGroup };
+  }, [visible]);
+
+  const activeTasks = tasks.filter(x => x.state !== 'CANCELLED' && x.state !== 'DECLINED');
+  const pendingUploadCount = Object.values(uploads).length;
+
+  const gotoTask = (taskId: string) => {
+    setSheetOpen(false);
+    setStatusFilter('all');
+    setGroupFilter('all');
+    setOpenId(taskId);
+    setTimeout(() => document.getElementById(`task-${taskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
 
   return {
-    carryOverTasks: sortedCarryOver,
-    urgentTasks,
-    sortedCategories,
-    doneCount,
-    totalTasks,
-    pct,
-    loading,
-    notifications,
-    dismissNotification,
-    uploadPhoto,
-    deletePhoto,
-    uploading,
-    submitTask,
-    toggleRoomHasGuest,
-    // Photo Viewer State
-    viewingTaskPhotos,
-    setViewingTaskPhotos,
-    fetchTaskPhotos,
+    loading, tasks, checkout, counts, sections, groupNames, activeTasks,
+    statusFilter, setStatusFilter, groupFilter, setGroupFilter,
+    openId, setOpenId, sheetOpen, setSheetOpen, gotoTask,
+    uploads, pendingUploadCount, uploadPhoto, retryUpload, removePhoto,
+    acceptTask, declineTask, blockTask, unblockTask, setEvidence, toggleRoomHasGuest,
+    notifications, dismissNotification,
+    toast, lightbox, setLightbox,
   };
 };
+
+export type SupportTasksLogic = ReturnType<typeof useSupportTasks>;
+export const uploadKey = slotKey;

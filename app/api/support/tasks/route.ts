@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { EmployeeTasksService } from '@/lib/services/employeeTasks.service';
+import { EmployeeTasksService, getCheckoutBlockers, type CheckoutBlockers } from '@/lib/services/employeeTasks.service';
 import { requirePermission, requireStaffOrPermission } from '@/lib/auth-server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import {
@@ -24,7 +24,15 @@ export async function GET(request: Request) {
     const includeRoomTasks = searchParams.get('includeRoomTasks') !== 'false';
     await EmployeeTasksService.ensureTasksForDate(staffId, undefined, includeRoomTasks, aliases);
     const { data } = await EmployeeTasksService.fetchTasks(empIds, includeRoomTasks);
-    return NextResponse.json({ success: true, data });
+
+    // Checkout picture from the same gate attendance uses (read-only: tasks were just ensured).
+    const sb = getSupabaseAdmin();
+    let checkout: CheckoutBlockers | null = null;
+    if (sb) {
+      const { data: staffRow } = await sb.from('Staff').select('work_type').eq('id', staffId).maybeSingle();
+      if (staffRow?.work_type) checkout = await getCheckoutBlockers(sb, staffId, staffRow.work_type, { ensure: false });
+    }
+    return NextResponse.json({ success: true, data, checkout });
   } catch (error: any) {
     return taskErrorResponse(error, '/api/support/tasks GET');
   }

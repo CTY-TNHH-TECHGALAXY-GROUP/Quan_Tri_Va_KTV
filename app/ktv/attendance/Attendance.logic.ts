@@ -77,6 +77,8 @@ export const useKTVAttendance = () => {
     const [availableUntil, setAvailableUntil] = useState<string | null>(null);
     const [showOvertimeFeature, setShowOvertimeFeature] = useState(true);
     const [incompleteTasksCount, setIncompleteTasksCount] = useState(0);
+    // Office P0: which tasks still block checkout (same gate as the server's CHECK_OUT).
+    const [taskBlockers, setTaskBlockers] = useState<{ id: string; name: string; state: string; carry: boolean }[]>([]);
     // Nợ phòng (bàn giao chưa nộp / phòng đang dọn dở) — chặn ở bước tan ca.
     const [roomDebt, setRoomDebt] = useState<{ handover: number; cleaning: number; total: number; items: any[] }>(
         { handover: 0, cleaning: 0, total: 0, items: [] });
@@ -109,6 +111,7 @@ export const useKTVAttendance = () => {
                     if (statusRes.workType) setWorkType(statusRes.workType);
                     setAvailableUntil(statusRes.availableUntil ?? null);
                     if (statusRes.incompleteTasksCount !== undefined) setIncompleteTasksCount(statusRes.incompleteTasksCount);
+                    setTaskBlockers(Array.isArray(statusRes.taskBlockers) ? statusRes.taskBlockers : []);
                     if (statusRes.roomDebt) setRoomDebt(statusRes.roomDebt);
                     if (statusRes.guestArrivalLock) setGuestArrivalLock(statusRes.guestArrivalLock);
                     setTodayRegistration(statusRes.todayRegistration ?? null);
@@ -493,6 +496,7 @@ export const useKTVAttendance = () => {
         availableUntil,
         refreshAttendanceStatus,
         incompleteTasksCount,
+        taskBlockers,
         roomDebt,
         guestArrivalLock,
         shiftExtension,

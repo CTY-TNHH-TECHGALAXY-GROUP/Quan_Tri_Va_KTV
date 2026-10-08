@@ -52,6 +52,7 @@ const KTVAttendancePage = () => {
         availableUntil,
         refreshAttendanceStatus,
         incompleteTasksCount,
+        taskBlockers,
         guestArrivalLock,
         todayRegistration,
         unlockedToday,
@@ -680,11 +681,19 @@ const KTVAttendancePage = () => {
                                                     ) : incompleteTasksCount > 0 ? (
                                                         <div className="w-full bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center space-y-2 mb-3">
                                                             <p className="text-red-700 text-sm font-semibold">
-                                                                ⚠️ Bạn còn {incompleteTasksCount} công việc chưa được Admin nghiệm thu (Passed).
+                                                                ⚠️ Bạn còn {incompleteTasksCount} việc chưa được duyệt.
                                                             </p>
-                                                            <p className="text-red-600 text-xs">
-                                                                Vui lòng hoàn thành công việc và chờ Admin duyệt trước khi tan ca.
-                                                            </p>
+                                                            {taskBlockers.length > 0 && (
+                                                                <ul className="text-left text-xs text-red-700 list-disc pl-5 space-y-0.5">
+                                                                    {taskBlockers.slice(0, 6).map(b => (
+                                                                        <li key={b.id}>{b.name}{b.carry ? ' (tồn hôm qua)' : ''}</li>
+                                                                    ))}
+                                                                    {taskBlockers.length > 6 && <li>… và {taskBlockers.length - 6} việc khác</li>}
+                                                                </ul>
+                                                            )}
+                                                            <a href="/support/tasks" className="inline-flex items-center justify-center min-h-[40px] px-4 rounded-xl bg-red-600 text-white text-xs font-bold">
+                                                                Mở việc của tôi
+                                                            </a>
                                                         </div>
                                                     ) : !canCheckOut && checkoutBlockedUntil ? (
                                                         <div className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-center space-y-2 mb-3">

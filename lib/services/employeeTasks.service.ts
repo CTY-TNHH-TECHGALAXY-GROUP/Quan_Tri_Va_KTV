@@ -18,7 +18,7 @@ const TASK_FIELDS =
   'id, name, status, inspection_status, task_type, priority, template_id, category_id, room_id, min_photo_count, ' +
   'updated_at, created_at, task_date, slot_time, standard_text, sop, photo_slots, evidence_fields, evidence_values, ' +
   'time_mode, due_at, window_start_at, window_end_at, blocks_checkout, requires_review, allow_carry_over, ' +
-  'acceptance_status, declined_reason, submitted_at, rejected_slots, blocked_reason, blocked_at, cancelled_at, ' +
+  'acceptance_status, declined_reason, submitted_at, rejected_slots, blocked_reason, blocked_at, cancelled_at, position_id, ' +
   'TaskTemplates(requires_photo, min_photo_count, sort_order), TaskCategories(name), Rooms(name, has_guests, updated_at), ' +
   'TaskReviews(note, photo_url, created_at)';
 
@@ -343,23 +343,48 @@ export class EmployeeTasksService {
 
     const all = [...carry, ...(data || [])];
     const taskIds = all.map((t: any) => t.id);
-    const photoCounts: Record<string, number> = {};
+    const urlOf = (path?: string | null) => (path ? supabase.storage.from('task-photos').getPublicUrl(path).data.publicUrl : null);
+
+    const photosByTask: Record<string, { id: string; slot: number | null; url: string | null; createdAt: string }[]> = {};
+    const eventsByTask: Record<string, { type: string; payload: any; at: string }[]> = {};
     if (taskIds.length > 0) {
       const { data: photos } = await supabase
         .from('TaskPhotos')
-        .select('task_id')
+        .select('id, task_id, slot_index, storage_path, created_at')
         .in('task_id', taskIds)
         .eq('is_submitted', true)
-        .is('superseded_at', null);
-      (photos || []).forEach((p: any) => { photoCounts[p.task_id] = (photoCounts[p.task_id] || 0) + 1; });
+        .is('superseded_at', null)
+        .order('created_at', { ascending: true });
+      (photos || []).forEach((p: any) => {
+        (photosByTask[p.task_id] ||= []).push({ id: p.id, slot: p.slot_index, url: urlOf(p.storage_path), createdAt: p.created_at });
+      });
+      const { data: events } = await supabase
+        .from('TaskEvents')
+        .select('task_id, type, payload, created_at')
+        .in('task_id', taskIds)
+        .order('created_at', { ascending: true });
+      (events || []).forEach((e: any) => { (eventsByTask[e.task_id] ||= []).push({ type: e.type, payload: e.payload, at: e.created_at }); });
     }
+
+    // Admin-configured accept policy per position → may this person decline a pending task?
+    const positionIds = Array.from(new Set(all.map((t: any) => t.position_id).filter(Boolean)));
+    const { data: positionRows } = positionIds.length
+      ? await supabase.from('OfficePositions').select('id, fixed_accept_policy, adhoc_accept_policy').in('id', positionIds)
+      : { data: [] };
+    const canDecline = (t: any) => {
+      if (t.acceptance_status !== 'PENDING') return false;
+      const pos = (positionRows || []).find((p: any) => p.id === t.position_id);
+      const policy = pos ? (t.task_type === 'AD-HOC' ? pos.adhoc_accept_policy : pos.fixed_accept_policy) : 'MANDATORY';
+      return policy === 'ACCEPT_OR_DECLINE';
+    };
 
     const mapTask = (t: any, isCarryOver: boolean) => {
       const reviews = t.TaskReviews || [];
       const latestReview = reviews.length > 0
         ? [...reviews].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
         : null;
-      const photoCount = photoCounts[t.id] || 0;
+      const photos = photosByTask[t.id] || [];
+      const photoCount = photos.length;
       return {
         id: t.id,
         name: t.name,
@@ -373,6 +398,9 @@ export class EmployeeTasksService {
         requires_photo: t.TaskTemplates?.requires_photo ?? true,
         min_photo_count: t.min_photo_count ?? t.TaskTemplates?.min_photo_count ?? 1,
         photo_slots: t.photo_slots,
+        photos,
+        refs: (Array.isArray(t.photo_slots) ? t.photo_slots : []).map((sl: any) => urlOf(sl?.ref_path)),
+        history: (eventsByTask[t.id] || []).slice(-15),
         evidence_fields: t.evidence_fields,
         evidence_values: t.evidence_values || {},
         standard_text: t.standard_text,
@@ -384,6 +412,7 @@ export class EmployeeTasksService {
         blocks_checkout: t.blocks_checkout,
         requires_review: t.requires_review,
         acceptance_status: t.acceptance_status,
+        canDecline: canDecline(t),
         rejected_slots: t.rejected_slots,
         blocked_reason: t.blocked_reason,
         slot_time: t.slot_time,
@@ -401,6 +430,7 @@ export class EmployeeTasksService {
         carryOverDate: isCarryOver ? t.created_at : undefined,
         reworkNote: latestReview?.note || null,
         reworkPhoto: latestReview?.photo_url || null,
+        reworkPhotoUrl: urlOf(latestReview?.photo_url),
       };
     };
 

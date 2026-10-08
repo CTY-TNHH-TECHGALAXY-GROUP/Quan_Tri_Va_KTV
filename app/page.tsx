@@ -48,7 +48,7 @@ export default function HomePage() {
     if (mounted && isKTV) {
       router.push('/ktv/dashboard');
     } else if (mounted && isSupport) {
-      router.push('/support/dashboard');
+      router.push('/support/tasks');
     } else if (false) {
       router.push('/ktv/dashboard');
     }
