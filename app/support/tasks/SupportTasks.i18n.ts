@@ -20,7 +20,8 @@ export const t = {
   } as Record<string, string>,
 
   filters: { all: 'Tất cả', statusLabel: 'Trạng thái', groupLabel: 'Nhóm việc' },
-  allGroups: 'Mọi nhóm',
+  allGroups: 'Tất cả nhóm',
+  groupSort: { label: 'Sắp xếp nhóm', shift: 'Theo ca', remaining: 'Còn nhiều việc' } as Record<string, string> & { label: string },
 
   groups: {
     attention: 'Cần chú ý',

@@ -1,18 +1,18 @@
 'use client';
 
 import React from 'react';
-import { FolderOpen } from 'lucide-react';
 import { t } from '../SupportTasks.i18n';
 import type { SupportTasksLogic } from '../SupportEmployeeTasks.logic';
 import { STATE_DOT, STATE_PILL } from './taskStyles';
+import GroupRail from './GroupRail';
 
 /**
  * Two different controls on purpose:
  *  - STATUS = coloured chips generated from the states present today (same colours as the cards);
- *  - GROUP  = a neutral dropdown with a folder icon — a place in the shift, not a status.
+ *  - GROUP  = GroupRail: neutral cards with progress and sort — a place in the shift, not a status.
  */
 const TaskFilters = ({ logic }: { logic: SupportTasksLogic }) => {
-  const { activeTasks, stateChips, statusFilter, setStatusFilter, groupFilter, setGroupFilter, groupNames } = logic;
+  const { activeTasks, stateChips, statusFilter, setStatusFilter } = logic;
 
   return (
     <div className="flex flex-col gap-3">
@@ -37,17 +37,7 @@ const TaskFilters = ({ logic }: { logic: SupportTasksLogic }) => {
         </div>
       </div>
 
-      {groupNames.length > 1 && (
-        <label className="flex items-center gap-2 min-h-[44px] rounded-xl border border-stone-200 bg-white px-3">
-          <FolderOpen size={18} className="text-stone-400 shrink-0" aria-hidden="true" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500 shrink-0">{t.filters.groupLabel}</span>
-          <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)} aria-label={t.filters.groupLabel}
-            className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-stone-800 py-2 focus:outline-none">
-            <option value="all">{t.allGroups}</option>
-            {groupNames.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-        </label>
-      )}
+      <GroupRail logic={logic} />
     </div>
   );
 };
