@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogIn, LogOut, BellRing, MapPin, Loader2, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
+import { LogIn, LogOut, BellRing, MapPin, Loader2, AlertCircle, Clock, CheckCircle2, CalendarX2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/apiClient';
 import { API } from '@/lib/api-endpoints';
@@ -34,7 +34,13 @@ interface Props {
   shiftExtension?: any;
   onOpenShiftExtensionModal?: () => void;
   showOvertimeFeature?: boolean;
+  /** Send a SUDDEN_OFF attendance ("Báo off đột xuất"). Reason may be empty. */
+  onSuddenOff?: (reason: string) => Promise<void> | void;
 }
+
+// 🔧 UI CONFIGURATION
+/** From this hour the schedule is locked; before it, KTV changes the day to OFF instead. */
+const SUDDEN_OFF_FROM = '07:00';
 
 /** 'HH:MM:SS' hoặc 'HH:MM' đều về 'HH:MM'. */
 const hhmm = (t?: string | null) => (t ? String(t).slice(0, 5) : '');
@@ -62,7 +68,8 @@ export default function AttendanceTypeD({
   guestArrivalLock,
   shiftExtension,
   onOpenShiftExtensionModal,
-  showOvertimeFeature = true
+  showOvertimeFeature = true,
+  onSuddenOff,
 }: Props) {
   const { addToast } = useToast();
   const [state, setState] = useState<OnCallState | null>(null);
@@ -80,6 +87,10 @@ export default function AttendanceTypeD({
   const [registration, setRegistration] = useState<any>(null);
   const [showLateModal, setShowLateModal] = useState(false);
   const [lateTime, setLateTime] = useState('');
+
+  // ─── BÁO OFF ĐỘT XUẤT ───────────────────────────────────────────
+  const [showSuddenOffModal, setShowSuddenOffModal] = useState(false);
+  const [suddenOffReason, setSuddenOffReason] = useState('');
 
   // Ngày làm việc lấy từ server (mốc cắt nằm ở SystemConfigs). Trước đây client
   // tự lấy ngày lịch, nên vừa qua 00:00 là nhảy sang ca ngày mới trong khi ca đêm
@@ -143,7 +154,10 @@ export default function AttendanceTypeD({
 
   // Còn hiện nút (dù xám) để KTV biết vì sao không bấm được, thay vì nút biến mất
   // không dấu vết rồi họ đi hỏi quản lý.
-  const hienNutBaoTre = chuaDiemDanh && !daBaoTre;
+  // Đã báo off đột xuất: server đánh dấu trên dòng đăng ký sau khi trừ giờ.
+  const daBaoOff = registration?.penalty_applied === 'SUDDEN_OFF_REPORTED';
+
+  const hienNutBaoTre = chuaDiemDanh && !daBaoTre && !daBaoOff;
   const coTheBaoTre = hienNutBaoTre && !daQuaGioDangKy;
 
   const fetchState = async () => {
@@ -241,6 +255,26 @@ export default function AttendanceTypeD({
   // "Oria Xin chào" too would leave no way to work extra — keep it for them.
   const hideCheckInUntilOnCall = !!state?.isOffToday && canOnCall;
 
+  // Nút báo off: chỉ khi hôm nay đã đăng ký ĐI LÀM, chưa vào ca, chưa báo.
+  // Server kiểm lại đủ các điều kiện này — đây chỉ để ẩn/hiện cho đúng.
+  const dangKyDiLam = registration?.status === 'REGISTERED' || registration?.status === 'LATE_REPORTED';
+  const hienNutBaoOff = !!onSuddenOff && dangKyDiLam && !daBaoOff
+    && !isAtVenue && checkStatus !== 'CHECKED_OUT' && checkStatus !== 'PENDING';
+  const coTheBaoOff = hienNutBaoOff && gioHienTai >= SUDDEN_OFF_FROM;
+
+  const handleSuddenOff = async () => {
+    if (!onSuddenOff) return;
+    setActionLoading(true);
+    try {
+      await onSuddenOff(suddenOffReason.trim());
+      setShowSuddenOffModal(false);
+      setSuddenOffReason('');
+      await fetchRegistration();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {state?.isOffToday && (
@@ -325,6 +359,30 @@ export default function AttendanceTypeD({
           }`}
         >
           <Clock size={20} /> {coTheBaoTre ? 'Báo đi muộn' : `Đã quá giờ đăng ký (${gioDaDangKy})`}
+        </button>
+      )}
+
+      {/* ─── BÁO OFF ĐỘT XUẤT ─── */}
+      {daBaoOff && (
+        <div className="mb-4 p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-3">
+          <CalendarX2 size={20} className="text-rose-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-rose-900">{t.suddenOffDoneTitle}</p>
+            <p className="text-xs text-rose-700 mt-0.5">{t.suddenOffDoneNote}</p>
+          </div>
+        </div>
+      )}
+      {hienNutBaoOff && (
+        <button
+          onClick={() => { if (coTheBaoOff) setShowSuddenOffModal(true); }}
+          disabled={actionLoading || !coTheBaoOff}
+          className={`w-full min-h-[44px] mb-4 py-3 border-2 font-bold rounded-2xl transition-all flex items-center justify-center gap-2 ${
+            coTheBaoOff
+              ? 'bg-white border-rose-300 hover:bg-rose-50 active:scale-95 text-rose-700 disabled:opacity-50'
+              : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed text-sm'
+          }`}
+        >
+          <CalendarX2 size={20} /> {coTheBaoOff ? t.suddenOffButton : t.suddenOffBefore7}
         </button>
       )}
 
@@ -445,6 +503,59 @@ export default function AttendanceTypeD({
              </div>
         )}
       </div>
+
+      {/* HỘP THOẠI BÁO OFF ĐỘT XUẤT */}
+      {showSuddenOffModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
+            className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 flex items-center justify-center">
+                <CalendarX2 size={22} className="text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-800 text-lg">{t.suddenOffTitle}</h3>
+                <p className="text-xs text-slate-500">{t.suddenOffSubtitle}{gioDaDangKy ? ` (${fmtGioBuoi(gioDaDangKy)})` : ''}</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200">
+              <p className="text-xs text-rose-800 font-medium leading-relaxed">
+                {t.suddenOffWarnLead} <strong>{t.suddenOffWarnHours}</strong>{t.suddenOffWarnTail}
+              </p>
+            </div>
+
+            <label className="text-sm font-bold text-slate-700 block mt-4 mb-2">{t.suddenOffReasonLabel}</label>
+            <textarea
+              value={suddenOffReason}
+              onChange={(e) => setSuddenOffReason(e.target.value)}
+              rows={2}
+              maxLength={200}
+              placeholder={t.suddenOffReasonPlaceholder}
+              className="w-full p-3 border-2 border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-rose-300 resize-none"
+            />
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setShowSuddenOffModal(false)}
+                className="flex-1 min-h-[44px] py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all"
+              >
+                {t.suddenOffCancel}
+              </button>
+              <button
+                onClick={handleSuddenOff}
+                disabled={actionLoading}
+                className="flex-1 min-h-[44px] py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-2xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <Loader2 size={18} className="animate-spin" /> : null}
+                {t.suddenOffConfirm}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* HỘP THOẠI BÁO ĐI MUỘN */}
       {showLateModal && (
