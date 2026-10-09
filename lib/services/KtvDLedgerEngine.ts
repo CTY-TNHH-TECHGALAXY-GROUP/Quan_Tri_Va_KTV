@@ -227,8 +227,8 @@ export function resolveRating(
  * Assigned, worked and payable minutes for one technician's segments.
  * Normal completion earns the assigned duration, regardless of elapsed seconds.
  * Counter closures retain elapsed pay; explicit custom minutes take precedence.
- * Actual hours remain rounded elapsed time capped at the assignment, so this
- * payment rule does not change accumulated hours or queue priority.
+ * Actual hours follow the same rule: full assigned minutes on a normal finish,
+ * otherwise rounded elapsed time capped at the assignment.
  */
 /** Incoming KTV of a TAKEOVER segment has really started and then finished. */
 function takeoverFinished(seg: any): boolean {
@@ -280,8 +280,14 @@ export function computeMinutes(segs: any[]): {
         const completedNormally = hasMarks && workedMs > 0 && !endedByCounter(seg);
         paid += completedNormally ? gan : hasMarks ? Math.min(workedMs / 60000, gan) : gan;
 
-        // GIỜ — phút làm tròn, mốc lỗi lùi về giờ gán, chặn tại giờ gán
-        actual += (hasMarks && workedMs > 0) ? Math.min(Math.round(workedMs / 60000), gan) : gan;
+        // GIỜ — same rule as pay: a normal finish earns the full assigned
+        // minutes. The KTV app clock may auto-finish 30–45s before the server
+        // mark (09/10 T007: 89p17s → was credited 89p instead of 90p).
+        // Otherwise: rounded worked minutes, bad marks fall back to assigned,
+        // capped at assigned.
+        actual += completedNormally
+            ? gan
+            : (hasMarks && workedMs > 0) ? Math.min(Math.round(workedMs / 60000), gan) : gan;
     }
 
     return { assigned, actual, paid, custom };
