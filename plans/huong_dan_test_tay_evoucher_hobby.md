@@ -14,7 +14,9 @@ Chương trình **QA Hobby Oria Booking Rewards** (`QAHOBBY-MV0RQD9Q`), giảm 1
 | S2 Tách đơn | `WB-10102026-117` (2 khách) | `HOBBY-P7WEJA` | 10/10 11:00 | 600.000 → 540.000 |
 | S3 Huỷ hết dịch vụ | `WB-10102026-118` | `HOBBY-EE6S7A` | 10/10 13:00 | 600.000 → 540.000 |
 | S4 Không đến | `WB-08102026-001` | `HOBBY-KNQC3G` | 08/10 15:00 | 300.000 → 270.000 |
-| S5 Làm trọn vẹn | `WB-09102026-046` | `HOBBY-PVJMZT` | 09/10 17:00 | 300.000 → 270.000 |
+| S5 Không đến (lần 2) | `WB-09102026-046` | `HOBBY-PVJMZT` | 09/10 17:00 | Cron đã tự huỷ 00:00 ngày 10/10 (khách không đến), tổng về 300.000 |
+
+> ⚠️ **S1, S2, S3 hẹn ngày 10/10: phải xác nhận trên quầy trong ngày 10/10.** Đơn còn NEW/PREPARING qua 00:00 ngày 11/10 sẽ bị cron huỷ voucher (khách không đến), đúng như quyết định D1.
 
 Tạo lại bộ mới: `set -a; source <env TEST>; set +a; node scripts/qa/seed_evoucher_hobby_test.mjs` (mã đơn / voucher sẽ khác, script in bảng mới).
 
@@ -24,16 +26,16 @@ Ghi ✅/❌ vào cột cuối. "Thẻ Web" = trang Admin → Khuyến mãi → c
 
 | # | Làm gì | Phải thấy | Kết quả |
 |---|---|---|---|
-| 1 | Mở Thẻ Web | Tổng 8 · Còn 4 · Đang dùng 4 · Đã huỷ 1 (S4 đã tự huỷ: khách không đến). Danh sách có `HOBBY-KNQC3G` lý do "Khách không đến" | |
+| 1 | Mở Thẻ Web | Tổng 8 · Còn 5 · Đang dùng 3 · Đã huỷ 2 (S4, S5 đã tự huỷ: khách không đến). Danh sách có `HOBBY-KNQC3G`, `HOBBY-PVJMZT` lý do "Khách không đến" | |
 | 2 | **S4**: mở đơn `WB-08102026-001` | Tổng **300.000** (giá gốc), dòng "Khuyến mãi giảm 10%" đã huỷ. Cron tự làm, không ai bấm | |
 | 3 | **S1**: Quầy → Đơn web → xác nhận `WB-10102026-116` | Đơn thành **VIP** (không phải MIXED). Tổng 450.000, có dòng giảm −50.000 không có KTV | |
-| 4 | **S5**: xác nhận `WB-09102026-046` → điều phối KTV → làm tới **Hoàn tất** | Đơn DONE, tổng 270.000. Thẻ Web: `HOBBY-PVJMZT` → **Đã dùng** (≤ 30 giây, hoặc bấm tải lại) | |
-| 5 | **S5** tiếp: app KTV của KTV vừa làm | Tiền tua theo **60 phút** như đơn thường, dòng giảm không hiện | |
-| 6 | **S5** tiếp: Tài chính → Báo cáo ngày 09/10 | Doanh thu tính 270.000. Số dịch vụ **không** đếm dòng giảm. Bảng dịch vụ có dòng "Khuyến mãi giảm 10%" tiền âm, số lượng 0 | |
+| 4 | **S1** tiếp: điều phối KTV cho `WB-10102026-116` → làm tới **Hoàn tất** | Đơn DONE, tổng 450.000. Thẻ Web: `HOBBY-2RSHRF` → **Đã dùng** (≤ 30 giây, hoặc bấm tải lại) | |
+| 5 | **S1** tiếp: app KTV của KTV vừa làm | Tiền tua theo **60 phút** như đơn thường, dòng giảm không hiện | |
+| 6 | **S1** tiếp: Tài chính → Báo cáo ngày 10/10 | Doanh thu tính 450.000. Số dịch vụ **không** đếm dòng giảm. Bảng dịch vụ có dòng "Khuyến mãi giảm 10%" tiền âm, số lượng 0 | |
 | 7 | **S2**: xác nhận `WB-10102026-117` → điều phối → **tách đơn** 2 khách → làm xong cả 2 đơn con | Trong **≤ 2 phút** sau khi đơn con xong: `HOBBY-P7WEJA` → **Đã dùng** | |
 | 8 | **S3**: xác nhận `WB-10102026-118` → huỷ **từng** dịch vụ đến hết → đơn tự đóng | `HOBBY-EE6S7A` → **Đã huỷ** (lý do: không thực hiện dịch vụ). Thẻ Web: Còn tăng 1. Dòng giảm đã huỷ | |
-| 9 | Quầy áp voucher tại quầy: nhập `HOBBY-2RSHRF` vào một đơn walk-in bất kỳ (kể cả bật áp ngoại lệ) | Báo "Voucher web chỉ áp dụng khi khách đặt lịch qua Web Booking…", không áp được | |
-| 10 | Admin → trang chi tiết pass của `HOBBY-2RSHRF` → bấm Huỷ | Báo "Voucher web đi theo đơn đặt lịch…", pass không đổi. Nguồn phát ghi **Web Booking** | |
+| 9 | Quầy áp voucher tại quầy: nhập `HOBBY-P7WEJA` (làm **trước** bước 7) vào một đơn walk-in bất kỳ (kể cả bật áp ngoại lệ) | Báo "Voucher web chỉ áp dụng khi khách đặt lịch qua Web Booking…", không áp được | |
+| 10 | Admin → trang chi tiết pass của `HOBBY-EE6S7A` (làm **trước** bước 8) → bấm Huỷ | Báo "Voucher web đi theo đơn đặt lịch…", pass không đổi. Nguồn phát ghi **Web Booking** | |
 | 11 | Admin → chương trình **October** (tặng phút) → Thẻ Web | Không có nút "Bật", có câu "Chỉ chương trình giảm % hoặc giảm tiền…" | |
 | 12 | Admin → tạo chương trình mới giảm 10%, phát thủ công → Thẻ Web → Bật → nhập cấu hình → Lưu | Hiện hộp hỏi "Bật phát trên Web Booking?" trước khi lưu. Sau khi bật: không phát tay được mã của chương trình này | |
 | 13 | Thẻ Web QA Hobby: Tạm dừng / Tiếp tục | Nhãn đổi Tạm dừng ↔ Đang phát | |
