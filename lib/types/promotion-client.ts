@@ -183,7 +183,7 @@ export interface PromotionPass {
   validFrom: string;
   validUntil: string;
   issuedAt: string;
-  issueSource: 'AUTO' | 'MANUAL';
+  issueSource: 'AUTO' | 'MANUAL' | 'WEB_CLAIM';
   issuedBy?: string | null;
   lastUsedAt: string | null;
   sourceBookingId: string | null;
@@ -456,6 +456,14 @@ export type PromotionErrorCode =
   | 'USAGE_NOT_FOUND'
   | 'USAGE_COMPLETED'
   | 'INVALID_QR'
+  | 'QUANTITY_BELOW_ALLOCATED'
+  | 'SLUG_TAKEN'
+  | 'VOUCHER_NOT_RESERVED'
+  | 'FEATURE_UNAVAILABLE'
+  | 'WEB_CLAIM_NOT_ELIGIBLE'
+  | 'WEB_CLAIM_ISSUE_FORBIDDEN'
+  | 'WEB_CLAIM_PASS_MANAGED'
+  | 'WEB_BOOKING_REQUIRED'
   | 'VALIDATION_ERROR'
   | 'FORBIDDEN'
   | 'UNAUTHORIZED'
@@ -467,3 +475,66 @@ export type PromotionErrorCode =
 export type PromotionResult<T> =
   | { success: true; data: T }
   | { success: false; error: { code: PromotionErrorCode; message: string; data?: unknown } };
+
+// ─── Web-claim e-vouchers (engine v15, plans/plan_evoucher_webbooking_gioi_han.md) ───
+
+export type WebClaimStatus = 'RESERVED' | 'ACTIVE' | 'REDEEMED' | 'EXPIRED' | 'CANCELLED';
+/** Public card state shown on Web Booking (PromotionCampaignStock.status). */
+export type WebClaimStockStatus = 'OPEN' | 'PAUSED' | 'SOLD_OUT' | 'ENDED' | 'INACTIVE';
+
+/** promo_web_campaign_stats. `total` / `available` are null until the campaign is WEB_CLAIM. */
+export interface WebClaimStats {
+  campaignId: string;
+  distributionChannel: 'ADMIN_ISSUE' | 'WEB_CLAIM';
+  campaignStatus: PromotionCampaignStatus;
+  publicSlug: string | null;
+  total: number | null;
+  available: number | null;
+  reserved: number;
+  active: number;
+  redeemed: number;
+  expired: number;
+  cancelled: number;
+  allocated: number;
+  paused: boolean;
+  reservationMinutes: number;
+  maxOpenPerPhone: number;
+  maxTotalPerPhone: number | null;
+  stockStatus: WebClaimStockStatus | null;
+  /** Why the campaign cannot start web distribution (engine v17); null = allowed / already on. */
+  webIneligibleReason: WebClaimIneligibleReason | null;
+  /** ACTIVE vouchers older than 3 days: the order may be stuck (engine v17). */
+  staleActive: number;
+}
+
+export type WebClaimIneligibleReason = 'BENEFIT_TYPE' | 'AUTO_ASSIGNMENT' | 'HAS_PASSES' | 'CAMPAIGN_ENDED' | 'CAMPAIGN_NOT_FOUND';
+
+export interface WebClaimRecord {
+  id: string;
+  voucherCode: string;
+  status: WebClaimStatus;
+  reservedAt: string;
+  expiresAt: string;
+  activatedAt: string | null;
+  bookingId: string | null;
+  redeemedAt: string | null;
+  endedAt: string | null;
+  endReason: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  phone: string | null;
+  discountAmount: number | null;
+}
+
+export interface WebClaimOverview {
+  stats: WebClaimStats;
+  claims: WebClaimRecord[];
+}
+
+export interface WebClaimConfigInput {
+  totalQuantity: number;
+  reservationMinutes: number;
+  maxOpenPerPhone: number;
+  maxTotalPerPhone: number | null;
+  publicSlug: string;
+}

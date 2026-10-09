@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { FinanceReportService } from '@/lib/services/FinanceReportService';
 import { requirePermission, authErrorResponse } from '@/lib/auth-server';
+import { isPromotionItem } from '@/lib/booking.logic';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,9 @@ export async function GET(request: Request) {
             const sid = String(item.serviceId);
             const svcInfo = svcMap[sid];
             
-            let name = svcInfo ? `${svcInfo.name} (${svcInfo.duration}p)` : sid;
+            // Voucher discount line: kept for its negative revenue, but it is not a service sold.
+            const promotion = isPromotionItem(item);
+            let name = svcInfo ? (promotion ? svcInfo.name : `${svcInfo.name} (${svcInfo.duration}p)`) : sid;
             if (sid.startsWith('NHP') || sid.startsWith('VIP_') || (svcInfo && (svcInfo.category === 'VIP_MENU' || svcInfo.category === 'PREMIUM'))) {
                 name = 'Tổng Hợp Gói Menu VIP';
             }
@@ -39,17 +42,17 @@ export async function GET(request: Request) {
                     name: name,
                     revenue: 0,
                     count: 0,
-                    duration: svcInfo ? svcInfo.duration : 60,
+                    duration: promotion ? 0 : svcInfo ? svcInfo.duration : 60,
                     category: svcInfo ? svcInfo.category : 'Khác'
                 };
             }
             svcBreakdown[sid].revenue += Number(item.price) || 0;
-            svcBreakdown[sid].count += Number(item.quantity) || 1;
+            if (!promotion) svcBreakdown[sid].count += Number(item.quantity) || 1;
         });
 
         const serviceBreakdown = Object.values(svcBreakdown)
             .sort((a, b) => b.count - a.count || b.revenue - a.revenue)
-            .filter(s => s.revenue > 0 || s.count > 0);
+            .filter(s => s.revenue !== 0 || s.count > 0);
 
         // Calculate fallback for Bookings without items but have revenue
         const emptyBookings = completedBookings.filter((b: any) => !items.some((i: any) => i.bookingId === b.id) && Number(b.totalAmount) > 0);

@@ -150,7 +150,7 @@ export interface PromotionPassDto {
     validFrom: IsoDateTime;
     validUntil: IsoDateTime;
     issuedAt: IsoDateTime;
-    issueSource: 'AUTO' | 'MANUAL';
+    issueSource: 'AUTO' | 'MANUAL' | 'WEB_CLAIM';
     issuedBy: string | null;
     sourceBookingId: string | null;
     emailStatus: PromotionEmailStatus;

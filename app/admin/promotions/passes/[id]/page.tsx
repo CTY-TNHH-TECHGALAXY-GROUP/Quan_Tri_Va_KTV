@@ -231,7 +231,7 @@ const PassDetailPage = () => {
               </div>
               <div>
                 <dt className="text-xs text-gray-500">{t.pass.fields.issueSource}</dt>
-                <dd className="font-medium">{p.issueSource === 'AUTO' ? t.pass.issueSourceAuto : t.pass.issueSourceManual}</dd>
+                <dd className="font-medium">{p.issueSource === 'AUTO' ? t.pass.issueSourceAuto : p.issueSource === 'WEB_CLAIM' ? t.pass.issueSourceWeb : t.pass.issueSourceManual}</dd>
               </div>
               {p.sourceBookingId && (
                 <div>

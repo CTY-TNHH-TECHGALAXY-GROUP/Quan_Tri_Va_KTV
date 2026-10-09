@@ -8,6 +8,7 @@ import { usePromotionAccess } from '@/components/promotions/usePromotionAccess';
 import PromotionBenefitDisplay from '@/components/promotions/PromotionBenefitDisplay';
 import PromotionStatusBadge from '@/components/promotions/PromotionStatusBadge';
 import CustomerCandidatesPanel from '@/components/promotions/CustomerCandidatesPanel';
+import CampaignWebClaimCard from '@/components/promotions/CampaignWebClaimCard';
 import VoucherCardSwitchable from '@/components/promotions/VoucherCardSwitchable';
 import { useSpaContact } from '@/components/promotions/useSpaContact';
 import { voucherCardFromCampaign } from '@/components/promotions/VoucherCard3D.logic';
@@ -138,6 +139,8 @@ const CampaignDetailPage = () => {
                   )}
                 </div>
               </section>
+
+              <CampaignWebClaimCard campaignId={c.id} campaignName={c.name} canManage={access.manageCampaign} />
 
               {access.issue && c.status !== 'ENDED' && (
                 <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">

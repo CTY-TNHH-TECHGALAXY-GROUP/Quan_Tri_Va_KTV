@@ -11,6 +11,7 @@ import { createNotification } from '@/lib/notification-helper';
 import { sendBookingConfirmationEmail } from '@/lib/email';
 import { buildServiceSection, emailBookingCode, extractBookingNote, parseGuestCountFromNotes } from '@/lib/booking-email.logic';
 import { isDummyPhone, isDummyEmail, makeGuestEmail } from '@/lib/customer.logic';
+import { isPromotionItem } from '@/lib/booking.logic';
 import { computeCustomerVisit, type VisitStatus } from '@/lib/services/CustomerVisitService';
 
 const WEB_BOOKING_SOURCES = ['WEB_BOOKING', 'WebBooking', 'HOME_BOOKING', 'VIP_BOOKING', 'STANDARD_BOOKING', 'MIXED_BOOKING', 'STANDARD_MENU', 'VIP_MENU', 'MIXED_MENU'];
@@ -299,6 +300,8 @@ export async function confirmWebBooking(bookingId: string) {
       
       const items = bData.BookingItems || [];
       for (const item of items) {
+         // A web e-voucher discount line (KM####) is not a service: it must not turn a VIP order into MIXED.
+         if (isPromotionItem(item)) continue;
          const svcId = (item.serviceId || '').toUpperCase();
          if (svcId.startsWith('NHP') || svcId.startsWith('VIP_')) {
             hasVip = true;
@@ -390,10 +393,15 @@ export async function confirmWebBooking(bookingId: string) {
         
         // Cập nhật lại guest_id cho BookingItems nếu chưa có
         if (bData?.BookingItems && bData.BookingItems.length > 0) {
+            // Round-robin over real services only; a discount line goes to the first guest
+            // so it never shifts which guest a service belongs to.
+            let serviceIndex = 0;
             for (let i = 0; i < bData.BookingItems.length; i++) {
                 const item = bData.BookingItems[i] as any;
+                const promotion = isPromotionItem(item);
+                const targetGuestId = promotion ? guestIds[0] : guestIds[serviceIndex % guestCount];
+                if (!promotion) serviceIndex++;
                 if (!item.guest_id) {
-                    const targetGuestId = guestIds[i % guestCount];
                     await supabase.from('BookingItems').update({ guest_id: targetGuestId }).eq('id', item.id);
                 }
             }

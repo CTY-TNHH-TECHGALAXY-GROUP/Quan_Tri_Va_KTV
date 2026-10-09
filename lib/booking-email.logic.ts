@@ -1,5 +1,5 @@
 import type { BookingDetails, ServicePref } from './email';
-import { formatBodyAreas, normalizeStrength, isUtilityService } from './booking.logic';
+import { formatBodyAreas, normalizeStrength, isUtilityService, isPromotionItem } from './booking.logic';
 
 /**
  * Dựng phần dữ liệu email xác nhận từ các BookingItems của một đơn.
@@ -124,6 +124,8 @@ export function buildServiceSection(items: any[] | null | undefined, lang: strin
   const addonItems: RawItemWithOpts[] = [];
 
   for (const item of items || []) {
+    // A voucher discount line (web e-voucher) is neither a service nor a guest.
+    if (isPromotionItem(item)) continue;
     guests += item.quantity || 1;
 
     // Đánh số khách theo thứ tự xuất hiện — dùng khi một dịch vụ đặt cho nhiều người

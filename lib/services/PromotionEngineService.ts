@@ -18,7 +18,8 @@ import type {
     PromotionResult,
     PromotionUsageDto,
 } from '@/lib/types/promotion';
-import type { CreatePromotionCampaignInput, UpdatePromotionCampaignInput } from '@/lib/schemas/promotion.schema';
+import type { CreatePromotionCampaignInput, UpdatePromotionCampaignInput, WebClaimConfigInput } from '@/lib/schemas/promotion.schema';
+import type { WebClaimRecord, WebClaimStats } from '@/lib/types/promotion-client';
 
 /**
  * Promotion Engine — thin TS facade over the promo_* RPCs
@@ -262,6 +263,34 @@ export const PromotionEngineService = {
     cancelUsage: (usageId: string, staffId: string | null, reason: string | null) =>
         callRpc<{ usageId: string; status: 'CANCELLED' }>('promo_cancel_usage', {
             p_usage_id: usageId, p_staff_id: staffId, p_reason: reason,
+        }),
+
+    // --- Web-claim e-vouchers (engine v15) ---
+    // promo_web_campaign_stats / list_claims return raw rows (no success envelope).
+    getWebClaimOverview: async (campaignId: string, status: string | null): Promise<PromotionResult<{ stats: WebClaimStats; claims: WebClaimRecord[] }>> => {
+        const supabase = getSupabaseAdmin();
+        if (!supabase) return { success: false, error: { code: 'INTERNAL_ERROR', message: 'Supabase admin not initialized' } };
+        const [stats, claims] = await Promise.all([
+            supabase.rpc('promo_web_campaign_stats', { p_campaign_id: campaignId }),
+            supabase.rpc('promo_web_list_claims', { p_campaign_id: campaignId, p_status: status, p_limit: 500 }),
+        ]);
+        const error = stats.error ?? claims.error;
+        // v15 not migrated on this DB yet (PostgREST: function not found) → the card hides itself.
+        if (error?.code === 'PGRST202') return { success: false, error: { code: 'FEATURE_UNAVAILABLE', message: 'promo_web_* chưa có trên DB' } };
+        if (error) return { success: false, error: { code: 'INTERNAL_ERROR', message: error.message } };
+        if (!stats.data) return { success: false, error: { code: 'CAMPAIGN_NOT_FOUND', message: 'Không tìm thấy chương trình' } };
+        return { success: true, data: { stats: stats.data as WebClaimStats, claims: (claims.data ?? []) as WebClaimRecord[] } };
+    },
+
+    configureWebClaim: (campaignId: string, input: WebClaimConfigInput, staffId: string | null) =>
+        callRpc<WebClaimStats>('promo_web_configure', { p_campaign_id: campaignId, p_config: input, p_staff_id: staffId }),
+
+    setWebClaimPaused: (campaignId: string, paused: boolean, staffId: string | null) =>
+        callRpc<WebClaimStats>('promo_web_set_paused', { p_campaign_id: campaignId, p_paused: paused, p_staff_id: staffId }),
+
+    releaseWebClaims: (campaignId: string, claimId: string | null, reason: string, staffId: string | null) =>
+        callRpc<WebClaimStats & { released: number }>('promo_web_release', {
+            p_campaign_id: campaignId, p_claim_id: claimId, p_reason: reason, p_staff_id: staffId,
         }),
 
     // --- Email outbox (used by PromotionEmailService) ---

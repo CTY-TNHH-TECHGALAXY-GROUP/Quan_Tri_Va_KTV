@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { KtvCommissionService } from '@/lib/services/KtvCommissionService';
 import { requirePermission, authErrorResponse } from '@/lib/auth-server';
 import { normalizeScale } from '@/lib/services/RatingScaleService';
+import { isPromotionItem } from '@/lib/booking.logic';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -329,7 +330,8 @@ export async function GET(request: Request) {
         const totalTip = items.reduce((sum, i) => sum + (Number(i.tip) || 0), 0);
 
         // #2 Total service count + #3 Total service revenue
-        const totalServiceCount = items.reduce((sum, i) => sum + (Number(i.quantity) || 1), 0);
+        // A voucher discount line (KM####) is not a service sold; its negative price stays in the revenue sum.
+        const totalServiceCount = items.reduce((sum, i) => sum + (isPromotionItem(i) ? 0 : Number(i.quantity) || 1), 0);
         const totalServiceRevenue = items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
 
         // Average rating
@@ -341,6 +343,7 @@ export async function GET(request: Request) {
 
         // Bed Occupancy: total service minutes (from real durations) / (beds × operating hours × days)
         const totalServiceMins = items.reduce((sum, i) => {
+            if (isPromotionItem(i)) return sum; // discount line: no bed time
             const dur = svcDurationMap[String(i.serviceId)] || 60;
             const qty = Number(i.quantity) || 1;
             return sum + dur * qty;
@@ -472,9 +475,11 @@ export async function GET(request: Request) {
         items.forEach(i => {
             let key = String(i.serviceId || 'unknown');
             const svcInfo = svcMap[key];
-            let name = svcInfo ? `${svcInfo.name} (${svcInfo.duration}p)` : key.toUpperCase();
+            // Voucher discount line: kept for its negative revenue, not counted as a service sold.
+            const promotion = isPromotionItem(i);
+            let name = svcInfo ? (promotion ? svcInfo.name : `${svcInfo.name} (${svcInfo.duration}p)`) : key.toUpperCase();
             let cat = svcInfo?.category || 'Khác';
-            let dur = svcInfo?.duration || 0;
+            let dur = promotion ? 0 : svcInfo?.duration || 0;
 
             // Gom nhóm tất cả dịch vụ VIP (Mới + Cũ) vào 1 dòng để báo cáo gọn gàng
             if (key.startsWith('NHP') || key.startsWith('VIP_') || cat === 'VIP_MENU' || cat === 'PREMIUM') {
@@ -491,7 +496,7 @@ export async function GET(request: Request) {
                 category: cat
             };
             svcBreakdown[key].revenue += Number(i.price) || 0;
-            svcBreakdown[key].count += 1;
+            if (!promotion) svcBreakdown[key].count += 1;
         });
 
         // ─── Fallback cho Menu VIP / Walk-in không có BookingItems ────────

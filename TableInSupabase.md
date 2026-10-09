@@ -1062,3 +1062,69 @@ Trigger trên `BookingItems`, `BookingGuests`, `Bookings` chỉ enqueue. RPC `kt
 **Cron**: `promo_expire_passes_job` 00:05 VN — pass quá hạn → EXPIRED, campaign quá hạn → ENDED (apply vẫn luôn kiểm `now()`).
 **Item KM trên `BookingItems`**: `options = {isPromotion, promotionUsageId, promotionPassId, promotionCampaignCode, duration, discountAmount, isAddon, isPaid}`. FREE_MINUTES: giá 0, `WAITING`. Giảm giá: dịch vụ `is_utility`, giá âm, `DONE`, `Bookings.totalAmount` trừ tương ứng.
 
+### [v15] E-Voucher giới hạn số lượng phát trên Web Booking — migration `20261008100000_promotion_web_claim_v15.sql`
+
+> ⚠️ **v15 + v16 + v17 đã chạy trên TEST (08–09/10/2026), CHƯA chạy trên DB thật.** Plan: `plans/plan_evoucher_webbooking_gioi_han.md`. QA: `scripts/qa/qa_promotion_web_claim.ts`.
+
+**PromotionCampaigns (thêm cột)**:
+
+| Cột | Kiểu | Mô tả |
+|-----|------|-------|
+| `distribution_channel` | text NOT NULL DEFAULT `'ADMIN_ISSUE'` | `ADMIN_ISSUE` (admin phát như cũ) / `WEB_CLAIM` (khách tự lưu trên Web Booking) |
+| `total_quantity` | int | Tổng số voucher của chương trình (bắt buộc khi `WEB_CLAIM`). Không giảm được xuống dưới số đã cấp |
+| `reservation_minutes` | int DEFAULT 30 | Thời gian giữ chỗ sau khi bấm Lưu (5–1440) |
+| `max_open_per_phone` | int DEFAULT 1 | Số voucher ACTIVE (chưa dùng) tối đa của 1 SĐT |
+| `max_total_per_phone` | int NULL | Tổng voucher (ACTIVE + REDEEMED) tối đa của 1 SĐT; NULL = không giới hạn |
+| `web_claim_paused` | bool DEFAULT false | Tạm dừng phát: chặn Lưu mới, voucher đang giữ vẫn kích hoạt được |
+| `public_slug` | text UNIQUE NULL | Đường dẫn công khai, `^[a-z0-9][a-z0-9-]{1,59}$` |
+
+CHECK `promo_campaign_distribution_chk`. `CustomerPromotionPasses.issue_source` nhận thêm `WEB_CLAIM`. Pass `WEB_CLAIM`: `voucher_code` = mã web, `ONE_TIME`, `one_pass_per_customer = false`, `email_status = SKIPPED`.
+
+**PromotionWebClaims** (RLS bật, không policy — chỉ `service_role`):
+
+| Cột | Kiểu | Mô tả |
+|-----|------|-------|
+| `id` | uuid PK | |
+| `campaign_id` | uuid FK → PromotionCampaigns | |
+| `voucher_code` | text UNIQUE | `<voucher_prefix>-XXXXXX` |
+| `status` | text | `RESERVED` → `ACTIVE` → `REDEEMED`, hoặc `EXPIRED` / `CANCELLED` |
+| `device_hash`, `ip_hash` | text | Chống bot: 1 lượt giữ / thiết bị (bấm lại trả mã cũ), tối đa 3 lượt giữ / IP |
+| `reserved_at`, `reservation_expires_at` | timestamptz | |
+| `activated_at`, `activation_booking_id` (FK Bookings), `activation_channel` | | Kích hoạt trong transaction ghi đơn web; `activation_channel = 'WEB_BOOKING'` (không đọc lại `Bookings.source` vì quầy ghi đè) |
+| `customer_id`, `phone` | text | Gắn lúc kích hoạt (SĐT chuẩn hoá `0…`) |
+| `pass_id`, `usage_id` | uuid FK | Pass + usage tạo lúc kích hoạt |
+| `redeemed_at`, `ended_at`, `end_reason`, `ended_by` | | |
+
+Index: UNIQUE `activation_booking_id` (ACTIVE/REDEEMED), UNIQUE `usage_id`. Số đã cấp = RESERVED + ACTIVE + REDEEMED ≤ `total_quantity`, bảo đảm bằng khoá dòng campaign (thứ tự khoá: campaign → claim → pass → booking).
+
+**PromotionCampaignStock** (bảng **công khai duy nhất**: anon/authenticated SELECT, có trong `supabase_realtime`): `campaign_id` PK, `public_slug`, `status` (`OPEN` / `PAUSED` / `SOLD_OUT` / `ENDED` / `INACTIVE`), `benefit_type`, `benefit_value`, `total`, `available`, `valid_from`, `valid_until`, `updated_at`, `version` (tăng mỗi lần đổi — realtime **không đảm bảo thứ tự**, client giữ bản ghi version cao nhất). Chỉ RPC ghi.
+
+**RPC [v15]** (chỉ `service_role`): `promo_web_reserve(slug, device_hash, ip_hash)`, `promo_web_voucher_status(code)` (công khai, không SĐT / tên, mã đơn chỉ 3 ký tự cuối), `promo_web_activate(code, booking_id)` (**chỉ gọi trong transaction ghi đơn web**), `promo_web_configure`, `promo_web_set_paused`, `promo_web_release` (thu hồi 1 / mọi lượt giữ), `promo_web_campaign_stats`, `promo_web_list_claims`, `promo_web_expire_all`.
+**Triggers [v15]**: `tr_promo_web_on_usage_status` (usage COMPLETED → claim REDEEMED; CANCELLED → claim + pass CANCELLED, trả suất), `tr_promo_web_on_campaign_change` (ENDED/INACTIVE → lượt giữ EXPIRED; mọi sửa → cập nhật kho).
+**Cron [v15]**: `promo_web_expire_job` mỗi 2 phút (dự phòng — mọi RPC đã tự cho hết hạn).
+**SystemConfigs [v15]**: `promotion_web_claim_enabled` (mặc định **tắt** khi không có dòng).
+
+### [v16] Ghi đơn web kèm voucher + xem trước — migration `20261008150000_webbooking_commit_with_voucher_v16.sql`
+
+- `webbooking_commit_booking_with_voucher(p_booking jsonb, p_items jsonb, p_voucher_code text)` (chỉ `service_role`): không mã → gọi đúng `webbooking_commit_booking`. Có mã → cùng advisory lock theo idempotency key; ghi đơn rồi `promo_web_activate` trong **cùng transaction**. Voucher bị từ chối → `RAISE 'VOUCHER_REJECTED:<MÃ>'`, đơn **không** được tạo. Kết quả thêm `voucher: {applied, voucherCode, discountAmount, totalAmount (sau giảm), subtotalAmount}`. Replay: so dòng **bỏ dòng isPromotion**, so `totalAmount + discount`; cùng key khác mã/giờ/dịch vụ → `IDEMPOTENCY_KEY_REUSED`; lần đầu không mã, gửi lại kèm mã → `voucher: {applied:false, reason:'REPLAY_WITHOUT_VOUCHER'}`.
+- `p_booking.totalAmount` vẫn là **tổng trước giảm** (quote HMAC / reprice / `BOOKING_TOTAL_CONFLICT` không đổi).
+- `promo_compute_discount_core(campaign_id, benefit_type, benefit_value, booking_id, override)`: thân công thức của v14; `promo_compute_discount_ex` chỉ còn là lớp bọc (một công thức cho áp tại quầy, ghi đơn web, xem trước).
+- `promo_web_preview(p_code, p_items[, p_booking_at])` (v17 thêm `p_booking_at`): tạo đơn tạm `WB-PREVIEW-<uuid>` trong subtransaction rồi rollback (không để lại dữ liệu, không phát realtime). Trả `{eligible, unmetReasons, discountAmount, appliedMinutes, subtotalAmount, totalAmount, expiresAt, validUntil}` hoặc lỗi `SERVICE_NOT_BOOKABLE`, `VOUCHER_*`, `CAMPAIGN_*`, `BOOKING_DATE_OUT_OF_RANGE`.
+- Lùi: `plans/sql/rollback_promotion_web_claim_v15.sql` (gỡ v16 + v15).
+
+### [v17] Siết E-Voucher web sau rà soát — migration `20261009100000_promotion_web_claim_hardening_v17.sql`
+
+Plan: `plans/plan_evoucher_sua_loi_sau_ra_soat.md`. Bản mốc các hàm bị thay: `plans/sql/baseline_promo_functions_before_v17_20261009.sql`. Lùi: `plans/sql/rollback_promotion_web_claim_v17.sql` (chạy **trước** rollback v15).
+
+- **CHECK `promo_campaign_web_claim_kind_chk`**: `WEB_CLAIM` chỉ cho `PERCENT_DISCOUNT` / `FIXED_DISCOUNT` và `assignment_mode <> 'AUTO'`.
+- **Trigger `tr_promo_web_guard_pass_insert`** (BEFORE INSERT `CustomerPromotionPasses`): pass của chương trình `WEB_CLAIM` chỉ được có `issue_source = 'WEB_CLAIM'` và ngược lại → lỗi `WEB_CLAIM_ISSUE_FORBIDDEN`.
+- `promo_issue_manual` / `promo_issue_bulk`: chương trình web → `WEB_CLAIM_ISSUE_FORBIDDEN`.
+- `promo_check_apply_ex`: pass `WEB_CLAIM` chỉ áp được bên trong `promo_web_activate` (cờ transaction `promo.web_activation_booking`), mọi chỗ khác (quầy, kể cả áp ngoại lệ) → `WEB_BOOKING_REQUIRED`.
+- `promo_set_pass_status`: pass `WEB_CLAIM` → `WEB_CLAIM_PASS_MANAGED` (huỷ dòng KM trên đơn hoặc huỷ đơn để trả suất).
+- `promo_web_configure`: chỉ chương trình đủ điều kiện mới chuyển sang web → `WEB_CLAIM_NOT_ELIGIBLE` với `data.reason` ∈ `BENEFIT_TYPE` / `AUTO_ASSIGNMENT` / `HAS_PASSES` / `CAMPAIGN_ENDED` (hàm `promo_web_ineligible_reason(campaign_id)`).
+- `promo_web_campaign_stats` thêm `webIneligibleReason`, `staleActive` (voucher ACTIVE > 3 ngày).
+- `promo_web_activate` / `promo_web_preview`: ngày hẹn (`Bookings.bookingDate`, giờ VN không múi giờ) sau `valid_until` → `BOOKING_DATE_OUT_OF_RANGE`.
+- `promo_on_booking_status` (nhánh DONE): đơn không còn dịch vụ thật (`promo_has_real_items`) → huỷ usage + dòng KM, trả lại tổng (`promo_cancel_usage_with_line`, lý do `NO_SERVICE_PERFORMED`). Áp dụng cho mọi chương trình.
+- `promo_web_heal_claims()` (gọi trong `promo_web_expire_all`, cron 2 phút): chữa voucher ACTIVE kẹt — đơn tách (`SPLIT`, theo đơn con), đơn huỷ/xong mà trigger bị lỗi, đơn đã phục vụ nhưng kẹt ở FEEDBACK/CLEANING sau ngày hẹn → REDEEMED; **không đến** (hết ngày hẹn giờ VN, đơn vẫn NEW/PREPARING) → huỷ voucher, đơn về giá gốc (`NO_SHOW`). Không chờ khoá đơn quầy đang sửa (`SKIP LOCKED`, chữa ở lần sau).
+- `promo_web_reserve`: làm mới thẻ công khai ngay sau khi tự cho hết hạn (mọi nhánh trả lỗi đều thấy số đúng).
+

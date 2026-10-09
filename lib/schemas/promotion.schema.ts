@@ -166,3 +166,21 @@ export const ApplyPromotionPassSchema = z.object({
 export const CancelPromotionUsageSchema = z.object({
     reason: z.string().max(500).optional(),
 }).strict();
+
+// ─── Web-claim e-vouchers (engine v15) ───────────────────────────────────────
+export const WebClaimConfigSchema = z.object({
+    totalQuantity: z.number().int().min(1).max(100000),
+    reservationMinutes: z.number().int().min(5).max(1440),
+    maxOpenPerPhone: z.number().int().min(1).max(100),
+    maxTotalPerPhone: z.number().int().min(1).max(1000).nullable(),
+    publicSlug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,59}$/, 'Chỉ chữ thường, số và dấu gạch ngang (2–60 ký tự)'),
+}).strict();
+export type WebClaimConfigInput = z.infer<typeof WebClaimConfigSchema>;
+
+export const WebClaimPauseSchema = z.object({ paused: z.boolean() }).strict();
+
+/** claimId omitted = release every RESERVED voucher of the campaign (anti-bot button). */
+export const WebClaimReleaseSchema = z.object({
+    claimId: z.string().uuid().optional(),
+    reason: z.string().trim().min(3).max(300),
+}).strict();

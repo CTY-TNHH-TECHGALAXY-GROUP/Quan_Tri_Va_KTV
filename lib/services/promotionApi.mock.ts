@@ -35,6 +35,8 @@ import type {
   PromotionPassWithQr,
   PromotionResult,
   PromotionUsageRecord,
+  WebClaimRecord,
+  WebClaimStats,
 } from '@/lib/types/promotion-client';
 import { MOCK_MENUS } from './promotionApi.mock.menus';
 
@@ -787,6 +789,79 @@ export const createMockPromotionApi = (): PromotionApi => {
         }),
       );
     },
+
+    // Web-claim vouchers: a tiny in-memory model, enough to drive the admin card.
+    async getWebClaim(campaignId, status) {
+      await delay();
+      const st = webStats(campaignId);
+      if (!st) return fail('CAMPAIGN_NOT_FOUND');
+      const claims = webClaims.get(campaignId) ?? [];
+      return ok({ stats: st, claims: status ? claims.filter((c) => c.status === status) : claims });
+    },
+    async configureWebClaim(campaignId, input) {
+      await delay();
+      const st = webStats(campaignId);
+      if (!st) return fail('CAMPAIGN_NOT_FOUND');
+      if (input.totalQuantity < st.allocated) return fail('QUANTITY_BELOW_ALLOCATED', { allocated: st.allocated });
+      webConfig.set(campaignId, { ...(webConfig.get(campaignId) ?? { paused: false }), ...input });
+      if (!webClaims.has(campaignId)) webClaims.set(campaignId, mockWebClaims(campaignId));
+      return ok(webStats(campaignId) as WebClaimStats);
+    },
+    async setWebClaimPaused(campaignId, paused) {
+      await delay();
+      const cfg = webConfig.get(campaignId);
+      if (!cfg) return fail('CAMPAIGN_NOT_FOUND');
+      cfg.paused = paused;
+      return ok(webStats(campaignId) as WebClaimStats);
+    },
+    async releaseWebClaims(campaignId, _reason, claimId) {
+      await delay();
+      const claims = webClaims.get(campaignId) ?? [];
+      const targets = claims.filter((c) => c.status === 'RESERVED' && (!claimId || c.id === claimId));
+      if (claimId && targets.length === 0) return fail('VOUCHER_NOT_RESERVED');
+      targets.forEach((c) => { c.status = 'CANCELLED'; c.endedAt = new Date().toISOString(); c.endReason = 'ADMIN_RELEASED'; });
+      return ok({ ...(webStats(campaignId) as WebClaimStats), released: targets.length });
+    },
+  };
+};
+
+// ─── Web-claim mock state (module level: survives re-renders, resets on reload) ───
+type MockWebConfig = { totalQuantity: number; reservationMinutes: number; maxOpenPerPhone: number; maxTotalPerPhone: number | null; publicSlug: string; paused: boolean };
+const webConfig = new Map<string, MockWebConfig>();
+const webClaims = new Map<string, WebClaimRecord[]>();
+
+const mockWebClaims = (campaignId: string): WebClaimRecord[] => {
+  const now = Date.now();
+  const row = (i: number, status: WebClaimRecord['status'], extra: Partial<WebClaimRecord> = {}): WebClaimRecord => ({
+    id: `${campaignId}-claim-${i}`, voucherCode: `WB2-MOCK${i}`, status,
+    reservedAt: new Date(now - i * 600_000).toISOString(), expiresAt: new Date(now - i * 600_000 + 1_800_000).toISOString(),
+    activatedAt: null, bookingId: null, redeemedAt: null, endedAt: null, endReason: null,
+    customerId: null, customerName: null, phone: null, discountAmount: null, ...extra,
+  });
+  return [
+    row(1, 'RESERVED'),
+    row(2, 'ACTIVE', { activatedAt: new Date(now - 900_000).toISOString(), bookingId: 'WB-08102026-003', customerName: 'Charlotte', phone: '0900000001', discountAmount: 65000 }),
+    row(3, 'REDEEMED', { activatedAt: new Date(now - 86_400_000).toISOString(), redeemedAt: new Date(now - 80_000_000).toISOString(), bookingId: 'WB-07102026-001', customerName: 'Minh', phone: '0911111111', discountAmount: 45000 }),
+    row(4, 'EXPIRED', { endedAt: new Date(now - 3_000_000).toISOString(), endReason: 'RESERVATION_EXPIRED' }),
+  ];
+};
+
+const webStats = (campaignId: string): WebClaimStats | null => {
+  const cfg = webConfig.get(campaignId);
+  const claims = webClaims.get(campaignId) ?? [];
+  const count = (s: WebClaimRecord['status']) => claims.filter((c) => c.status === s).length;
+  const allocated = count('RESERVED') + count('ACTIVE') + count('REDEEMED');
+  const available = cfg ? Math.max(0, cfg.totalQuantity - allocated) : null;
+  return {
+    campaignId, distributionChannel: cfg ? 'WEB_CLAIM' : 'ADMIN_ISSUE', campaignStatus: 'ACTIVE',
+    publicSlug: cfg?.publicSlug ?? null, total: cfg?.totalQuantity ?? null, available,
+    reserved: count('RESERVED'), active: count('ACTIVE'), redeemed: count('REDEEMED'),
+    expired: count('EXPIRED'), cancelled: count('CANCELLED'), allocated,
+    paused: cfg?.paused ?? false, reservationMinutes: cfg?.reservationMinutes ?? 30,
+    maxOpenPerPhone: cfg?.maxOpenPerPhone ?? 1, maxTotalPerPhone: cfg?.maxTotalPerPhone ?? null,
+    stockStatus: !cfg ? null : cfg.paused ? 'PAUSED' : available === 0 ? 'SOLD_OUT' : 'OPEN',
+    webIneligibleReason: null,
+    staleActive: 0,
   };
 };
 

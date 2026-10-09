@@ -38,6 +38,10 @@ import type {
   PromotionUsageRecord,
   SpaContact,
   UsageListFilter,
+  WebClaimConfigInput,
+  WebClaimOverview,
+  WebClaimStats,
+  WebClaimStatus,
 } from '@/lib/types/promotion-client';
 
 export interface PromotionApi {
@@ -86,6 +90,13 @@ export interface PromotionApi {
 
   getUsageHistory(filter?: UsageListFilter & { passId?: string }): Promise<PromotionResult<PromotionUsageRecord[]>>;
 
+  /** Web Booking limited vouchers (engine v15): stock counters + voucher list. */
+  getWebClaim(campaignId: string, status?: WebClaimStatus): Promise<PromotionResult<WebClaimOverview>>;
+  /** Turns the campaign into WEB_CLAIM / edits quantity. Below allocated → QUANTITY_BELOW_ALLOCATED. */
+  configureWebClaim(campaignId: string, input: WebClaimConfigInput): Promise<PromotionResult<WebClaimStats>>;
+  setWebClaimPaused(campaignId: string, paused: boolean): Promise<PromotionResult<WebClaimStats>>;
+  /** RESERVED only. No claimId = every reservation of the campaign. */
+  releaseWebClaims(campaignId: string, reason: string, claimId?: string): Promise<PromotionResult<WebClaimStats & { released: number }>>;
 }
 
 // ─── HTTP implementation ────────────────────────────────────────────────
@@ -235,6 +246,16 @@ const httpPromotionApi: PromotionApi = {
       ),
     ),
 
+  getWebClaim: (campaignId, status) =>
+    call(() => apiClient.get(`${ADMIN_BASE}/campaigns/${encodeURIComponent(campaignId)}/web-claim${toQuery({ status })}`)),
+  configureWebClaim: (campaignId, input) =>
+    call(() => apiClient.patch(`${ADMIN_BASE}/campaigns/${encodeURIComponent(campaignId)}/web-claim`, input)),
+  setWebClaimPaused: (campaignId, paused) =>
+    call(() => apiClient.post(`${ADMIN_BASE}/campaigns/${encodeURIComponent(campaignId)}/web-claim/pause`, { paused })),
+  releaseWebClaims: (campaignId, reason, claimId) =>
+    call(() =>
+      apiClient.post(`${ADMIN_BASE}/campaigns/${encodeURIComponent(campaignId)}/web-claim/release`, claimId ? { claimId, reason } : { reason }),
+    ),
 };
 
 // ─── Mode switch ────────────────────────────────────────────────────────
