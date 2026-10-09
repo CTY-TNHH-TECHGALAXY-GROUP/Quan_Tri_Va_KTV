@@ -1,0 +1,94 @@
+diff --git a/lib/dispatch-status.ts b/lib/dispatch-status.ts
+index 7f4f2b7d..d8edfc18 100644
+--- a/lib/dispatch-status.ts
++++ b/lib/dispatch-status.ts
+@@ -137,6 +137,8 @@ export function sequentialSlotsComplete(options: any, segments: any[]): boolean
+  * otherwise a never-started KTV keeps the item IN_PROGRESS forever (14/09/2026),
+  * and a swapped-out KTV (who never hands over) blocks "all handed over".
+  */
++import { segmentOwesRoomHandover } from '@/lib/segment-time';
++
+ export function segmentProgress(segments: any[]): { allSegsDone: boolean; hasUnstartedSegs: boolean; allHandovered: boolean } {
+     const live = (Array.isArray(segments) ? segments : [])
+         .filter((s: any) => !!s && s.voided !== true && s.voided !== 'true');
+@@ -144,7 +146,9 @@ export function segmentProgress(segments: any[]): { allSegsDone: boolean; hasUns
+     return {
+         allSegsDone: started.length > 0 && started.every((s: any) => !!s.actualEndTime),
+         hasUnstartedSegs: live.some((s: any) => !s.actualStartTime && !!s.ktvId),
+-        allHandovered: started.length > 0 && started.every((s: any) => !!s.handoverTime),
++        // Who must hand the room over comes from the ONE shared rule (same as the counter, 09/10/2026).
++        allHandovered: started.length > 0 && (Array.isArray(segments) ? segments : [])
++            .filter((s: any) => segmentOwesRoomHandover(s, segments)).every((s: any) => !!s.handoverTime),
+     };
+ }
+ 
+diff --git a/lib/segment-time.ts b/lib/segment-time.ts
+index 6ecc2a54..bf85c6bc 100644
+--- a/lib/segment-time.ts
++++ b/lib/segment-time.ts
+@@ -309,14 +309,37 @@ export function markNotStartedOnEarlyLeave(seg: any, endMark: string): void {
+     seg.note = NOTE_EARLY_LEAVE_NOT_STARTED;
+ }
+ 
++/** Voided flag, tolerating the legacy string 'true' (rows written before segments were normalized). */
++const voidedFlag = (seg: any): boolean => seg?.voided === true || seg?.voided === 'true';
++
++/**
++ * ONE rule for "does this KTV still owe the room handover of this service" — used by the counter
++ * (submitCustomerRating), the KTV app (segmentProgress → handleFinishService) and room debt /
++ * pending handovers / unfinished work (hasNoRoomDutyOnItems). Owner decision 09/10/2026
++ * ("người làm cuối cùng bàn giao phòng"), plans/plan_sua_doi_ktv_giua_ca_va_huy_dv_dang_cho.md mục 12:
++ *  - never started                                   → no
++ *  - working segment (not voided) that started       → yes
++ *  - swapped out (CHANGED) / early leave not started → no (the incoming KTV or the counter handles the room)
++ *  - started, then voided (cancelled no credit, …)   → only if NOBODY took the service further, i.e. no
++ *    other live started segment on the item (whole service cancelled). Otherwise the last worker hands
++ *    the room over (e.g. sequential: A cancelled no credit, B finishes and hands over).
++ */
++export function segmentOwesRoomHandover(seg: any, itemSegments: any[]): boolean {
++    if (!seg?.actualStartTime || !seg?.ktvId) return false;
++    if (!voidedFlag(seg)) return true;
++    if (seg.note === 'CHANGED' || seg.note === NOTE_EARLY_LEAVE_NOT_STARTED) return false;
++    return !(Array.isArray(itemSegments) ? itemSegments : [])
++        .some((other: any) => other !== seg && !voidedFlag(other) && !!other?.actualStartTime);
++}
++
+ /**
+  * The KTV has no room duty on these items (no cleaning, no handover, no room debt,
+- * not "unfinished work"): every segment of theirs is voided because they were
+- * swapped out (CHANGED) or never started before the customer left
+- * (EARLY_LEAVE_NOT_STARTED).
++ * not "unfinished work"): every segment of theirs is voided and owes no handover by
++ * segmentOwesRoomHandover — swapped out, never started before the customer left, or
++ * cancelled mid-service while someone else finished the service (09/10/2026).
+  *
+- * A KTV cancelled mid-service (CANCELLED_NO_CREDIT) is NOT included: they were in
+- * the room, so they still clean it.
++ * A KTV cancelled mid-service whose service then stopped (nobody continued) still
++ * owes the room: they were the last one in it.
+  */
+ export function hasNoRoomDutyOnItems(
+     items: any[],
+@@ -324,11 +347,16 @@ export function hasNoRoomDutyOnItems(
+     matchKtv: (segKtvId: any, ktvId: string) => boolean
+ ): boolean {
+     if (!Array.isArray(items) || !ktvId) return false;
+-    const segs = items.flatMap((i: any) => {
+-        let parsed: any = i?.segments;
++    let mine = 0;
++    for (const item of items) {
++        let parsed: any = item?.segments;
+         if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { parsed = []; } }
+-        return (Array.isArray(parsed) ? parsed : []).filter((sg: any) => matchKtv(sg?.ktvId, ktvId));
+-    });
+-    return segs.length > 0 && segs.every((sg: any) =>
+-        sg?.voided === true && (sg?.note === 'CHANGED' || sg?.note === NOTE_EARLY_LEAVE_NOT_STARTED));
++        const segs: any[] = Array.isArray(parsed) ? parsed : [];
++        for (const sg of segs) {
++            if (!matchKtv(sg?.ktvId, ktvId)) continue;
++            mine++;
++            if (!voidedFlag(sg) || segmentOwesRoomHandover(sg, segs)) return false;
++        }
++    }
++    return mine > 0;
+ }

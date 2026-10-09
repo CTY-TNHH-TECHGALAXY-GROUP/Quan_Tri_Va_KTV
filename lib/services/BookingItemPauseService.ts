@@ -6,6 +6,25 @@ import { logCounterAction, currentCounterActor, type CounterAction } from '@/lib
 import { isTypeCWorkType } from '@/lib/constants/staff.constants';
 
 /**
+ * Id for the incoming KTV's TAKEOVER segment.
+ *
+ * Must be unique inside the item: the replaced KTV's segment stays in the same array
+ * (closed + voided), and segment ids are matched as unique keys by handleStartTimer
+ * (requires an id since 27/09), ktv_release_work_atomic_base, guard_sequential_item_update,
+ * protect_running_ktv_assignment and lib/dispatch-live-guard.ts. Reusing the old id would
+ * let a handover/edit on the new segment hit the voided one. Derived from the replaced
+ * segment id so the chain A → B → C stays traceable.
+ */
+export function buildTakeoverSegmentId(segments: any[], baseId: string, at: string | number): string {
+    const parsed = typeof at === 'number' ? at : Date.parse(at);
+    const base = `${baseId}-takeover-${Number.isFinite(parsed) ? parsed : Date.now()}`;
+    const taken = new Set(segments.map(seg => String(seg?.id ?? '')));
+    let id = base;
+    for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+    return id;
+}
+
+/**
  * Kéo người vào thay (Đổi KTV) lên `working` trong TurnQueue.
  *
  * A/B/D đã có dòng TurnQueue hôm đó (điểm danh / online) → chỉ update như trước.
@@ -30,9 +49,23 @@ export async function pullIncomingKtvToWorking(
 ): Promise<'updated' | 'inserted' | 'skipped'> {
     const { employeeId, businessDate, bookingId, bookingItemId, isTypeC } = opts;
 
+    // booking_item_ids MUST list the taken-over item: cancelBookingItem / KtvReleaseService look the row up
+    // with contains(booking_item_ids, [item]) and updateBookingItemStatus with overlaps — without it a
+    // cancel before the incoming KTV starts left their row "working" on a cancelled order (QA #28 F07e,
+    // hole noted 14/09). Merge with items they already hold on the SAME booking; another booking is replaced.
+    const { data: currentRow } = await supabase
+        .from('TurnQueue')
+        .select('current_order_id, booking_item_ids')
+        .eq('employee_id', employeeId)
+        .eq('date', businessDate)
+        .maybeSingle();
+    const heldOnThisBooking = currentRow?.current_order_id === bookingId && Array.isArray(currentRow?.booking_item_ids)
+        ? currentRow.booking_item_ids as string[] : [];
+    const itemIds = [...new Set([...heldOnThisBooking, bookingItemId])];
+
     const { data: updated, error: updateError } = await supabase
         .from('TurnQueue')
-        .update({ status: 'working', current_order_id: bookingId, booking_item_id: bookingItemId })
+        .update({ status: 'working', current_order_id: bookingId, booking_item_id: bookingItemId, booking_item_ids: itemIds })
         .eq('employee_id', employeeId)
         .eq('date', businessDate)
         .select('id');
@@ -508,9 +541,11 @@ export class BookingItemPauseService {
         // WB-10092026-016-NHS0008-0 (endTime = "21:19", actualEndTime trống).
         const aIndex = segments.findIndex(seg => ktvMatchesSeg(seg.ktvId, oldKtvId) && !seg.actualEndTime);
         let oldWorkedMins = 0;
+        let replacedSegmentId: string | null = null;
         const pauseTime = item.pauseStart || new Date().toISOString();
         if (aIndex !== -1) {
             const oldSeg = segments[aIndex];
+            replacedSegmentId = oldSeg?.id ? String(oldSeg.id) : null;
 
             // Đóng khoảng tạm dừng còn hở tại mốc bấm dừng, rồi tính giờ làm thực
             // (đã trừ các lần dừng trước đó) — xem lib/segment-time.ts
@@ -539,6 +574,7 @@ export class BookingItemPauseService {
             const remainingMins = assignedMins && assignedMins > 0
                 ? Math.min(assignedMins, originalDuration)
                 : Math.max(0, originalDuration - oldWorkedMins) + extraTimeMins;
+            const takeoverSegmentId = buildTakeoverSegmentId(segments, replacedSegmentId || bookingItemId, pauseTime);
 
             if (businessDate) {
                 // Thêm tua cho KTV mới — CHỈ loại A/B/C. Loại D tính công bằng giờ
@@ -586,6 +622,9 @@ export class BookingItemPauseService {
                         business_date: businessDate,
                         booking_id: item.bookingId,
                         booking_item_id: bookingItemId,
+                        // Same id as the TAKEOVER segment below — handover and
+                        // protect_running_ktv_assignment match assignments by segment.
+                        segment_id: takeoverSegmentId,
                         status: 'ACTIVE',
                         dispatch_source: 'SWAP_KTV',
                         planned_start_time: new Date().toISOString(),
@@ -611,6 +650,8 @@ export class BookingItemPauseService {
             // cứng số phút quầy quyết, nên KTV bắt đầu sớm hay muộn đều nhận
             // đúng bằng nhau.
             segments.push({
+                id: takeoverSegmentId,
+                replacesSegmentId: replacedSegmentId,
                 ktvId: newKtvId,
                 // Giờ VN, KHÔNG phải giờ máy chủ — xem gioDongHoVN.
                 startTime: gioDongHoVN(Date.now()),

@@ -1858,6 +1858,15 @@ export async function cancelBooking(bookingId: string, date: string, cancelCredi
         const supabase = getSupabaseAdmin();
         if (!supabase) throw new Error('Supabase admin not initialized');
 
+        // Người chưa bắt đầu (kể cả đang chờ vì bận đơn khác) gỡ ra TRƯỚC: không nhận gì, không
+        // bị kéo sang đơn đã huỷ. Vòng TurnQueue bên dưới chỉ còn lo người đã bắt đầu (chốt 08/10/2026).
+        const { data: openItems, error: openItemsError } = await supabase.from('BookingItems')
+            .select('id').eq('bookingId', bookingId).neq('status', 'DONE').neq('status', 'CANCELLED');
+        if (openItemsError) throw openItemsError;
+        const releaseError = await BookingModificationService.releaseUnstartedStaffBeforeCancel(
+            supabase, (openItems || []).map((it: any) => it.id), await currentCounterActor());
+        if (releaseError) return { success: false, error: releaseError };
+
         // Cập nhật trạng thái các BookingItems chưa hoàn thành về CANCELLED.
         // ⏱️ Đồng thời CHỐT mốc kết thúc cho các chặng còn hở, nếu không thì
         // computeMinutes coi chặng là "không có mốc" và trả tiền theo giờ GÁN.
@@ -1889,7 +1898,9 @@ export async function cancelBooking(bookingId: string, date: string, cancelCredi
                     s.actualEndTime = endMark;
                     segmentsModified = true;
                 }
-                if (cancelCredit === 'NONE' && s.actualStartTime) {
+                // Already voided (swapped out 'CHANGED', unassigned) → keep its note: the handover gate
+                // and laNguoiBiDoiRaKhoiDon tell a swapped-out KTV by note 'CHANGED' (plan 08/10 mục 11).
+                if (cancelCredit === 'NONE' && s.actualStartTime && s.voided !== true && s.voided !== 'true') {
                     voidSegment(s, endMark, 'CANCELLED_NO_CREDIT');
                     segmentsModified = true;
                 }
@@ -2727,7 +2738,12 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
             for (const item of checkItems) {
                 let segs: any[] = [];
                 try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
-                const startedSegs = segs.filter((s: any) => !!s.actualStartTime && !!s.ktvId);
+                // A swapped-out KTV (voided, note 'CHANGED') never hands over — the incoming KTV does, or the
+                // counter when the service was cancelled before they started (chốt 09/10/2026). A started KTV whose
+                // service was cancelled no-credit still owes the room ('CANCELLED_NO_CREDIT' is not skipped) —
+                // same as ktv_release_work_atomic_base; "người làm cuối bàn giao" is plan_nguoi_lam_cuoi_ban_giao_phong.md.
+                const startedSegs = segs.filter((s: any) => !!s.actualStartTime && !!s.ktvId
+                    && !((s.voided === true || s.voided === 'true') && s.note === 'CHANGED'));
                 if (startedSegs.length > 0 && !startedSegs.every((s: any) => !!s.handoverTime)) {
                     allKTVsHandovered = false;
                     break;
@@ -2737,7 +2753,8 @@ export async function submitCustomerRating(bookingId: string, rating: number, fe
             if (allKTVsHandovered) {
                 // Tất cả KTV đã bàn giao → an toàn set DONE
                 for (const item of checkItems) {
-                    if (item.status !== 'DONE') {
+                    // A cancelled service stays CANCELLED — never promote it to DONE on the customer rating.
+                    if (item.status !== 'DONE' && item.status !== 'CANCELLED') {
                         let segs: any[] = [];
                         try { segs = typeof item.segments === 'string' ? JSON.parse(item.segments) : (Array.isArray(item.segments) ? item.segments : []); } catch { segs = []; }
                         const startedSegs = segs.filter((s: any) => !!s.actualStartTime);

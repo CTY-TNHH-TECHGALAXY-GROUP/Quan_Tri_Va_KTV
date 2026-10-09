@@ -133,6 +133,21 @@ KTV Loại D đã đăng ký đi làm, **từ 07:00** bấm "Báo off đột xu�
 | Cron 00:00 | `penalty_applied = SUDDEN_OFF_REPORTED` → chỉ đóng sổ; có SUDDEN_OFF mà chưa đánh dấu → xử dự phòng, không khoá |
 | Đã kiểm | `scripts/qa/qa_23_bao_off_dot_xuat.ts` — 19/19, cả `TZ=UTC` |
 
+### 2.4. Huỷ khi KTV CHƯA BẮT ĐẦU + mã chặng người vào thay (08/10/2026)
+
+Plan: `plans/plan_sua_doi_ktv_giua_ca_va_huy_dv_dang_cho.md`. User chốt 08/10: **chưa bắt đầu mà huỷ thì không nhận gì**.
+
+| Khía cạnh | Người chưa bắt đầu (đang chờ QUEUED / đã nhận chưa bấm Bắt đầu) — HK **và** HC, huỷ 1 dịch vụ **và** huỷ cả đơn |
+|---|---|
+| Tiền / giờ | 0 — chặng void `UNASSIGNED`, `customCommissionDuration = 0`; công tắc "có công" không áp dụng |
+| Lượt tua | gỡ dòng `TurnLedger` của bill (không còn `is_punished`), trừ khi KTV còn phân công khác trong bill |
+| Hàng đợi | `KtvAssignments` → CANCELLED, `promote_next_assignment`; **không bao giờ** bị kéo sang dịch vụ đã huỷ |
+| App KTV / lịch sử | không còn đơn; không hiện dịch vụ này (giống quầy bỏ phân công) |
+| Cách làm | `BookingModificationService.releaseUnstartedStaffBeforeCancel` gọi RPC `dispatch_unassign_unstarted_staff` (p_reject=false) cho từng KTV **trước** khi huỷ; tìm theo chặng, không theo TurnQueue. Đơn nối tiếp A/B giữ đường huỷ riêng |
+| Người đã bắt đầu | không đổi (cột HK / HC ở bảng trên) |
+
+**VT — mã chặng:** chặng TAKEOVER có `id = <mã chặng người bị thay>-takeover-<ms>` (duy nhất trong item) + `replacesSegmentId`; `KtvAssignments.segment_id` của người vào thay = mã đó. Không dùng lại mã người bị thay (chặng void vẫn trong item; bàn giao / guard nối tiếp / phân công khớp theo mã).
+
 ## 3. Trạng thái triển khai (11/09/2026 · cập nhật 21/09/2026)
 
 - Hoàn tất bình thường nhận đủ tiền theo phút gán: đã sửa engine và calculator legacy trong mã nguồn; chưa deploy/backfill dữ liệu thật. Plan: `plan_fix_type_d_subsecond_commission.md`.
@@ -154,6 +169,7 @@ KTV Loại D đã đăng ký đi làm, **từ 07:00** bấm "Báo off đột xu�
 | Tự Hoàn tất khi khách không chấm (14/09) — item `FEEDBACK` quá 5 phút → `DONE`, `itemRating` giữ NULL, không đụng CLEANING/CANCELLED, không lùi booking DONE | chỉ item vào chờ từ 01/09 (VN) | `scripts/qa/qa_auto_complete_feedback.cjs` — 73/73 trên DB thật trong transaction ROLLBACK (biên 31/08 23:30 ↔ 01/09 00:10 VN, số phút chờ 20 / 8 / 0 / hỏng / âm, và **chờ cả đơn con xong** sau sự cố 14/09: người sau trong chuỗi đang làm / chưa bắt đầu / bị tước, 2 KTV **song song** (một người còn làm / vừa xong / cả hai xong), dịch vụ khác còn CLEANING / IN_PROGRESS / PAUSED; **đổi KTV / kết thúc sớm / huỷ có công – không công** × nối tiếp / song song). Kanban giữ dịch vụ "Đang làm" khi một người xong: `scripts/qa/qa_kanban_sequential_hold.ts` 36/36 (nối tiếp, song song, đổi KTV, kết thúc sớm, huỷ — dựng chặng bằng `voidSegment` / `closeOpenPause` thật) + đối chiếu mọi item thật không phải FEEDBACK giữ nguyên). Migration `20260914120000` đã áp 14/09 16:24, lần chạy đầu chốt 13 dịch vụ |
 
 - **Báo off đột xuất Loại D (07/10/2026)**: nút từ 07:00, −10h, không khoá; cron đóng sổ. Kiểm bằng `scripts/qa/qa_23_bao_off_dot_xuat.ts` (cả `TZ=UTC`). Chưa deploy.
+- **Đổi KTV giữa ca + huỷ khi chưa bắt đầu (08/10/2026)** — mục 2.4: `scripts/qa/qa_28_e2e_van_hanh_test_db.ts` 301/301 trên DB TEST, cả `TZ=UTC` (đổi A→B, A→B→C, đổi 1 người trong 2 KTV, đổi sang Loại D; huỷ dịch vụ / cả đơn khi KTV đang chờ; huỷ khi đã nhận chưa bắt đầu; 2 dịch vụ cùng bill; đổi rồi huỷ trước khi người vào thay bắt đầu; dữ liệu cũ dạng chuỗi; trigger bật/tắt; ca đêm) — lượt cuối 378/378. Nhánh `fix/doi-ktv-va-huy-dv-dang-cho-20261008`, chưa deploy. Lỗi gốc: chặng TAKEOVER không có `id` nên người vào thay không bấm Bắt đầu được từ 27/09; huỷ chỉ tìm KTV qua TurnQueue nên bỏ sót KTV đang chờ.
 - **Khuyến mãi +phút (02/10/2026)**: item KM đi theo luồng add-on, không sửa item đã trả tiền; kiểm bằng `scripts/qa/qa_promotion_engine.ts` (local + Supabase test, cả `TZ=UTC`). Chưa deploy production. Plan: `plan_promotion_engine_backend.md`.
 
 ### ⚠️ Còn lỗ — chưa sửa
@@ -166,9 +182,11 @@ KTV Loại D đã đăng ký đi làm, **từ 07:00** bấm "Báo off đột xu�
 | KS dòng 5, 10, 15 | Chốt 11/09: đi thẳng Hoàn tất, không chờ đánh giá. Quầy đã đúng; còn `handleFinishService` rơi `FEEDBACK` và lịch sử hiện "Chờ FB" | `plans/plan_ket_thuc_som_hoan_tat.md` — chờ chốt: KTV còn dọn phòng không |
 | Triển khai | Mọi bản sửa hôm nay chỉ ở máy local — nhánh chưa push, bản Vercel vẫn chạy code cũ | user quyết push |
 | Chuẩn code | Một phần code viết hôm nay đặt tên biến tiếng Việt và chữ cứng trong `.tsx` — trái `CLAUDE.md` mục 1, 6 | dọn khi đụng lại các file đó |
-| VT dòng 3 — **A/B** vào thay, chưa bấm Bắt đầu (có sẵn, thấy 14/09) | `swapKtvOnPausedItem` update dòng A/B thành `working` nhưng KHÔNG set `booking_item_ids` → `cancelBookingItem` (lọc `contains booking_item_ids`) không tìm thấy họ → huỷ 1 dịch vụ không công mà A/B vẫn giữ tua; quầy Hoàn tất cũng không nhả được dòng. Loại C không dính (dòng tạo mới có `booking_item_ids`) | set `booking_item_ids: [item.id]` trong lệnh update của `pullIncomingKtvToWorking` (Mức 2) |
+| VT dòng 3 — **A/B** vào thay, chưa bấm Bắt đầu (có sẵn, thấy 14/09) | `swapKtvOnPausedItem` update dòng A/B thành `working` nhưng KHÔNG set `booking_item_ids` → `cancelBookingItem` (lọc `contains booking_item_ids`) không tìm thấy họ → huỷ 1 dịch vụ không công mà A/B vẫn giữ tua; quầy Hoàn tất cũng không nhả được dòng. Loại C không dính (dòng tạo mới có `booking_item_ids`) | set `booking_item_ids: [item.id]` trong lệnh update của `pullIncomingKtvToWorking` (Mức 2). ✅ **ĐÃ SỬA 09/10** (nhánh `fix/doi-ktv-va-huy-dv-dang-cho-20261008`): `pullIncomingKtvToWorking` ghi `booking_item_ids` (gộp dịch vụ đang giữ trên cùng đơn); `cancelBookingItem` xét "đã bắt đầu" theo TỪNG KTV (trước: theo cả dịch vụ → người vào thay chưa bắt đầu bị giữ "để dọn phòng"). Kiểm: `qa_28` F07e, F07f |
+| ĐR × huỷ dịch vụ (thấy 09/10, có sẵn) — ✅ **ĐÃ SỬA 09/10** (user chốt: người bị đổi ra KHÔNG phải bàn giao) | Trước: đổi A → B rồi huỷ dịch vụ → chặng đã bắt đầu của A không ai bàn giao → `submitCustomerRating` giữ đơn `FEEDBACK`. Sửa: (1) điều kiện bàn giao bỏ qua chặng `voided` + `note CHANGED`; huỷ không công đã bắt đầu (`CANCELLED_NO_CREDIT`) vẫn phải bàn giao; (2) hai hàm huỷ không tước lại chặng đã tước (giữ `CHANGED`); (3) khách chấm không đổi dịch vụ CANCELLED thành DONE. Kiểm: `qa_28` F07f, F09f | — |
 | VT loại C khi D/B on-call không dòng | Cố ý KHÔNG tạo dòng cho D / B on-call vào thay (lệch hàng giờ D, luật kỷ luật D) → với họ các lỗ "quầy thấy Sẵn sàng", "huỷ không công vẫn giữ tua" vẫn còn như trước | cần chốt nghiệp vụ riêng cho D on-call |
 | KS × nối tiếp / song song (thấy 14/09) — ✅ **ĐÃ SỬA CODE 14/09** (`plan_ket_thuc_som_nguoi_chua_bat_dau.md`: tước + nhả + trừ tua A/B/C), chờ deploy + sửa đơn cũ | Trước sửa: `finish-early-paused/route.ts` chỉ đóng chặng **đã bắt đầu**. Người sau trong chuỗi / người song song **chưa bắt đầu** bị bỏ ngỏ → `handleFinishService` thấy chặng chưa bắt đầu nên lùi dịch vụ về `IN_PROGRESS`, Kanban giữ "Đang làm", job tự hoàn tất không bao giờ chốt. Đơn thật: `aa79c2d1-…` (TEST-260908-DS5E) kẹt `IN_PROGRESS` + `earlyLeave` từ 08/09. Test đã khoá hành vi an toàn (không chốt) — đánh dấu ⚠️ | chốt nghiệp vụ người chưa bắt đầu khi khách về sớm (tước chặng? nhả tua? giữ lượt?) rồi sửa route (Mức 2) |
+| Huỷ 1 dịch vụ khi KTV ĐÃ BẮT ĐẦU → bàn giao xong vẫn kẹt "đang làm" (có sẵn, thấy 10/10 ở `qa_29` T02) — ✅ **ĐÃ SỬA 10/10** | `cancelBookingItem` giữ TurnQueue `working` để KTV bàn giao (đúng) nhưng lại đóng phiếu `KtvAssignments` → `ktv_release_work_atomic` chỉ nhả tua theo phiếu nó chuyển `COMPLETED` nên không nhả. Áp dụng cả huỷ không công và có công; huỷ cả đơn không dính. Sửa: KTV đã bắt đầu giữ phiếu `ACTIVE` đến lúc bàn giao (plan `plan_huy_da_bat_dau_nha_tua_sau_ban_giao.md`). Kiểm: `qa_29` T02, T11–T15 | — |
 
 ---
 

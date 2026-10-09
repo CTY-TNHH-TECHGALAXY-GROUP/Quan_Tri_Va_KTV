@@ -8,8 +8,61 @@ import { isDummyPhone, isDummyEmail } from '@/lib/customer.logic';
 import { resolveQuickBookingCustomer } from '@/lib/services/QuickBookingCustomerService';
 import type { VatInvoiceInput } from '@/lib/services/CustomerVatService';
 import { isTwoSlotSequential } from '@/lib/dispatch-status';
+import { parseKtvSegments, parseKtvOptions, ktvMatchesSeg } from '@/lib/ktvUtils';
+
+/** Item statuses dispatch_unassign_unstarted_staff accepts (anything later already has started work). */
+const UNASSIGNABLE_ITEM_STATUSES = ['NEW', 'WAITING', 'PREPARING', 'READY', 'IN_PROGRESS', 'PAUSED'];
 
 export class BookingModificationService {
+    /**
+     * Gỡ mọi KTV CHƯA BẮT ĐẦU khỏi các dịch vụ sắp huỷ — chạy TRƯỚC khi huỷ.
+     *
+     * Chốt 08/10/2026: chưa bắt đầu mà huỷ thì không nhận gì — 0 tiền, 0 giờ, không tính tua,
+     * cho cả huỷ một dịch vụ lẫn huỷ cả đơn (plans/plan_sua_doi_ktv_giua_ca_va_huy_dv_dang_cho.md).
+     *
+     * Tìm KTV theo CHẶNG của dịch vụ, không theo TurnQueue: KTV đang bận đơn khác (phân công
+     * QUEUED) có TurnQueue.current_order_id trỏ sang đơn kia nên hai hàm huỷ cũ bỏ sót họ —
+     * phân công chờ còn treo và promote_next_assignment kéo họ sang đúng dịch vụ đã huỷ (QA #28 F09b).
+     *
+     * Dùng đúng RPC "bỏ phân công" của quầy (dispatch_commit_form → dispatch_unassign_unstarted_staff,
+     * p_reject=false), trong một transaction mỗi KTV: void chặng (UNASSIGNED, 0 phút), huỷ KtvAssignments,
+     * xoá TurnLedger của bill nếu KTV không còn phân công khác trong bill, đẩy phân công kế tiếp.
+     *
+     * Trả câu lỗi cho quầy (bên gọi PHẢI dừng, không ghi gì thêm) hoặc null khi xong.
+     */
+    static async releaseUnstartedStaffBeforeCancel(supabase: any, itemIds: string[], actor: unknown): Promise<string | null> {
+        if (!itemIds.length) return null;
+        const { data: rows, error } = await supabase.from('BookingItems')
+            .select('id, bookingId, status, segments, options').in('id', itemIds);
+        if (error) return error.message || 'Không đọc được dịch vụ';
+        for (const row of rows || []) {
+            if (!UNASSIGNABLE_ITEM_STATUSES.includes(row.status)) continue;
+            // Two-slot sequential items have their own cancel path (performSequentialLifecycle) — untouched.
+            if (isTwoSlotSequential(row.options)) continue;
+            const live = parseKtvSegments(row.segments)
+                .filter((seg: any) => seg?.ktvId && seg.voided !== true && seg.voided !== 'true');
+            const startedKtvs = new Set(live.filter((seg: any) => seg.actualStartTime || seg.actualEndTime)
+                .map((seg: any) => String(seg.ktvId).trim().toLowerCase()));
+            const unstartedKtvs = [...new Set(live.map((seg: any) => String(seg.ktvId)))]
+                .filter(ktvId => !startedKtvs.has(ktvId.trim().toLowerCase()));
+            let revision = Number(parseKtvOptions(row.options).dispatchRevision || 0);
+            for (const ktvId of unstartedKtvs) {
+                const { data, error: rpcError } = await supabase.rpc('dispatch_unassign_unstarted_staff', {
+                    p_booking_id: row.bookingId, p_item_id: row.id, p_ktv_id: ktvId,
+                    p_expected_revision: revision, p_actor: actor, p_reject: false,
+                });
+                if (rpcError) {
+                    console.error('[cancel] unassign unstarted failed', { itemId: row.id, ktvId, error: rpcError });
+                    return /bản lưu mới|chuyển trạng thái/.test(rpcError.message || '')
+                        ? 'Đơn vừa thay đổi; tải lại rồi huỷ lại.'
+                        : `Chưa gỡ được KTV ${ktvId} khỏi dịch vụ: ${rpcError.message}`;
+                }
+                revision = Number(data?.revision ?? revision + 1);
+            }
+        }
+        return null;
+    }
+
     static async createQuickBooking(data: {
         customerName: string;
         customerPhone?: string;
@@ -437,6 +490,11 @@ export class BookingModificationService {
             const supabase = getSupabaseAdmin();
             if (!supabase) throw new Error('Supabase admin not initialized');
 
+            // Người chưa bắt đầu (kể cả đang chờ) gỡ ra TRƯỚC, rồi mới đọc lại dịch vụ để huỷ.
+            const releaseError = await BookingModificationService.releaseUnstartedStaffBeforeCancel(
+                supabase, [itemId], await currentCounterActor());
+            if (releaseError) return { success: false, error: releaseError };
+
             const { data: item, error: iError } = await supabase.from('BookingItems').select('*').eq('id', itemId).single();
             if (iError || !item) return { success: false, error: 'Không tìm thấy dịch vụ' };
             
@@ -470,7 +528,9 @@ export class BookingModificationService {
                     s.actualEndTime = endMark;
                     segmentsModified = true;
                 }
-                if (cancelCredit === 'NONE' && s.actualStartTime) {
+                // Already voided (swapped out 'CHANGED', unassigned) → keep its note: the handover gate
+                // and laNguoiBiDoiRaKhoiDon tell a swapped-out KTV by note 'CHANGED' (plan 08/10 mục 11).
+                if (cancelCredit === 'NONE' && s.actualStartTime && s.voided !== true && s.voided !== 'true') {
                     voidSegment(s, endMark, 'CANCELLED_NO_CREDIT');
                     segmentsModified = true;
                 }
@@ -512,7 +572,9 @@ export class BookingModificationService {
 
             // KTV đã thực sự bắt đầu chặng nào chưa? Quyết định có giữ đơn lại để
             // dọn phòng hay nhả tua luôn.
-            const daBatDauLam = segs.some((x: any) => x.actualStartTime);
+            // Per KTV, not per item: after a swap the item holds the replaced KTV's started (voided) segment,
+            // and the incoming KTV who never pressed Start must be released, not kept "to clean the room" (QA #28 F07e).
+            const daBatDauLam = (ktvId: string) => segs.some((x: any) => x?.actualStartTime && ktvMatchesSeg(x.ktvId, ktvId));
 
             const { data: turnsAffected } = await supabase
                 .from('TurnQueue')
@@ -526,7 +588,7 @@ export class BookingModificationService {
                     const remainingItemIds = currentItemIds.filter((id: string) => id !== itemId);
                     if (remainingItemIds.length > 0) {
                         await supabase.from('TurnQueue').update({ booking_item_id: remainingItemIds.join(','), booking_item_ids: remainingItemIds }).eq('id', turn.id);
-                    } else if (daBatDauLam) {
+                    } else if (daBatDauLam(turn.employee_id)) {
                         // ⚠️ ĐANG LÀM RỒI mới huỷ → phòng vẫn bẩn, vẫn phải dọn và bàn giao.
                         // Nhả tua ngay ở đây là KTV mất đơn trước khi kịp bàn giao và bị đá
                         // về Dashboard — đúng lỗi đã gặp với "Kết thúc sớm".
@@ -556,7 +618,9 @@ export class BookingModificationService {
 
                     // Đóng assignment của đúng dịch vụ vừa huỷ rồi kéo đơn kế tiếp lên,
                     // nếu không KTV vẫn bị coi là đang bận với dịch vụ đã huỷ.
-                    if (turn.employee_id && turn.date) {
+                    // Started KTV keeps the assignment ACTIVE: ktv_release_work_atomic only frees the
+                    // turn for assignments it marks COMPLETED at handover (plan_huy_da_bat_dau_nha_tua_sau_ban_giao).
+                    if (turn.employee_id && turn.date && !daBatDauLam(turn.employee_id)) {
                         await supabase
                             .from('KtvAssignments')
                             .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
