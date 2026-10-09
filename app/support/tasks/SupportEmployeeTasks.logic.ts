@@ -68,8 +68,21 @@ export interface CheckoutPicture {
   override?: { reason: string; granted_by: string | null } | null;
 }
 
-/** 'all' or one concrete task state — the chips are generated from the states present today. */
-export type StatusFilter = 'all' | TaskState;
+/**
+ * Status buckets shown as summary cards — same four as the approved artifact
+ * (Chưa làm · Chờ duyệt · Bị từ chối · Đã duyệt, always visible even at 0),
+ * plus Office P0 extras that appear only when they have tasks.
+ */
+export type StatusBucket = 'todo' | 'waiting' | 'fix' | 'approved' | 'offered' | 'blocked';
+export type StatusFilter = 'all' | StatusBucket;
+export const STATUS_BUCKETS: { key: StatusBucket; states: TaskState[]; always: boolean }[] = [
+  { key: 'todo', states: ['TODO', 'DOING'], always: true },
+  { key: 'waiting', states: ['WAITING'], always: true },
+  { key: 'fix', states: ['FIX'], always: true },
+  { key: 'approved', states: ['APPROVED'], always: true },
+  { key: 'offered', states: ['OFFERED'], always: false },
+  { key: 'blocked', states: ['BLOCKED'], always: false },
+];
 
 export type GroupSort = 'shift' | 'remaining';
 
@@ -81,8 +94,6 @@ export const parseGroupName = (name: string) => {
   return m ? { order: m[1], title: m[2] || name, time: m[3] || null } : { order: null, title: name, time: null };
 };
 
-/** Display order of state chips (most urgent first). */
-export const STATE_CHIP_ORDER: TaskState[] = ['FIX', 'OFFERED', 'BLOCKED', 'TODO', 'DOING', 'WAITING', 'APPROVED', 'DECLINED'];
 type UploadStatus = 'uploading' | 'queued' | 'failed';
 export interface PendingUpload { taskId: string; slot: number | null; previewUrl: string; status: UploadStatus; file: File }
 
@@ -371,11 +382,13 @@ export const useSupportTasks = () => {
       ? [...stats].sort((a, b) => (b.remaining - a.remaining) || byName(a.name, b.name))
       : stats;
   }, [tasks, groupNames, groupSort]);
-  const stateChips = useMemo(() => STATE_CHIP_ORDER.filter(st => counts[st]).map(st => ({ state: st, count: counts[st] })), [counts]);
+  const statusBuckets = useMemo(() => STATUS_BUCKETS
+    .map(b => ({ key: b.key, count: b.states.reduce((n, st) => n + (counts[st] || 0), 0), always: b.always }))
+    .filter(b => b.always || b.count > 0), [counts]);
 
   const visible = useMemo(() => tasks.filter(x => {
     if (x.state === 'CANCELLED') return false;
-    if (statusFilter !== 'all' && x.state !== statusFilter) return false;
+    if (statusFilter !== 'all' && !STATUS_BUCKETS.find(b => b.key === statusFilter)?.states.includes(x.state)) return false;
     if (groupFilter !== 'all' && x.categoryName !== groupFilter) return false;
     return true;
   }), [tasks, statusFilter, groupFilter]);
@@ -411,7 +424,7 @@ export const useSupportTasks = () => {
   };
 
   return {
-    loading, tasks, checkout, counts, sections, groupNames, stateChips, activeTasks,
+    loading, tasks, checkout, counts, sections, groupNames, statusBuckets, activeTasks,
     statusFilter, setStatusFilter, groupFilter, setGroupFilter, groupStats, groupSort, setGroupSort,
     openId, setOpenId, sheetOpen, setSheetOpen, gotoTask,
     uploads, pendingUploadCount, uploadPhoto, retryUpload, removePhoto,

@@ -12,20 +12,28 @@ export const t = {
     TODO: 'Chưa làm',
     DOING: 'Đang làm',
     WAITING: 'Chờ duyệt',
-    FIX: 'Cần sửa',
+    FIX: 'Bị từ chối',
     APPROVED: 'Đã duyệt',
     BLOCKED: 'Báo vướng',
-    DECLINED: 'Đã từ chối',
+    DECLINED: 'Bạn đã từ chối nhận',
     CANCELLED: 'Đã huỷ',
   } as Record<string, string>,
 
   filters: { all: 'Tất cả', statusLabel: 'Trạng thái', groupLabel: 'Nhóm việc' },
+  buckets: {
+    todo: 'Chưa làm',
+    waiting: 'Chờ duyệt',
+    fix: 'Bị từ chối',
+    approved: 'Đã duyệt',
+    offered: 'Chờ nhận',
+    blocked: 'Báo vướng',
+  } as Record<string, string>,
   allGroups: 'Tất cả nhóm',
   groupSort: { label: 'Sắp xếp nhóm', shift: 'Theo ca', remaining: 'Còn nhiều việc' } as Record<string, string> & { label: string },
 
   groups: {
     attention: 'Cần chú ý',
-    attentionHint: 'cần sửa, chờ nhận, đột xuất, tồn',
+    attentionHint: 'bị từ chối, chờ nhận, đột xuất, tồn',
     suggestion: 'thứ tự gợi ý, không khoá',
     count: (n: number) => `${n} việc`,
   },
@@ -48,7 +56,7 @@ export const t = {
   },
   queue: (n: number) => `${n} ảnh đang gửi / chờ mạng`,
   bottomSummary: (approved: number, total: number) => `${approved}/${total} đã duyệt`,
-  bottomDetail: (waiting: number, fix: number) => `Chờ duyệt ${waiting} · Cần sửa ${fix}`,
+  bottomDetail: (waiting: number, fix: number) => `Chờ duyệt ${waiting} · Bị từ chối ${fix}`,
   checkButton: 'Kiểm tra trước tan ca',
 
   detail: {
@@ -115,7 +123,7 @@ export const t = {
     allGood: 'Mọi việc bắt buộc đã được duyệt. Bạn có thể tan ca ở màn Chấm công.',
     intro: 'Chỉ tan ca được khi mọi việc bắt buộc đã được duyệt. Chạm vào việc để mở.',
     mustDo: 'Bạn cần làm',
-    mustFix: 'Bạn cần sửa',
+    mustFix: 'Bị từ chối — bạn chụp lại',
     waitReview: 'Chờ giám sát duyệt',
     yours: 'phần của bạn',
     supervisors: 'phần của giám sát, không tính lỗi bạn',
@@ -127,7 +135,7 @@ export const t = {
   events: {
     ASSIGNED: 'Được giao việc',
     ACCEPTED: 'Đã nhận việc',
-    DECLINED: 'Đã từ chối',
+    DECLINED: 'Bạn đã từ chối nhận',
     PHOTO: 'Đã gửi ảnh',
     PHOTO_REMOVED: 'Đã bỏ 1 ảnh',
     EVIDENCE: 'Đã cập nhật số liệu',
