@@ -133,7 +133,7 @@ async function segTypes(bookingId: string) {
     return r.rows as { id: string; t: string }[];
 }
 let _pg: any = null;
-async function pgc() { if (!_pg) { _pg = new Client({ connectionString: process.env.QA_USE_POOLER === "1" ? process.env.DATABASE_URL : process.env.DIRECT_URL, ssl: { rejectUnauthorized: false } }); await _pg.connect(); } return _pg; }
+async function pgc() { if (!_pg) { _pg = new Client({ connectionString: process.env.QA_USE_POOLER === "1" ? process.env.DATABASE_URL : process.env.DIRECT_URL, ssl: { rejectUnauthorized: false } }); _pg.on("error", (e: any) => { console.error(`  [INFO] mất kết nối DB, nối lại: ${e.message}`); _pg = null; }); await _pg.connect(); } return _pg; }
 
 /* ---------- quầy: tạo + gửi đơn ---------- */
 async function quickBooking(tag: string, serviceIds: string[], guestCount = 1) {
@@ -334,7 +334,9 @@ async function restore() {
 async function main() {
     console.log(`DB TEST · ngày làm việc ${DATE} · giờ VN ${vnHHMM()} · app ${BASE}`);
     const creds = JSON.parse(fs.readFileSync(process.env.QA_CREDS || '', 'utf8'));
-    const c = await pgc();
+    // Always go through pgc() so a dropped pooler connection is replaced instead of killing the run.
+    await pgc();
+    const c = { query: async (...a: any[]) => (await pgc()).query(...a), end: async () => _pg?.end() } as any;
     const pw = Object.fromEntries((await c.query(`SELECT username, password FROM "Users" WHERE username IN ('seq_admin','seq_b','seq_c','seq_kd')`)).rows.map((r: any) => [r.username, r.password]));
     await login('admin', 'seq_admin', pw.seq_admin);
     await login('A', creds.ktv.u, creds.ktv.p);
@@ -593,11 +595,9 @@ async function main() {
           check(qa?.current_order_id === qy.bookingId, 'bàn giao X xong → A chuyển sang Y', qa);
           check((await openAssign(qy.bookingId, iy, KTV.A))[0]?.status === 'ACTIVE', 'phiếu Y lên ACTIVE', await assigns(qy.bookingId));
           check(await appShows('A', KTV.A, qy.bookingId), 'app A thấy đơn Y');
-          await ktvAcceptAndStart('A', KTV.A, qy.bookingId, iy, { slipper: true });
-          await ktvFinish('A', KTV.A, qy.bookingId);
-          await ktvReviewRelease('A', KTV.A, qy.bookingId, [iy]);
-          await actions.submitCustomerRating(qy.bookingId, 5); await wait(800);
-          const q2 = await queue(KTV.A); check(q2?.status === 'waiting' && !q2?.current_order_id, 'xong Y → A rảnh', q2); }
+          // Y is booked 65 min ahead, so starting it now would hit the early-start rule; free A by cancelling Y.
+          const cy = await httpCancel(qy.bookingId, iy, 'QA T12 dọn Y'); check(cy.success === true, 'huỷ Y (chưa bắt đầu)', cy.error || '');
+          const q2 = await queue(KTV.A); check(q2?.status === 'waiting' && !q2?.current_order_id, 'huỷ Y → A rảnh', q2); }
 
         /* T13 */ flow('T13 Dịch vụ 2 KTV: A đã bắt đầu, B chưa → huỷ dịch vụ: B rảnh ngay, A rảnh sau bàn giao');
         { const q = await quickBooking('T13', ['NHS0101']); const it = (await items(q.bookingId))[0].id;
@@ -615,7 +615,7 @@ async function main() {
         { const q = await quickBooking('T14', ['NHS0101', 'NHS0040']); const its = await items(q.bookingId);
           const st = vnHHMM();
           check((await dispatch(q.bookingId, [{ itemId: its[0].id, ktvs: [KTV.A], bed: BEDS[0], start: st },
-              { itemId: its[1].id, ktvs: [KTV.A], bed: BEDS[0], start: addMin(st, 60) }])).success === true, 'gửi 2 dịch vụ liền nhau cho A');
+              { itemId: its[1].id, ktvs: [KTV.A], bed: BEDS[0], start: st }])).success === true, 'gửi 2 dịch vụ cùng giờ cho A (tránh luật bắt đầu sớm ban ngày)');
           await ktvAcceptAndStart('A', KTV.A, q.bookingId, its[0].id, { targetSegmentId: `seg-${its[0].id}-${KTV.A}-0` });
           const cr = await httpCancel(q.bookingId, its[0].id, 'QA T14'); check(cr.success === true, 'huỷ dịch vụ 1', cr.error || '');
           check((await itemRow(q.bookingId, its[1].id)).status !== 'CANCELLED' && (await liveSeg(its[1].id, KTV.A)).length === 1, 'dịch vụ 2 còn nguyên A');

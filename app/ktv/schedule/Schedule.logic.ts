@@ -172,12 +172,13 @@ export const useKTVSchedule = () => {
         if (!user?.id) return;
         setIsLoadingShift(true);
         try {
-            const data = await apiClient.get<any>(API.KTV.SHIFT);
-            setCurrentShift(data.currentShift || null);
-            setTomorrowShift(data.tomorrowShift || null);
-            setPendingRequest(data.pendingRequest || null);
-            setShiftHistory(data.history || []);
-            setShiftTypes(data.shiftTypes || {});
+            // The route needs employeeId and returns { data: {...}, shiftTypes } (dropped by 6d46b289 → 400 since 02/09).
+            const result = await apiClient.get<any>(`${API.KTV.SHIFT}?employeeId=${encodeURIComponent(user.id)}`);
+            setCurrentShift(result.data?.currentShift || null);
+            setTomorrowShift(result.data?.tomorrowShift || null);
+            setPendingRequest(result.data?.pendingRequest || null);
+            setShiftHistory(result.data?.history || []);
+            setShiftTypes(result.shiftTypes || {});
         } catch (err) {
             console.error('Lỗi khi tải ca làm việc:', err);
         } finally {

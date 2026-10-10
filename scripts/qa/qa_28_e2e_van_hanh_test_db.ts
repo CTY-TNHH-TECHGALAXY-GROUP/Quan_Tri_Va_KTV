@@ -133,7 +133,7 @@ async function segTypes(bookingId: string) {
     return r.rows as { id: string; t: string }[];
 }
 let _pg: any = null;
-async function pgc() { if (!_pg) { _pg = new Client({ connectionString: process.env.QA_USE_POOLER === "1" ? process.env.DATABASE_URL : process.env.DIRECT_URL, ssl: { rejectUnauthorized: false } }); await _pg.connect(); } return _pg; }
+async function pgc() { if (!_pg) { _pg = new Client({ connectionString: process.env.QA_USE_POOLER === "1" ? process.env.DATABASE_URL : process.env.DIRECT_URL, ssl: { rejectUnauthorized: false } }); _pg.on("error", (e: any) => { console.error(`  [INFO] mất kết nối DB, nối lại: ${e.message}`); _pg = null; }); await _pg.connect(); } return _pg; }
 
 /* ---------- quầy: tạo + gửi đơn ---------- */
 async function quickBooking(tag: string, serviceIds: string[], guestCount = 1) {
@@ -334,7 +334,9 @@ async function restore() {
 async function main() {
     console.log(`DB TEST · ngày làm việc ${DATE} · giờ VN ${vnHHMM()} · app ${BASE}`);
     const creds = JSON.parse(fs.readFileSync(process.env.QA_CREDS || '', 'utf8'));
-    const c = await pgc();
+    // Always go through pgc() so a dropped pooler connection is replaced instead of killing the run.
+    await pgc();
+    const c = { query: async (...a: any[]) => (await pgc()).query(...a), end: async () => _pg?.end() } as any;
     const pw = Object.fromEntries((await c.query(`SELECT username, password FROM "Users" WHERE username IN ('seq_admin','seq_b','seq_c','seq_kd')`)).rows.map((r: any) => [r.username, r.password]));
     await login('admin', 'seq_admin', pw.seq_admin);
     await login('A', creds.ktv.u, creds.ktv.p);
