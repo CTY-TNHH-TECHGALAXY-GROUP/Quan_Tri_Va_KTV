@@ -154,14 +154,13 @@ export const blockTask = async (sb: any, taskId: string, actorId: string | null,
   await logTaskEvent(sb, taskId, actorId, 'BLOCKED', { reason_code: reasonCode, note: note?.trim() || null });
 };
 
-export const unblockTask = async (sb: any, taskId: string, actorId: string | null, waiveToday = false) => {
+// "Miễn hôm nay" was removed 10/10/2026 (it switched blocks_checkout off for good) — supervisors use deferTask.
+export const unblockTask = async (sb: any, taskId: string, actorId: string | null) => {
   const task = await loadTask(sb, taskId);
   if (task.status !== 'PAUSED') throw new TaskActionError('Việc này không ở trạng thái báo vướng.', 409);
-  const patch: any = { status: 'IN_PROGRESS', blocked_reason: null, blocked_at: null };
-  if (waiveToday) patch.blocks_checkout = false;   // supervisor: "Miễn hôm nay"
-  await sb.from('Tasks').update(patch).eq('id', taskId);
-  await logTaskEvent(sb, taskId, actorId, waiveToday ? 'WAIVED' : 'UNBLOCKED', { previous_reason: task.blocked_reason });
-  return waiveToday ? { submitted: false, missing: [] } : trySubmit(sb, taskId, actorId);
+  await sb.from('Tasks').update({ status: 'IN_PROGRESS', blocked_reason: null, blocked_at: null }).eq('id', taskId);
+  await logTaskEvent(sb, taskId, actorId, 'UNBLOCKED', { previous_reason: task.blocked_reason });
+  return trySubmit(sb, taskId, actorId);
 };
 
 /**
@@ -399,12 +398,117 @@ export const grantCheckoutOverride = async (sb: any, staffId: string, reason: st
 };
 
 // ============================================================
+// Defer / hand over to another day (plans/plan_office_p0_doi_viec_ban_giao.md §2.1)
+// The original is soft-cancelled ("Dời sang dd/mm") so it stops blocking checkout;
+// the target day gets one task carrying a HANDOVER event (note, from-date, old block reason).
+// No new columns: the handover lives in TaskEvents, which every task screen already reads.
+// ============================================================
+
+export const OVERDUE_KEEP_DAYS = 7;
+const DEFAULT_HANDOVER_DUE = '09:00';
+const DEFERRABLE_STATES: TaskState[] = ['OFFERED', 'TODO', 'DOING', 'FIX', 'WAITING', 'BLOCKED'];
+const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const vnIso = (dateStr: string, hhmm: string) => new Date(`${dateStr}T${hhmm}:00+07:00`).toISOString();
+
+export interface DeferInput { toDate: string; assigneeId?: string | null; note: string; dueTime?: string | null }
+
+export const deferTask = async (sb: any, taskId: string, input: DeferInput, actorId: string | null) => {
+  const note = input.note?.trim();
+  if (!note) throw new TaskActionError('Cần ghi chú bàn giao.');
+  const today = getVnDateStr();
+  const toDate = input.toDate || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(toDate)) throw new TaskActionError('Chọn ngày dời tới.');
+  if (toDate < today || toDate > shiftVnDate(today, OVERDUE_KEEP_DAYS)) throw new TaskActionError(`Chỉ dời trong ${OVERDUE_KEEP_DAYS} ngày tới.`);
+  const dueTime = input.dueTime || DEFAULT_HANDOVER_DUE;
+  if (!HHMM.test(dueTime)) throw new TaskActionError('Giờ hạn không hợp lệ (HH:mm).');
+
+  const task = await loadTask(sb, taskId);
+  if (task.cancelled_at) throw new TaskActionError('Việc đã huỷ hoặc đã dời.', 409);
+  if (toDate <= task.task_date) throw new TaskActionError('Ngày dời tới phải sau ngày của việc.');
+  if (!DEFERRABLE_STATES.includes(stateOf(task, 1))) throw new TaskActionError('Việc đã xong, không cần dời.', 409);
+
+  const assigneeId = input.assigneeId || task.assignee_id;
+  if (!assigneeId) throw new TaskActionError('Chọn người nhận việc.');
+  const { data: staff } = await sb.from('Staff').select('id').eq('id', assigneeId).maybeSingle();
+  if (!staff) throw new TaskActionError('Không tìm thấy nhân viên nhận việc.', 404);
+  const { data: leave } = await sb.from('KTVLeaveRequests').select('id').eq('employeeId', assigneeId).eq('date', toDate).eq('status', 'APPROVED');
+  if (leave && leave.length) throw new TaskActionError(`${assigneeId} nghỉ ngày ${ddmm(toDate)} — chọn người khác.`, 409);
+
+  const samePerson = assigneeId === task.assignee_id;
+  const position = samePerson ? null : await positionOfStaff(sb, assigneeId);
+  const handover = {
+    priority: 'HIGH',
+    time_mode: 'DEADLINE',
+    due_at: vnIso(toDate, dueTime),
+    window_start_at: null,
+    window_end_at: null,
+    blocks_checkout: true,
+    assigned_by: actorId,
+  };
+
+  // Same person + same routine → the target day's own copy (same dedupe_key the generator uses),
+  // so the cron / ensure never adds a second one. Anything else gets its own key.
+  const routineKey = samePerson && task.task_type === 'FIXED' && task.template_id
+    ? `F|${assigneeId}|${task.template_id}|${task.room_id || ''}|${toDate}|${task.slot_time || ''}`
+    : null;
+  const findLive = async (key: string) => {
+    const { data } = await sb.from('Tasks').select('id, cancelled_at').eq('dedupe_key', key).maybeSingle();
+    return data && !data.cancelled_at ? data.id as string : null;
+  };
+
+  let targetId: string | null = routineKey ? await findLive(routineKey) : null;
+  let merged = !!targetId;
+  if (targetId) {
+    const { error } = await sb.from('Tasks').update(handover).eq('id', targetId);
+    if (error) throw new TaskActionError(error.message, 500);
+  } else {
+    const { data: taken } = routineKey ? await sb.from('Tasks').select('id').eq('dedupe_key', routineKey).maybeSingle() : { data: null };
+    const key = routineKey && !taken ? routineKey : `D|${task.id}`;
+    const row = {
+      name: task.name, template_id: task.template_id, room_id: task.room_id, category_id: task.category_id,
+      task_type: task.task_type, sort_order: task.sort_order, slot_time: task.slot_time,
+      standard_text: task.standard_text, sop: task.sop, photo_slots: task.photo_slots, evidence_fields: task.evidence_fields,
+      requires_review: task.requires_review, allow_carry_over: task.allow_carry_over, min_photo_count: task.min_photo_count,
+      assignee_id: assigneeId, task_date: toDate, status: 'NOT_STARTED', inspection_status: 'NOT_REVIEWED',
+      acceptance_status: 'AUTO', position_id: samePerson ? task.position_id : position?.id || null,
+      dedupe_key: key, ...handover,
+    };
+    const { data, error } = await sb.from('Tasks').insert(row).select('id').single();
+    if (error?.code === '23505' && key === routineKey) {
+      // The generator created the target day's copy between our read and insert → use it.
+      targetId = await findLive(key);
+      if (!targetId) throw new TaskActionError('Việc ngày đích vừa bị huỷ — thử lại.', 409);
+      await sb.from('Tasks').update(handover).eq('id', targetId);
+      merged = true;
+    } else if (error) {
+      throw new TaskActionError(error.code === '23505' ? 'Việc này đã được dời rồi.' : error.message, error.code === '23505' ? 409 : 500);
+    } else {
+      targetId = data.id;
+    }
+  }
+
+  await sb.from('Tasks').update({
+    cancelled_at: nowIso(),
+    cancel_reason: `Dời sang ${ddmm(toDate)}${samePerson ? '' : ` cho ${assigneeId}`}`,
+  }).eq('id', taskId);
+  await logTaskEvent(sb, taskId, actorId, 'DEFERRED', { to_date: toDate, to_task_id: targetId, assignee: assigneeId, note, due_time: dueTime });
+  await logTaskEvent(sb, targetId, actorId, 'HANDOVER', {
+    from_task_id: taskId, from_date: task.task_date, from_assignee: task.assignee_id,
+    note, blocked_reason: task.blocked_reason || null, due_time: dueTime,
+  });
+  await notify(sb, targetId!, assigneeId, 'NEW_TASK', `Việc bàn giao ngày ${ddmm(toDate)}: ${task.name} — ${note}`);
+  return { targetId, merged };
+};
+
+// ============================================================
 // Review queue (supervisor "Cần tôi xử lý")
 // ============================================================
 
 export const getReviewQueue = async (sb: any) => {
   const today = getVnDateStr();
-  const from = shiftVnDate(today, -1);
+  const yesterday = shiftVnDate(today, -1);
+  // 7 days back so nothing unfinished silently disappears (plan_office_p0_doi_viec_ban_giao §2.2).
+  const from = shiftVnDate(today, -OVERDUE_KEEP_DAYS);
   const publicUrl = (path: string | null | undefined) =>
     path ? sb.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl : null;
 
@@ -420,6 +524,9 @@ export const getReviewQueue = async (sb: any) => {
   const waiting = all.filter((t: any) => t.state === 'WAITING');
   const blocked = all.filter((t: any) => t.state === 'BLOCKED');
   const declined = all.filter((t: any) => t.state === 'DECLINED' && t.task_date === today);
+  // Past days, never sent for review — waiting / blocked already have their own tabs.
+  const overdue = all.filter((t: any) => t.task_date < today && t.blocks_checkout && ['OFFERED', 'TODO', 'DOING', 'FIX'].includes(t.state))
+    .sort((a: any, b: any) => a.task_date.localeCompare(b.task_date) || String(a.assignee_id).localeCompare(String(b.assignee_id)));
 
   const ids = waiting.map((t: any) => t.id);
   const { data: photos } = ids.length
@@ -433,7 +540,7 @@ export const getReviewQueue = async (sb: any) => {
   }));
 
   // Per-person picture for the checkout tab: today's tasks + yesterday's carry-over.
-  const staffIds = Array.from(new Set(all.map((t: any) => t.assignee_id)));
+  const staffIds = Array.from(new Set(all.filter((t: any) => t.task_date >= yesterday).map((t: any) => t.assignee_id)));
   const { data: staffRows } = staffIds.length ? await sb.from('Staff').select('id, full_name').in('id', staffIds) : { data: [] };
   const { data: members } = staffIds.length
     ? await sb.from('OfficePositionMembers').select('staff_id, OfficePositions!inner(name, shift_end, is_active)').in('staff_id', staffIds).eq('is_active', true)
@@ -443,7 +550,8 @@ export const getReviewQueue = async (sb: any) => {
     : { data: [] };
 
   const people = staffIds.map(staffId => {
-    const mine = all.filter((t: any) => t.assignee_id === staffId && (t.task_date === today || t.allow_carry_over));
+    // Same window as the checkout gate: today + yesterday's carry-over (older days never block).
+    const mine = all.filter((t: any) => t.assignee_id === staffId && (t.task_date === today || (t.task_date === yesterday && t.allow_carry_over)));
     const blocking = mine.filter((t: any) => t.blocks_checkout && !['APPROVED', 'DECLINED', 'CANCELLED'].includes(t.state));
     const pos = (members || []).find((m: any) => m.staff_id === staffId)?.OfficePositions;
     return {
@@ -462,7 +570,7 @@ export const getReviewQueue = async (sb: any) => {
   const endOf = (staffId: string) => people.find(p => p.staffId === staffId)?.shiftEnd || '99';
   withPhotos.sort((a: any, b: any) => endOf(a.assignee_id).localeCompare(endOf(b.assignee_id)) || String(a.submitted_at).localeCompare(String(b.submitted_at)));
 
-  return { waiting: withPhotos, blocked, declined, people };
+  return { waiting: withPhotos, blocked, declined, overdue, people };
 };
 
 // ============================================================

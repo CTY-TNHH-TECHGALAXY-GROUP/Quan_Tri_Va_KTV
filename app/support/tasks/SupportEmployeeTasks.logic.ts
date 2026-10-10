@@ -8,6 +8,7 @@ import { t } from './SupportTasks.i18n';
 // 🔧 UI CONFIGURATION
 // ============================================================
 const TOAST_MS = 2800;
+const DUE_SOON_MS = 15 * 60_000;   // "Sắp đến hạn" reminder window
 const PHOTO_MAX_WIDTH = 1280;
 const PHOTO_QUALITY = 0.72;
 
@@ -55,6 +56,8 @@ export interface TaskItem {
   roomHasGuestUpdatedAt: string | null;
   sortOrder: number;
   isCarryOver: boolean;
+  /** Moved here by the supervisor from another day — shown first, with the handover note. */
+  handover: { fromDate: string | null; fromAssignee: string | null; note: string | null; blockedReason: string | null } | null;
   reworkNote: string | null;
   reworkPhotoUrl: string | null;
   history: { type: string; payload: any; at: string }[];
@@ -116,6 +119,14 @@ const dataUriToFile = (dataUri: string, filename: string): File => {
 /** HH:mm in Vietnam time for an ISO instant (device timezone independent). */
 export const hhmmVN = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) : '';
+
+/** Deadline reminder only — never blocks anything (decision 10/10/2026). */
+export const dueTone = (task: TaskItem, now = Date.now()): 'soon' | 'over' | null => {
+  if (task.time_mode !== 'DEADLINE' || !task.due_at) return null;
+  if (!['OFFERED', 'TODO', 'DOING', 'FIX', 'BLOCKED'].includes(task.state)) return null;
+  const left = Date.parse(task.due_at) - now;
+  return left < 0 ? 'over' : left <= DUE_SOON_MS ? 'soon' : null;
+};
 
 /** Number of evidence slots a task needs and how many are filled — display only, the server decides submission. */
 export const slotProgress = (task: TaskItem) => {
@@ -397,8 +408,11 @@ export const useSupportTasks = () => {
     const needsAttention = (x: TaskItem) =>
       x.state !== 'APPROVED' && x.state !== 'DECLINED'
       && (x.state === 'FIX' || x.state === 'OFFERED' || x.state === 'BLOCKED' || x.task_type === 'AD-HOC' || x.isCarryOver);
-    const top = visible.filter(needsAttention);
-    const rest = visible.filter(x => !needsAttention(x));
+    // Handover tasks first (soft order: a reminder, never a lock — decision 10/10/2026).
+    const isHandover = (x: TaskItem) => !!x.handover && x.state !== 'APPROVED' && x.state !== 'DECLINED';
+    const handover = visible.filter(isHandover);
+    const top = visible.filter(x => !isHandover(x) && needsAttention(x));
+    const rest = visible.filter(x => !isHandover(x) && !needsAttention(x));
     const byGroup: { name: string; tasks: TaskItem[] }[] = [];
     rest.forEach(x => {
       let g = byGroup.find(b => b.name === x.categoryName);
@@ -409,7 +423,7 @@ export const useSupportTasks = () => {
     const rank = (n: string) => { const i = groupStats.findIndex(g => g.name === n); return i < 0 ? 999 : i; };
     byGroup.sort((a, b) => rank(a.name) - rank(b.name));
     byGroup.forEach(g => g.tasks.sort((a, b) => (a.sortOrder - b.sortOrder) || (a.slot_time || '').localeCompare(b.slot_time || '')));
-    return { top, groups: byGroup };
+    return { handover, top, groups: byGroup };
   }, [visible, groupStats]);
 
   const activeTasks = tasks.filter(x => x.state !== 'CANCELLED' && x.state !== 'DECLINED');

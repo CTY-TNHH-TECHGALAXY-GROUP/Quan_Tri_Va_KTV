@@ -68,7 +68,7 @@ const ReviewCard = ({ task, logic }: { task: QueueTask; logic: ReviewQueueLogic 
             {task.submitted_at && <span>{t.review.sentAt(hhmmVN(task.submitted_at))}</span>}
             {(task.current_review_round || 0) > 0 && <span>{t.review.round((task.current_review_round || 0) + 1)}</span>}
             {task.task_type === 'AD-HOC' && <span className="text-rose-700 font-bold">{t.review.adhoc}</span>}
-            {isCarry && <span className="text-amber-700 font-bold">{t.review.carry}</span>}
+            {isCarry && <span className="text-amber-700 font-bold">{t.review.fromDay(`${task.task_date.slice(8, 10)}/${task.task_date.slice(5, 7)}`)}</span>}
           </p>
         </div>
       </header>

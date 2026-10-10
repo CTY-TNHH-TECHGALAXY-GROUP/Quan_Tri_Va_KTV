@@ -51,14 +51,27 @@ export interface QueuePerson {
   override: { reason: string; granted_by: string | null } | null;
 }
 
-export type QueueTab = 'waiting' | 'blocked' | 'declined' | 'people';
+export type QueueTab = 'waiting' | 'blocked' | 'overdue' | 'declined' | 'people';
 
 const todayVN = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+export const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+/** 'YYYY-MM-DD' + n days (calendar math in UTC, no timezone drift). */
+export const addDays = (d: string, n: number) => {
+  const x = new Date(`${d}T00:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+};
+/** Whole days between a task's date and today. */
+export const daysLate = (taskDate: string, today: string) =>
+  Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${taskDate}T00:00:00Z`)) / 86_400_000);
+
+export interface DeferDraft { toDate: string; assigneeId: string | null; note: string; dueTime: string }
 
 export const useReviewQueue = () => {
   const [waiting, setWaiting] = useState<QueueTask[]>([]);
   const [blocked, setBlocked] = useState<QueueTask[]>([]);
   const [declined, setDeclined] = useState<QueueTask[]>([]);
+  const [overdue, setOverdue] = useState<QueueTask[]>([]);
   const [people, setPeople] = useState<QueuePerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -80,6 +93,7 @@ export const useReviewQueue = () => {
       setWaiting(json.waiting || []);
       setBlocked(json.blocked || []);
       setDeclined(json.declined || []);
+      setOverdue(json.overdue || []);
       setPeople(json.people || []);
       setLoadError(null);
       // Drop selections that are no longer waiting.
@@ -141,8 +155,19 @@ export const useReviewQueue = () => {
       taskIds: [id], decision: 'REWORK_REQUIRED', reasonCode, note, rejectedSlots,
     }), t.review.returned);
 
-  const resolveBlocked = (taskId: string, waiveToday: boolean) =>
-    run(() => sendJson('/api/support/review-queue', 'POST', { taskId, waiveToday }), waiveToday ? t.blocked.waived : t.blocked.resumed);
+  const resolveBlocked = (taskId: string) =>
+    run(() => sendJson('/api/support/review-queue', 'POST', { taskId }), t.blocked.resumed);
+
+  /** Move an unfinished task to another day / person (lib officeTaskActions.deferTask). */
+  const deferTask = (taskId: string, input: DeferDraft) =>
+    run(() => sendJson('/api/support/tasks/defer', 'POST', { taskId, ...input }), t.defer.done(ddmm(input.toDate)));
+
+  const cancelTasks = (taskIds: string[], reason: string) =>
+    run(async () => {
+      for (const id of taskIds) {
+        await sendJson(`/api/support/tasks?taskId=${encodeURIComponent(id)}&reason=${encodeURIComponent(reason)}`, 'DELETE');
+      }
+    }, t.overdue.cancelled);
 
   const reassign = (taskId: string, assigneeId: string) =>
     run(() => sendJson('/api/support/tasks/reassign', 'POST', { taskId, assigneeId }), t.declined.reassigned);
@@ -176,17 +201,17 @@ export const useReviewQueue = () => {
   const selectAll = () => setSelected(prev => (prev.size === waiting.length ? new Set() : new Set(waiting.map(w => w.id))));
 
   const counts = useMemo(() => ({
-    waiting: waiting.length, blocked: blocked.length, declined: declined.length,
+    waiting: waiting.length, blocked: blocked.length, overdue: overdue.length, declined: declined.length,
     people: people.filter(p => p.staffToDo + p.supervisorToReview > 0 && !p.override).length,
-  }), [waiting, blocked, declined, people]);
+  }), [waiting, blocked, overdue, declined, people]);
 
   return {
     loading, loadError, tab, setTab, counts,
-    waiting, blocked, declined, people, today: todayVN(),
+    waiting, blocked, overdue, declined, people, today: todayVN(),
     selected, toggleSelect, selectAll,
     busy, toast, lightbox, setLightbox,
     nameOf, shiftEndOf, refresh: fetchQueue,
-    approve, returnTask, resolveBlocked, reassign, cancelDeclined, grantOverride, sampleFromPhoto, uploadSample,
+    approve, returnTask, resolveBlocked, deferTask, cancelTasks, reassign, cancelDeclined, grantOverride, sampleFromPhoto, uploadSample,
   };
 };
 

@@ -3,7 +3,7 @@
 import React from 'react';
 import { User } from 'lucide-react';
 import { t } from '../SupportTasks.i18n';
-import { hhmmVN, parseGroupName, slotProgress, uploadKey, type SupportTasksLogic, type TaskItem } from '../SupportEmployeeTasks.logic';
+import { dueTone, hhmmVN, parseGroupName, slotProgress, uploadKey, type SupportTasksLogic, type TaskItem } from '../SupportEmployeeTasks.logic';
 import { STATE_DOT, STATE_PILL } from './taskStyles';
 import PhotoSlot from './PhotoSlot';
 import EvidenceField from './EvidenceField';
@@ -19,9 +19,16 @@ const TaskCard = ({ task, logic, showGroup = true }: { task: TaskItem; logic: Su
 
   const tags: { text: string; cls?: string }[] = [];
   if (task.task_type === 'AD-HOC') tags.push({ text: t.tags.adhoc + (task.priority === 'HIGH' ? ` · ${t.tags.priority}` : ''), cls: 'text-rose-700 font-bold' });
-  if (task.isCarryOver) tags.push({ text: t.tags.carry(shortDate(task.task_date)), cls: 'text-amber-700 font-bold' });
+  if (task.handover?.fromDate) tags.push({ text: t.tags.handover(shortDate(task.handover.fromDate)), cls: 'text-orange-700 font-bold' });
+  else if (task.isCarryOver) tags.push({ text: t.tags.carry(shortDate(task.task_date)), cls: 'text-amber-700 font-bold' });
   if (showGroup) tags.push({ text: parseGroupName(task.categoryName).title, cls: 'text-stone-400' });
-  if (task.time_mode === 'DEADLINE' && task.due_at) tags.push({ text: t.tags.deadline(hhmmVN(task.due_at)) });
+  const tone = dueTone(task);
+  if (task.time_mode === 'DEADLINE' && task.due_at) {
+    const hhmm = hhmmVN(task.due_at);
+    tags.push(tone === 'over' ? { text: t.tags.overdue(hhmm), cls: 'text-rose-700 font-bold' }
+      : tone === 'soon' ? { text: t.tags.dueSoon(hhmm), cls: 'text-amber-700 font-bold' }
+      : { text: t.tags.deadline(hhmm) });
+  }
   if (task.time_mode === 'WINDOW' && task.window_start_at && task.window_end_at) tags.push({ text: t.tags.window(hhmmVN(task.window_start_at), hhmmVN(task.window_end_at)) });
   if (task.time_mode === 'MULTI' && task.slot_time) tags.push({ text: t.tags.multi(task.slot_time) });
   if (progress.total > 0) tags.push({ text: `${progress.done}/${progress.total}`, cls: 'tabular-nums' });
@@ -45,12 +52,25 @@ const TaskCard = ({ task, logic, showGroup = true }: { task: TaskItem; logic: Su
           <span className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-xs text-stone-500 mt-0.5">
             {tags.map((g, i) => <span key={i} className={g.cls}>{g.text}</span>)}
           </span>
+          {task.handover?.note && !open && (
+            <span className="block mt-1 text-xs text-orange-800 bg-orange-50 rounded-lg px-2 py-1 line-clamp-2">{task.handover.note}</span>
+          )}
         </span>
         <span className={`text-[11.5px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${STATE_PILL[task.state]}`}>{t.states[task.state]}</span>
       </button>
 
       {open && (
         <div className="border-t border-stone-100 p-4 flex flex-col gap-4">
+          {task.handover && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-sm text-orange-900 flex flex-col gap-1">
+              <b className="text-[11px] uppercase tracking-wider text-orange-700">{t.detail.handoverTitle(task.handover.fromDate ? shortDate(task.handover.fromDate) : '')}</b>
+              {task.handover.note && <span>{task.handover.note}</span>}
+              {task.handover.blockedReason && (
+                <span className="text-xs text-orange-700">{t.detail.handoverReason}: {t.stuck.reasons[task.handover.blockedReason.split(':')[0]]
+                  ? task.handover.blockedReason.replace(/^[A-Z_]+/, m => t.stuck.reasons[m]) : task.handover.blockedReason}</span>
+              )}
+            </div>
+          )}
           {task.state === 'FIX' && <p className="text-sm bg-rose-50 text-rose-800 rounded-xl px-3 py-2">{t.detail.fixNote}</p>}
           {task.state === 'WAITING' && <p className="text-sm bg-sky-50 text-sky-800 rounded-xl px-3 py-2">{t.detail.waitingNote(hhmmVN(task.completedAt))}</p>}
           {task.state === 'APPROVED' && <p className="text-sm bg-emerald-50 text-emerald-800 rounded-xl px-3 py-2">{t.detail.approvedNote}</p>}
