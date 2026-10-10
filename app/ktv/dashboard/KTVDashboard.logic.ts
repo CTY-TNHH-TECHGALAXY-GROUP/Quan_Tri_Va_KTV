@@ -820,7 +820,13 @@ export function useKTVDashboard(config?: DashboardConfig) {
 
             if (allFeedback) currentStatus = 'FEEDBACK';
             else if (allDone && currentStatus !== 'DONE' && currentStatus !== 'CLEANING') currentStatus = 'CLEANING';
-            else if (isAnyStarted && (['DONE', 'COMPLETED'].includes(String(assignedItem?.status))
+            // Dịch vụ / đơn đã DONE chỉ được kéo KTV sang hậu kỳ khi chặng của CHÍNH KTV này đã có
+            // giờ kết thúc (allDone). Chưa có → KTV chưa bấm Kết thúc, phải ở lại TIMER.
+            // Ca T027 10/10/2026: khách chấm sao trên WRB lúc 18:19 khi KTV chưa bấm xong → item DONE,
+            // nhánh này (khi đó không kiểm allDone) ép CLEANING → app nhảy sang Đánh giá, bàn giao bị 409
+            // "No completed live work to release", T027 kẹt tua 1 giờ. Quầy chốt hộ (Kết thúc sớm /
+            // Huỷ / Đổi KTV) luôn ghi actualEndTime nên vẫn vào được nhánh này.
+            else if (isAnyStarted && allDone && (['DONE', 'COMPLETED'].includes(String(assignedItem?.status))
                 || ['DONE', 'COMPLETED'].includes(String(booking.status)))) currentStatus = 'CLEANING';
             else if (isAnyStarted) {
                 const isAnyPaused = allAssignedItems.some((i: any) => employeeIsPaused(i, ktvId));
@@ -863,10 +869,12 @@ export function useKTVDashboard(config?: DashboardConfig) {
             // hồ chạy mãi tới khi F5, luồng không đi tiếp được.
             // Nhận diện qua endedByCounter() — KHÔNG kiểm bằng một chuỗi note, vì bản
             // trước chỉ nhận 'FINISHED_EARLY_ON_PAUSE' nên nút Huỷ vẫn bị chặn.
+            // Chỉ coi là "quầy chốt hộ" khi chặng của KTV này đã có giờ kết thúc — item DONE mà chặng
+            // còn mở (khách chấm sao sớm) thì KTV vẫn đang làm, không được nhả đồng hồ.
             const endedByReception = allMySegsForStatus.some(endedByCounter)
                 || ((['DONE', 'COMPLETED', 'CANCELLED'].includes(String(assignedItem?.status))
                     || ['DONE', 'COMPLETED', 'CANCELLED'].includes(String(booking.status)))
-                    && allMySegsForStatus.some((seg: any) => !!seg.actualStartTime));
+                    && allMySegsForStatus.some((seg: any) => !!seg.actualStartTime && !!seg.actualEndTime));
             if (isTimerRunningRef.current && !endedByReception && ['CLEANING', 'FEEDBACK', 'DONE'].includes(currentStatus)) {
                 console.warn(`🛡️ [ScreenEngine] Timer đang chạy nhưng status=${currentStatus} → ép giữ IN_PROGRESS`);
                 currentStatus = 'IN_PROGRESS';

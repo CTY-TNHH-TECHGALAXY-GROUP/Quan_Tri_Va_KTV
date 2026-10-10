@@ -4,8 +4,12 @@ import { HandlerContext, HandlerResult } from '../_shared/utils';
 /** Work release and cleaning debt are independent; never infer completion from an item ID. */
 export async function handleReleaseKTV(ctx: HandlerContext): Promise<HandlerResult> {
     const { supabase, technicianCode, bookingId, body } = ctx;
-    const fail = (error: string): HandlerResult => ({ bookingUpdatePayload: {},
-        earlyResponse: NextResponse.json({ success: false, error }, { status: 409 }) });
+    // Ghi log lý do: Vercel chỉ lưu mã 409, trước đây phải tra DB mới biết vì sao bàn giao hỏng
+    // (ca T027 10/10/2026 bấm 12 lần không rõ nguyên nhân).
+    const fail = (error: string): HandlerResult => {
+        console.error(`[RELEASE_KTV] ${bookingId} / ${technicianCode}: ${error}`);
+        return { bookingUpdatePayload: {}, earlyResponse: NextResponse.json({ success: false, error }, { status: 409 }) };
+    };
     if (!technicianCode) return fail('Thiếu mã KTV.');
     const inputs = body.photosBase64 ?? [];
     if (!Array.isArray(inputs) || inputs.length > 20) return fail('Danh sách ảnh không hợp lệ.');

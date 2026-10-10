@@ -125,6 +125,7 @@
 
 **Triggers:**
 - `tr_notify_ktv_on_item_rating` → Gửi thông báo thưởng/cảnh báo khi `itemRating` hoặc `ktvRatings` thay đổi
+- `aa_guard_item_done_requires_segments_ended` (BEFORE UPDATE OF status, migration `20261010200000`) → UPDATE đặt `status = 'DONE'` khi còn chặng trong `segments` có `ktvId`, không `voided`, có `actualStartTime` mà **không** có `actualEndTime` → **giữ nguyên status cũ** + `RAISE WARNING` (không văng lỗi để không mất điểm khách chấm cùng câu UPDATE). Lý do: ca T027 10/10/2026, WRB đặt DONE khi khách chấm sao lúc KTV chưa bấm Kết thúc → bàn giao 409, kẹt tua. Mọi đường ghi hợp lệ (finish handler, `ktv_release_work_atomic`, quầy kéo thẻ, cron) đều đóng chặng trước khi DONE. ⚠️ Chưa apply lên DB thật tại thời điểm viết — xem `plans/plan_khach_danh_gia_truoc_khi_ktv_ket_thuc.md`.
 
 **Dọn ảnh (03/10/2026):** ảnh trong bucket `attendance` do Vercel Cron `/api/cron/cleanup-photos` xoá qua Storage API (`lib/services/PhotoCleanupService.ts`): ảnh chấm công 30 ngày; ảnh của item `DONE` (trừ `handover_status='REJECTED'` / `commission_locked`) 3 ngày; `office-evidence/` không xoá. Chỉ xoá file, link trong DB giữ nguyên. Hai job pg_cron xoá ảnh cũ đã gỡ (migration `20261003090000_unschedule_broken_photo_jobs.sql`).
 
