@@ -32,6 +32,8 @@ export const t = {
   groupSort: { label: 'Sắp xếp nhóm', shift: 'Theo ca', remaining: 'Còn nhiều việc' } as Record<string, string> & { label: string },
 
   groups: {
+    handover: 'Việc bàn giao — làm trước',
+    handoverHint: 'giám sát dời từ ngày trước',
     attention: 'Cần chú ý',
     attentionHint: 'bị từ chối, chờ nhận, đột xuất, tồn',
     suggestion: 'thứ tự gợi ý, không khoá',
@@ -46,6 +48,9 @@ export const t = {
     window: (a: string, b: string) => `Khung ${a}–${b}`,
     multi: (hhmm: string) => `Mốc ${hhmm}`,
     priority: 'Ưu tiên',
+    handover: (d: string) => `Dời từ ${d}`,
+    dueSoon: (hhmm: string) => `Sắp đến hạn ${hhmm}`,
+    overdue: (hhmm: string) => `Quá hạn ${hhmm}`,
   },
 
   gate: {
@@ -71,6 +76,8 @@ export const t = {
     reworkNote: 'Giám sát ghi chú',
     reworkPhoto: 'Xem ảnh lỗi giám sát gửi',
     history: 'Lịch sử',
+    handoverTitle: (d: string) => `Bàn giao từ ${d}`,
+    handoverReason: 'Lý do vướng hôm đó',
     missing: (list: string) => `Còn thiếu: ${list}`,
   },
 
@@ -146,6 +153,8 @@ export const t = {
     UNBLOCKED: 'Hết vướng, làm tiếp',
     WAIVED: 'Giám sát miễn hôm nay',
     CANCELLED: 'Việc đã huỷ',
+    DEFERRED: 'Giám sát dời sang ngày khác',
+    HANDOVER: 'Nhận bàn giao',
   } as Record<string, string>,
 
   toast: {

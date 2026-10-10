@@ -47,6 +47,15 @@ const SupportEmployeeTasksPage = () => {
 
           <TaskFilters logic={logic} />
 
+          {logic.sections.handover.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-orange-700">
+                {t.groups.handover} <span className="normal-case font-normal tracking-normal text-orange-500">· {t.groups.handoverHint}</span>
+              </h2>
+              {logic.sections.handover.map(task => <TaskCard key={task.id} task={task} logic={logic} />)}
+            </section>
+          )}
+
           {logic.sections.top.length > 0 && (
             <section className="flex flex-col gap-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-stone-600">
@@ -76,7 +85,7 @@ const SupportEmployeeTasksPage = () => {
           })}
 
           {logic.tasks.length === 0 && <p className="text-center text-stone-500 py-16">{t.empty}</p>}
-          {logic.tasks.length > 0 && logic.sections.top.length === 0 && logic.sections.groups.length === 0 && (
+          {logic.tasks.length > 0 && logic.sections.handover.length === 0 && logic.sections.top.length === 0 && logic.sections.groups.length === 0 && (
             <p className="text-center text-stone-400 italic py-8">{t.noMatch}</p>
           )}
         </div>

@@ -6,9 +6,9 @@ import { useAdhocAssign } from '../../_shared/AdhocAssign.logic';
 import AdhocAssignSheet from '../../_shared/AdhocAssignSheet';
 import { useReviewQueue, type QueueTab } from '../SupportReviews.logic';
 import ReviewCard from './ReviewCard';
-import { BlockedList, DeclinedList, PeopleList } from './QueueLists';
+import { BlockedList, DeclinedList, OverdueList, PeopleList } from './QueueLists';
 
-const TABS: QueueTab[] = ['waiting', 'blocked', 'declined', 'people'];
+const TABS: QueueTab[] = ['waiting', 'blocked', 'overdue', 'declined', 'people'];
 
 /** Supervisor "Cần tôi xử lý" — used by /admin/support/reviews and the "Giao Việc" hub tab. */
 const ReviewQueue = () => {
@@ -65,6 +65,7 @@ const ReviewQueue = () => {
         )
       )}
       {logic.tab === 'blocked' && <BlockedList logic={logic} />}
+      {logic.tab === 'overdue' && <OverdueList logic={logic} />}
       {logic.tab === 'declined' && <DeclinedList logic={logic} />}
       {logic.tab === 'people' && <PeopleList logic={logic} adhoc={adhoc} />}
 

@@ -17,10 +17,11 @@ export const t = {
 
   queue: {
     title: 'Cần tôi xử lý',
-    subtitle: 'Duyệt ảnh, xử lý báo vướng, việc bị từ chối và cho tan ca. Tự cập nhật khi nhân viên gửi.',
-    tabs: { waiting: 'Chờ duyệt', blocked: 'Báo vướng', declined: 'Bị từ chối', people: 'Nhân viên & tan ca' },
+    subtitle: 'Duyệt ảnh, xử lý báo vướng, dời việc, việc bị từ chối và cho tan ca. Tự cập nhật khi nhân viên gửi.',
+    tabs: { waiting: 'Chờ duyệt', blocked: 'Báo vướng', overdue: 'Quá hạn', declined: 'Bị từ chối', people: 'Nhân viên & tan ca' },
     emptyWaiting: 'Không còn việc nào chờ duyệt.',
     emptyBlocked: 'Không có báo vướng.',
+    emptyOverdue: 'Không có việc quá hạn trong 7 ngày qua.',
     emptyDeclined: 'Không có việc bị từ chối hôm nay.',
     emptyPeople: 'Hôm nay chưa có ai được giao việc.',
     selectAll: 'Chọn tất cả',
@@ -34,7 +35,7 @@ export const t = {
   review: {
     sentAt: (hhmm: string) => `Gửi ${hhmm}`,
     round: (n: number) => `Lần ${n}`,
-    carry: 'Tồn hôm qua',
+    fromDay: (d: string) => `Ngày ${d}`,
     adhoc: 'Đột xuất',
     sample: 'Mẫu',
     noSample: 'Chưa có ảnh mẫu',
@@ -77,10 +78,7 @@ export const t = {
   blocked: {
     at: (hhmm: string) => `Báo lúc ${hhmm}`,
     resume: 'Đã xử lý — cho làm tiếp',
-    waive: 'Miễn hôm nay',
-    waiveHint: 'Việc vẫn còn nhưng không chặn tan ca hôm nay.',
     resumed: 'Nhân viên làm tiếp được',
-    waived: 'Đã miễn — không chặn tan ca hôm nay',
     reasons: {
       NO_SUPPLY: 'Thiếu vật tư',
       ROOM_OCCUPIED: 'Phòng đang có khách',
@@ -88,6 +86,32 @@ export const t = {
       NEED_HELP: 'Cần người hỗ trợ',
       OTHER: 'Khác',
     } as Record<string, string>,
+  },
+
+  defer: {
+    open: 'Dời sang…',
+    title: 'Dời việc / bàn giao',
+    hint: 'Việc hôm nay đóng lại và không chặn tan ca. Ngày được dời tới, người nhận thấy việc ở đầu danh sách kèm ghi chú này.',
+    date: 'Dời sang ngày',
+    assignee: 'Người làm',
+    keepAssignee: (name: string) => `Giữ người cũ — ${name}`,
+    note: 'Ghi chú bàn giao (bắt buộc)',
+    notePlaceholder: 'VD: Đã báo kho, sáng mai có khăn — làm ngay đầu ca',
+    due: 'Nhắc hạn lúc',
+    dueHint: 'Chỉ để nhắc, không khoá việc.',
+    submit: 'Dời việc',
+    done: (d: string) => `Đã dời sang ${d}`,
+    merged: 'gộp vào việc cùng loại của ngày đó',
+  },
+
+  overdue: {
+    hint: 'Việc của các ngày trước chưa gửi duyệt (giữ 7 ngày). Không chặn tan ca nhân viên — chỉ bạn xử lý.',
+    days: (n: number) => (n === 1 ? 'Quá 1 ngày' : `Quá ${n} ngày`),
+    cancel: 'Đóng việc',
+    cancelReason: 'Đóng việc quá hạn',
+    cancelled: 'Đã đóng việc',
+    cancelGroup: (n: number) => `Đóng cả ${n} việc`,
+    confirmGroup: (n: number, who: string, d: string) => `Đóng ${n} việc của ${who} ngày ${d}? Việc được giữ lại trong lịch sử.`,
   },
 
   declined: {

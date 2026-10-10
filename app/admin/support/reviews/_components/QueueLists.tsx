@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { t } from '../../_shared/officeAdmin.i18n';
-import { hhmmVN } from '../../_shared/officeApi';
+import { hhmmVN, type StaffOption } from '../../_shared/officeApi';
 import { useOfficeOptions } from '../../_shared/AdhocAssign.logic';
 import type { AdhocAssignLogic } from '../../_shared/AdhocAssign.logic';
-import type { QueuePerson, QueueTask, ReviewQueueLogic } from '../SupportReviews.logic';
+import { daysLate, ddmm, type QueuePerson, type QueueTask, type ReviewQueueLogic } from '../SupportReviews.logic';
+import DeferForm from './DeferForm';
 
 const BTN = 'min-h-[44px] px-4 rounded-xl text-sm font-bold disabled:opacity-40';
 const CARD = 'bg-white rounded-2xl border border-stone-200 p-4 flex flex-col gap-3';
@@ -21,28 +22,95 @@ const blockLabel = (raw: string | null) => {
 };
 
 // ============================================================
-// Báo vướng
+// Báo vướng → làm tiếp, hoặc dời sang ngày khác (bàn giao)
 // ============================================================
+const BlockedCard = ({ task, logic, staff }: { task: QueueTask; logic: ReviewQueueLogic; staff: StaffOption[] }) => {
+  const [deferring, setDeferring] = useState(false);
+  return (
+    <article className={CARD}>
+      <div>
+        <h3 className="text-[15px] font-semibold text-stone-800">{task.name}</h3>
+        <p className="text-xs text-stone-500 mt-0.5">
+          <span className="font-semibold text-stone-700">{logic.nameOf(task.assignee_id)}</span>
+          {task.task_date !== logic.today && <span className="text-amber-700 font-bold"> · {t.review.fromDay(ddmm(task.task_date))}</span>}
+          {task.blocked_at && <span> · {t.blocked.at(hhmmVN(task.blocked_at))}</span>}
+        </p>
+      </div>
+      <p className="text-sm bg-purple-50 text-purple-800 rounded-xl px-3 py-2">{blockLabel(task.blocked_reason)}</p>
+      {deferring ? (
+        <DeferForm task={task} logic={logic} staff={staff} defaultNote={blockLabel(task.blocked_reason)} onDone={() => setDeferring(false)} />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={logic.busy} onClick={() => logic.resolveBlocked(task.id)} className={`${BTN} bg-emerald-800 text-white`}>{t.blocked.resume}</button>
+          <button type="button" disabled={logic.busy} onClick={() => setDeferring(true)} className={`${BTN} bg-white border border-orange-300 text-orange-800`}>{t.defer.open}</button>
+        </div>
+      )}
+    </article>
+  );
+};
+
 export const BlockedList = ({ logic }: { logic: ReviewQueueLogic }) => {
+  const { staff } = useOfficeOptions(logic.blocked.length > 0);
   if (!logic.blocked.length) return <Empty text={t.queue.emptyBlocked} />;
   return (
     <div className="flex flex-col gap-3">
-      {logic.blocked.map(task => (
-        <article key={task.id} className={CARD}>
-          <div>
-            <h3 className="text-[15px] font-semibold text-stone-800">{task.name}</h3>
-            <p className="text-xs text-stone-500 mt-0.5">
-              <span className="font-semibold text-stone-700">{logic.nameOf(task.assignee_id)}</span>
-              {task.blocked_at && <span> · {t.blocked.at(hhmmVN(task.blocked_at))}</span>}
-            </p>
+      {logic.blocked.map(task => <BlockedCard key={task.id} task={task} logic={logic} staff={staff} />)}
+    </div>
+  );
+};
+
+// ============================================================
+// Quá hạn (7 ngày) — dời / đóng; không chặn tan ca nhân viên
+// ============================================================
+const OverdueRow = ({ task, logic, staff }: { task: QueueTask; logic: ReviewQueueLogic; staff: StaffOption[] }) => {
+  const [deferring, setDeferring] = useState(false);
+  return (
+    <div className="flex flex-col gap-2 py-2.5 border-t border-stone-100 first:border-t-0">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="flex-1 min-w-[180px] text-sm text-stone-800">{task.name}</span>
+        {!deferring && (
+          <span className="flex gap-2">
+            <button type="button" disabled={logic.busy} onClick={() => setDeferring(true)} className="min-h-[40px] px-3 rounded-lg text-xs font-bold border border-orange-300 text-orange-800 disabled:opacity-40">{t.defer.open}</button>
+            <button type="button" disabled={logic.busy} onClick={() => logic.cancelTasks([task.id], t.overdue.cancelReason)} className="min-h-[40px] px-3 rounded-lg text-xs font-bold border border-stone-300 text-stone-600 disabled:opacity-40">{t.overdue.cancel}</button>
+          </span>
+        )}
+      </div>
+      {deferring && <DeferForm task={task} logic={logic} staff={staff} defaultNote="" onDone={() => setDeferring(false)} />}
+    </div>
+  );
+};
+
+export const OverdueList = ({ logic }: { logic: ReviewQueueLogic }) => {
+  const { staff } = useOfficeOptions(logic.overdue.length > 0);
+  if (!logic.overdue.length) return <Empty text={t.queue.emptyOverdue} />;
+  // One card per person per day — a skipped day can leave dozens of daily checklist items.
+  const groups: { key: string; date: string; staffId: string; tasks: QueueTask[] }[] = [];
+  logic.overdue.forEach(task => {
+    const key = `${task.task_date}|${task.assignee_id}`;
+    let g = groups.find(x => x.key === key);
+    if (!g) { g = { key, date: task.task_date, staffId: task.assignee_id, tasks: [] }; groups.push(g); }
+    g.tasks.push(task);
+  });
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-stone-500">{t.overdue.hint}</p>
+      {groups.map(g => (
+        <article key={g.key} className={CARD}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-[15px] font-semibold text-stone-800">{logic.nameOf(g.staffId)} <span className="text-xs font-normal text-stone-400">{g.staffId}</span></h3>
+              <p className="text-xs mt-0.5">
+                <span className="text-stone-600">{t.review.fromDay(ddmm(g.date))}</span>
+                <span className="ml-2 font-bold text-rose-700">{t.overdue.days(daysLate(g.date, logic.today))}</span>
+              </p>
+            </div>
+            {g.tasks.length > 1 && (
+              <button type="button" disabled={logic.busy}
+                onClick={() => { if (window.confirm(t.overdue.confirmGroup(g.tasks.length, logic.nameOf(g.staffId), ddmm(g.date)))) logic.cancelTasks(g.tasks.map(x => x.id), t.overdue.cancelReason); }}
+                className="min-h-[40px] px-3 rounded-lg text-xs font-bold border border-stone-300 text-stone-600 disabled:opacity-40">{t.overdue.cancelGroup(g.tasks.length)}</button>
+            )}
           </div>
-          <p className="text-sm bg-purple-50 text-purple-800 rounded-xl px-3 py-2">{blockLabel(task.blocked_reason)}</p>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={logic.busy} onClick={() => logic.resolveBlocked(task.id, false)} className={`${BTN} bg-emerald-800 text-white`}>{t.blocked.resume}</button>
-            <button type="button" disabled={logic.busy} onClick={() => logic.resolveBlocked(task.id, true)} title={t.blocked.waiveHint}
-              className={`${BTN} bg-white border border-stone-300 text-stone-700`}>{t.blocked.waive}</button>
-          </div>
-          <p className="text-xs text-stone-400">{t.blocked.waiveHint}</p>
+          <div>{g.tasks.map(task => <OverdueRow key={task.id} task={task} logic={logic} staff={staff} />)}</div>
         </article>
       ))}
     </div>

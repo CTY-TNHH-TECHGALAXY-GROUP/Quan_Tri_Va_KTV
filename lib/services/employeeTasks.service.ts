@@ -420,6 +420,8 @@ export class EmployeeTasksService {
         : null;
       const photos = photosByTask[t.id] || [];
       const photoCount = photos.length;
+      // Supervisor moved this task here from another day (officeTaskActions.deferTask).
+      const handoverEv = [...(eventsByTask[t.id] || [])].reverse().find(e => e.type === 'HANDOVER');
       return {
         id: t.id,
         name: t.name,
@@ -463,6 +465,12 @@ export class EmployeeTasksService {
         sortOrder: t.TaskTemplates?.sort_order || 999,
         isCarryOver,
         carryOverDate: isCarryOver ? t.created_at : undefined,
+        handover: handoverEv ? {
+          fromDate: handoverEv.payload?.from_date || null,
+          fromAssignee: handoverEv.payload?.from_assignee || null,
+          note: handoverEv.payload?.note || null,
+          blockedReason: handoverEv.payload?.blocked_reason || null,
+        } : null,
         reworkNote: latestReview?.note || null,
         reworkPhoto: latestReview?.photo_url || null,
         reworkPhotoUrl: urlOf(latestReview?.photo_url),

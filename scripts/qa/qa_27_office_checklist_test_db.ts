@@ -295,9 +295,10 @@ async function main() {
     await act.blockTask(sb, t2a.id, ACTOR, 'NO_SUPPLY', 'Hết khăn');
     check(svc.deriveTaskState(await fresh(t2a.id)) === 'BLOCKED', 'báo vướng → BLOCKED');
     await expectErr(() => act.blockTask(sb, t2a.id, ACTOR, 'BAD'), 400, 'lý do vướng ngoài danh sách bị từ chối');
-    await act.unblockTask(sb, t2a.id, ACTOR, true);
+    await act.unblockTask(sb, t2a.id, ACTOR);
     const t2aAfter = await fresh(t2a.id);
-    check(t2aAfter.blocks_checkout === false && t2aAfter.status === 'IN_PROGRESS', 'giám sát "Miễn hôm nay" → không còn chặn tan ca');
+    // "Miễn hôm nay" removed 10/10/2026 — resolving a block never switches the checkout gate off.
+    check(t2aAfter.blocks_checkout === true && t2aAfter.status === 'IN_PROGRESS', 'giám sát "Đã xử lý" → làm tiếp, vẫn chặn tan ca tới khi duyệt');
 
     // Khung giờ
     const [winTask] = await must(sb.from('Tasks').insert({ name: `${P}Quay mái hiên`, task_type: 'FIXED', assignee_id: STAFF_A, task_date: today, min_photo_count: 0,
