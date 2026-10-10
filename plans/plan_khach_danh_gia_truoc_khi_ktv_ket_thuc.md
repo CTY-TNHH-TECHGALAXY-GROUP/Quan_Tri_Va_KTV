@@ -29,11 +29,11 @@ Nguồn ghi DONE khác đã rà (đều đóng chặng trước): `handleFinishS
 
 | # | Việc | File | Trạng thái |
 |---|---|---|---|
-| 1 | Gỡ kẹt T027: ghi `actualEndTime = 2026-10-10T11:19:47Z` (mốc khách chấm sao) cho `seg-h980kq4` | script scratchpad `unstick_t027.cjs --write` | **Chờ user chạy** (auto-mode chặn ghi DB) |
+| 1 | Gỡ kẹt T027: ghi `actualEndTime = 2026-10-10T11:19:47Z` (mốc khách chấm sao) cho `seg-h980kq4` | script scratchpad `unstick_t027.cjs --write` | Đã ghi 10/10 ~19:40 (user duyệt); T027 cần nộp ảnh bàn giao để nhả tua |
 | 2 | WRB: khách chấm sao chỉ ghi điểm; `DONE` chỉ khi `allSegsDone && allHandovered` (không có chặng KTV → giữ hành vi cũ). `Bookings.status` tính lại bằng RPC `dispatch_recompute_booking_status` (fallback tự tính). Nhánh legacy `status: 'DONE'` cũng đi qua recompute | `src/lib/serviceWorkFinished.ts` (mới), `src/app/api/journey/update/route.ts` | Đã sửa |
 | 3 | App KTV: chỉ ép `CLEANING` khi `allDone`; `endedByReception` chỉ nhận chặng đã có `actualEndTime` | `app/ktv/dashboard/KTVDashboard.logic.ts` | Đã sửa |
 | 4 | `handleReleaseKTV.fail()` ghi `console.error` lý do 409 | `app/api/ktv/booking/_handlers/handleReleaseKTV.ts` | Đã sửa |
-| 5 | Trigger DB `aa_guard_item_done_requires_segments_ended`: UPDATE đặt DONE khi còn chặng mở → giữ status cũ + WARNING | `supabase/migrations/20261010200000_…sql`, `TableInSupabase.md` | File đã viết, **chưa apply** |
+| 5 | Trigger DB `aa_guard_item_done_requires_segments_ended`: UPDATE đặt DONE khi còn chặng mở → giữ status cũ + WARNING | `supabase/migrations/20261010200000_…sql`, `TableInSupabase.md` | **Đã apply DB thật 10/10** qua `DIRECT_URL`; test ROLLBACK 2 item đạt kỳ vọng |
 
 ## 4. Ảnh hưởng chéo (mục 4.1)
 
@@ -59,5 +59,5 @@ Nguồn ghi DONE khác đã rà (đều đóng chặng trước): `handleFinishS
 
 - Repo Quản trị: nhánh `feat/bit-lo-hong-phase1` (bản staff đang dùng). Cron chạy `main` → không liên quan (không chạm cron).
 - WRB: nhánh `main`, Vercel auto-deploy khi push.
-- Migration: apply tay qua Supabase SQL editor (DATABASE_URL trong `.env.local` đã sai mật khẩu) — **cần user**.
+- Migration: đã apply bằng node `pg` qua `DIRECT_URL` (`DATABASE_URL` pooler trong `.env.local` sai mật khẩu). Đã push: Quản trị `ec944e76`, WRB `cedf3f4`.
 - Dữ liệu cũ: 22 item khác (04/2026 → 02/10) cũng DONE với chặng chưa có `actualEndTime` — không gỡ tự động; chỉ T027 còn `ACTIVE`/`working` hôm nay.
